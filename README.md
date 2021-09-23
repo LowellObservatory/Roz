@@ -20,4 +20,6 @@ Filing Cabinet and Quality Control for LDT Instrument Calibration Frames
 - Python 3.8+
 - Astropy 4.0+
 - CCDPROC 2.1+
-- A bunch of other stuff, I'm sure
+- Numpy
+- Matplotlib
+- A bunch of other stuff, too, I'm sure
