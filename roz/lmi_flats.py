@@ -13,8 +13,39 @@
 Further description.
 """
 
-def function1():
-    pass
+# Built-In Libraries
+
+# 3rd Party Libraries
+import ccdproc as ccdp
+
+# Internal Imports
+
+
+# List of LMI Filters
+LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
+               'SDSS-U', 'SDSS-G', 'SDSS-R', 'SDSS-I', 'SDSS-Z',
+               'VR', 'YISH', 'OIII', 'HALPHAON', 'HALPHAOFF',
+               'WR-WC', 'WR-WN', 'WR-CT',
+               'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH']
+
+
+def collect_flats(dir):
+
+    # Create an ImageFileCollection
+    icl = ccdp.ImageFileCollection(dir)
+
+    for flat_type in ['DOME FLAT', 'SKY FLAT']:
+        # Grab all of the flats of this type
+        flat_cl = icl.filter(obstype=flat_type)
+
+        # If no files, move along, move along
+        if not flat_cl.files:
+            continue
+
+        # Create the list of unique filters for this set
+        flat_filt = sorted(list(set(list(flat_cl.summary['filters']))))
+
+
 
 
 #=============================================================================#
