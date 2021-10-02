@@ -34,6 +34,8 @@ LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
                'VR', 'YISH', 'OIII', 'HALPHAON', 'HALPHAOFF',
                'WR-WC', 'WR-WN', 'WR-CT',
                'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH']
+# Fold Mirror Names
+FMS = ['A', 'B', 'C', 'D']
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
@@ -57,50 +59,81 @@ def collect_flats(directory, mem_limit=8.192e9):
      mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
 
+    Returns
+    -------
+    `astropy.table.Table` (bias_meta)
+        A table containing information about the bias frames for analysis
+    `astropy.table.Table` (flat_meta)
+        A table containing information about the flat frames for analysis
+
     Raises
     ------
     ValueError
-        [description]
+        Temporary bug, will need to expand this to handle multiple binnings
     """
     # Create an ImageFileCollection
     icl = ccdp.ImageFileCollection(directory)
 
-    # Make bias collection for bias-subtraction
+    # Get the complete list of binnings used
+    bin_list = icl.values('ccdsum', unique=True)
+    if len(bin_list) > 1:
+        raise ValueError("More than one binning exists in this directory!")
+
+    # Before doing stuff with the flats, make sure we have a bias_frame
+    #  Make bias collection for bias-subtraction
     bias_cl = icl.filter(obstype='bias')
-    bias_frame = None
+    bias_frame, bias_meta = combine_bias_frames(bias_cl, binning=bin_list[0],
+                                                mem_limit=mem_limit)
 
     for flat_type in ['DOME FLAT', 'SKY FLAT']:
         # Grab all of the flats of this type
         flat_cl = icl.filter(obstype=flat_type)
 
         # If no files, move along, move along
-        if not flat_cl.files:
-            continue
+        if not flat_cl.files: continue
 
-        # Get the complete list of binnings used
-        bin_list = icl.values('ccdsum', unique=True)
-        if len(bin_list) > 1:
-            raise ValueError("More than one binning exists in this directory!")
+        # Gather a list of CCDData objects of the bais-subtracted flats
+        flat_frames = bias_subtract(flat_cl, bias_frame, binning=bin_list[0])
 
-        # Before doing stuff with the flats, make sure we have a bias_frame
-        if bias_frame is None:
-            bias_frame, bias_meta = combine_bias_frames(bias_cl, 
-                                                        binning=bin_list[0],
-                                                        mem_limit=mem_limit)
+        flat_meta = []
+        # Loop over CCDData objects for this filter
+        for frame in flat_frames:
 
-        # Retreive the list of unique filters for this set
-        flat_filt = sorted(flat_cl.values('filters', unique=True))
+            hdr = frame.header
+            # Statistics, statistics, statistics!!!!
 
-        # I want to go through the filters in the same order as LMI_FILTERS...
-        for lmi_filt in LMI_FILTERS:
-            # If this filter wasn't used, move along, move along
-            if lmi_filt not in flat_filt:
-                continue
-            
-            print(lmi_filt)
+            flat_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
+                              'utcstart': hdr['UTCSTART'],
+                              'frametyp': hdr['OBSTYPE'],
+                              'obserno': hdr['OBSERNO'],
+                              'binning': hdr['CCDSUM'],
+                              'numamp': hdr['NUMAMP'],
+                              'ampid': hdr['AMPID'],
+                              'mnttemp': hdr['MNTTEMP'],
+                              'tempamb': hdr['TEMPAMB'],
+                              'filter': hdr['FILTERS'],
+                              'exptime': hdr['EXPTIME'],
+                              'rc1pos': [hdr['P1X'], hdr['P1Y']],
+                              'rc2pos': [hdr['P2X'], hdr['P2Y']],
+                              'icstat': hdr['ICSTAT'],
+                              'icpos': hdr['ICPOS'],
+                              'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
+                              'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
+                              'flatavg': np.mean(frame.data),
+                              'flatmed': np.median(frame.data),
+                              'flatstd': np.std(frame.data),
+                              'quadsurf': fit_quadric_surface(frame.data)})
 
+        # This stuff will be in the analysis bit, I guess...  the above is
+        #  more like collection
+        # # I want to go through the filters in the same order as LMI_FILTERS...
+        # for lmi_filt in LMI_FILTERS:
+        #    # Retreive the list of unique filters for this set
+        #     flat_filt = sorted(flat_cl.values('filters', unique=True))
+        #     # If this filter wasn't used, move along, move along
+        #     if lmi_filt not in flat_filt: continue
 
-
+    return bias_meta, Table(flat_meta)
 
 
 def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
@@ -131,7 +164,6 @@ def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
     InputError
         Raised if the binning is not set.
     """
-
     # Last check to ensure there are bias frames
     if not bias_cl.files:
         return None
@@ -156,15 +188,19 @@ def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
         # For posterity, gather the mount temperature and mean bias level
         bias_temp.append({'utdate': hdr['DATE-OBS'].split('T')[0],
                           'utcstart': hdr['UTCSTART'],
+                          'frametyp': hdr['OBSTYPE'],
+                          'obserno': hdr['OBSERNO'],
                           'binning': hdr['CCDSUM'],
+                          'numamp': hdr['NUMAMP'],
+                          'ampid': hdr['AMPID'],
                           'mnttemp': hdr['MNTTEMP'],
                           'tempamb': hdr['TEMPAMB'],
-                          'biaslev': np.mean(bias_data)})
+                          'biasavg': np.mean(bias_data),
+                          'biasmed': np.median(bias_data)})
 
         # Fit the overscan section, subtract it, then trim the image
         # Append this to a list
-        bias_ccds.append(trim_oscan(ccd, ccd.header['BIASSEC'],
-                                    ccd.header['TRIMSEC']))
+        bias_ccds.append(trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC']))
 
     if debug:
         print("Doing median combine of biases now...")
@@ -221,6 +257,200 @@ def trim_oscan(ccd, biassec, trimsec):
     # Trim the overscan & return
     return ccdp.trim_image(ccd[:, xt.start:xt.stop])
 
+
+def bias_subtract(icl, bias_frame, binning=None, debug=True):
+    """bias_subtract Subtract the overscan and Master Bias from frames in a IFC
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    icl : `ccdproc.ImageFileCollection`
+        The IFC containing frames to be subtracted
+    bias_frame : `astropy.nddata.CCDData`
+        The processed bias frame to subtract
+    binning : `str`, optional
+        Binning of the CCD -- must be specified by the caller [Default: None]
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
+
+    Returns
+    -------
+    `list` of `astropy.nddata.CCDData`
+        List of the overscan- and bias-subtracted images from the input IFC
+
+    Raises
+    ------
+    InputError
+        Raised if the binning is not set.
+    """
+    # Error checking for binning
+    if binning is None:
+        raise InputError('Binning not set.')
+    if debug:
+        print("Subtracting bias from frames...")
+
+    subtracted_ccds = []
+    # Loop through files in the input IFC
+    for ccd in icl.ccds(ccdsum=binning, bitpix=16):
+
+        hdr = ccd.header
+        # Fit the overscan section, subtract it, then trim the image
+        ccd = trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
+
+        # Subtract master bias & append the CCDData object to the list
+        subtracted_ccds.append(ccdp.subtract_bias(ccd, bias_frame))
+
+    return subtracted_ccds
+
+
+def fit_quadric_surface(data, fit_quad=True):
+
+    """
+     ;;================================================================
+     ;; Section of code dealing with fitting the I_MIR to the cutout
+
+     boxsz = size(ndata4,/DIM)
+     xarr = cmreplicate(findgen(boxsz[0]),boxsz[1]) ; The column array
+     yarr = transpose(cmreplicate(findgen(boxsz[1]),boxsz[0])) ; The row array
+
+
+     ;;=================================================================
+     ;; Perform the **LEAST SQUARES FIT**
+     ;; mat ## fitvec = RHS
+
+     ;; (x,y,z) coordinates of the pixels used for the fit
+     xp = xarr[index]-xcen
+     yp = yarr[index]-ycen
+     zp = ndata4[index]
+
+     ;; Calculate the TERMS used for the matrix
+     nterm = fitquad ? 6 : 3
+     mat = dblarr(nterm,nterm)
+
+          mat[0,0] = n_elements(xp)
+     mat[1,0] = total(xp)
+     mat[2,0] = total(yp)
+     mat[1,1] = total(xp*xp)
+     mat[2,1] = total(xp*yp)
+     mat[2,2] = total(yp*yp)
+     IF fitquad THEN BEGIN
+        mat[3,0] = total(xp*xp)
+        mat[4,0] = total(yp*yp)
+        mat[5,0] = total(xp*yp)
+        mat[3,1] = total(xp*xp*xp)
+        mat[4,1] = total(xp*yp*yp)
+        mat[5,1] = total(xp*xp*yp)
+        mat[3,2] = total(xp*xp*yp)
+        mat[4,2] = total(yp*yp*yp)
+        mat[5,2] = total(xp*yp*yp)
+        mat[3,3] = total(xp*xp*xp*xp)
+        mat[4,3] = total(xp*xp*yp*yp)
+        mat[5,3] = total(xp*xp*xp*yp)
+        mat[4,4] = total(yp*yp*yp*yp)
+        mat[5,4] = total(xp*yp*yp*yp)
+        mat[5,5] = total(xp*xp*yp*yp)
+     ENDIF
+
+     ;; Fill in the symmetric matrix
+     FOR ii=0,nterm-1 DO mat[ii,*] = mat[*,ii]
+
+     ;; The right hand side of the matrix equation
+     RHS    = dblarr(1,nterm)
+     RHS[0] = total(zp)
+     RHS[1] = total(xp*zp)
+     RHS[2] = total(yp*zp)
+     IF fitquad THEN BEGIN
+        RHS[3] = total(xp*xp*zp)
+        RHS[4] = total(yp*yp*zp)
+        RHS[5] = total(xp*yp*zp)
+     ENDIF
+
+     ;; Calculate the fit vector
+     fitvec = (invert(mat))##RHS
+
+     ;; Calculate I_MIR
+     Imir = fitvec[0] + fitvec[1]*(xarr-xcen) + fitvec[2]*(yarr-ycen)
+     IF fitquad THEN $
+        Imir += fitvec[3]*(xarr-xcen)*(xarr-xcen) + $
+                fitvec[4]*(yarr-ycen)*(yarr-ycen) + $
+                fitvec[5]*(xarr-xcen)*(yarr-ycen)
+    """
+    # Construct the arrays for doing the matrix magic
+    ny, nx = data.shape
+    x_coord_arr = np.tile(np.arange(nx), (ny,1))
+    y_coord_arr = np.transpose(np.tile(np.arange(ny), (nx,1)))
+
+    # Construct the matrix for use with the LEAST SQUARES FIT
+    #  np.dot(mat, fitvec) = RHS
+    n_terms = 6 if fit_quad else 3
+    matrix = np.empty((n_terms, n_terms))
+
+    # Compute the terms needed for the matrix
+    n_pixels = x_coord_arr.size
+    sum_x = np.sum(x_coord_arr)
+    sum_y = np.sum(y_coord_arr)
+    sum_x2 = np.sum(x_coord_arr * x_coord_arr)
+    sum_xy = np.sum(x_coord_arr * y_coord_arr)
+    sum_y2 = np.sum(y_coord_arr * y_coord_arr)
+    sum_x3 = np.sum(x_coord_arr * x_coord_arr * x_coord_arr)
+    sum_x2y = np.sum(x_coord_arr * x_coord_arr * y_coord_arr)
+    sum_xy2 = np.sum(x_coord_arr * y_coord_arr * y_coord_arr)
+    sum_y3 = np.sum(y_coord_arr * y_coord_arr * y_coord_arr)
+    sum_x4 = np.sum(x_coord_arr * x_coord_arr * x_coord_arr * x_coord_arr)
+    sum_x3y = np.sum(x_coord_arr * x_coord_arr * x_coord_arr * y_coord_arr)
+    sum_x2y2 = np.sum(x_coord_arr * x_coord_arr * y_coord_arr * y_coord_arr)
+    sum_xy3 = np.sum(x_coord_arr * y_coord_arr * y_coord_arr * y_coord_arr)
+    sum_y4 = np.sum(y_coord_arr * y_coord_arr * y_coord_arr * y_coord_arr)
+
+    # Fill in the matrix elements
+    #  Upper left quadrant (or only quadrant, if fitting linear):
+    matrix[:3,:3] = [[n_pixels, sum_x, sum_y],
+                     [sum_x, sum_x2, sum_xy],
+                     [sum_y, sum_xy, sum_y2]]
+
+    # And the other 3 quadrants, if fitting a quadric surface
+    if fit_quad:
+        # Lower left quadrant:
+        matrix[3:,:3] = [[sum_x2, sum_x3, sum_x2y],
+                         [sum_y2, sum_xy2, sum_y3],
+                         [sum_xy, sum_x2y, sum_xy2]]
+        # Right half:
+        matrix[:,3:] = [[sum_x2, sum_y2, sum_xy],
+                        [sum_x3, sum_xy2, sum_x2y],
+                        [sum_x2y, sum_y3, sum_xy2],
+                        [sum_x4, sum_x2y2, sum_x3y],
+                        [sum_x2y2, sum_y4, sum_xy3],
+                        [sum_x3y, sum_xy3, sum_x2y2]]
+
+    # The right-hand side of the matrix equation:
+    right_hand_side = np.empty(n_terms)
+
+    # Top half:
+    right_hand_side[:3] = [np.sum(data),
+                           np.sum(x_coord_arr * data),
+                           np.sum(y_coord_arr * data)]
+
+    if fit_quad:
+        # Bottom half:
+        right_hand_side[3:] = [np.sum(x_coord_arr * x_coord_arr * data),
+                               np.sum(y_coord_arr * y_coord_arr * data),
+                               np.sum(x_coord_arr * y_coord_arr * data)]
+
+    # Here's where the magic of matrix multiplication happens!
+    fit_coefficients = np.dot(np.linalg.inv(matrix), right_hand_side)
+
+    # Build the model fit from the coefficients
+    model_fit = fit_coefficients[0] + \
+                fit_coefficients[1] * x_coord_arr + \
+                fit_coefficients[2] * y_coord_arr
+
+    if fit_quad:
+        model_fit += fit_coefficients[3] * x_coord_arr * x_coord_arr + \
+                     fit_coefficients[4] * y_coord_arr * y_coord_arr + \
+                     fit_coefficients[5] * x_coord_arr * y_coord_arr
+
+    return fit_coefficients, model_fit
 
 
 #=============================================================================#
