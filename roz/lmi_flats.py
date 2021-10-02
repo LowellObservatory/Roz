@@ -90,7 +90,8 @@ def collect_flats(directory, mem_limit=8.192e9):
         flat_cl = icl.filter(obstype=flat_type)
 
         # If no files, move along, move along
-        if not flat_cl.files: continue
+        if not flat_cl.files:
+            continue
 
         # Gather a list of CCDData objects of the bais-subtracted flats
         flat_frames = bias_subtract(flat_cl, bias_frame, binning=bin_list[0])
@@ -305,81 +306,43 @@ def bias_subtract(icl, bias_frame, binning=None, debug=True):
 
 
 def fit_quadric_surface(data, fit_quad=True):
+    """fit_quadric_surface Fit a quadric surface to an image array
 
-    """
-     ;;================================================================
-     ;; Section of code dealing with fitting the I_MIR to the cutout
+    Performs a **LEAST SQUARES FIT** of a (plane or) quadric surface to an
+    input image array.  The basic equation is:
+            matrix ## fit_coeff = right_hand_side
 
-     boxsz = size(ndata4,/DIM)
-     xarr = cmreplicate(findgen(boxsz[0]),boxsz[1]) ; The column array
-     yarr = transpose(cmreplicate(findgen(boxsz[1]),boxsz[0])) ; The row array
+    This routine computes the `matrix` needed, as well as the right_hand_side.
+    The fit coefficients are found by miltiplying matrix^(-1) by the RHS.
 
+    Fit coefficients are:
+        coeff[0] = Baseline offset
+        coeff[1] = Linear term in x
+        coeff[2] = Linear term in y
+        coeff[3] = Quadratic term in x
+        coeff[4] = Quadratic term in y
+        coeff[5] = Quadratic cross-term in xy
+    where the last three are only returned if `fit_quad == True`
 
-     ;;=================================================================
-     ;; Perform the **LEAST SQUARES FIT**
-     ;; mat ## fitvec = RHS
+    Parameters
+    ----------
+    data : `numpy.ndarray`
+        The image (as a 2D array) to be fit with a surface
+    fit_quad : `bool`, optional
+        Fit a quadric surface, rather than a plane, to the data [Default: True]
 
-     ;; (x,y,z) coordinates of the pixels used for the fit
-     xp = xarr[index]-xcen
-     yp = yarr[index]-ycen
-     zp = ndata4[index]
-
-     ;; Calculate the TERMS used for the matrix
-     nterm = fitquad ? 6 : 3
-     mat = dblarr(nterm,nterm)
-
-          mat[0,0] = n_elements(xp)
-     mat[1,0] = total(xp)
-     mat[2,0] = total(yp)
-     mat[1,1] = total(xp*xp)
-     mat[2,1] = total(xp*yp)
-     mat[2,2] = total(yp*yp)
-     IF fitquad THEN BEGIN
-        mat[3,0] = total(xp*xp)
-        mat[4,0] = total(yp*yp)
-        mat[5,0] = total(xp*yp)
-        mat[3,1] = total(xp*xp*xp)
-        mat[4,1] = total(xp*yp*yp)
-        mat[5,1] = total(xp*xp*yp)
-        mat[3,2] = total(xp*xp*yp)
-        mat[4,2] = total(yp*yp*yp)
-        mat[5,2] = total(xp*yp*yp)
-        mat[3,3] = total(xp*xp*xp*xp)
-        mat[4,3] = total(xp*xp*yp*yp)
-        mat[5,3] = total(xp*xp*xp*yp)
-        mat[4,4] = total(yp*yp*yp*yp)
-        mat[5,4] = total(xp*yp*yp*yp)
-        mat[5,5] = total(xp*xp*yp*yp)
-     ENDIF
-
-     ;; Fill in the symmetric matrix
-     FOR ii=0,nterm-1 DO mat[ii,*] = mat[*,ii]
-
-     ;; The right hand side of the matrix equation
-     RHS    = dblarr(1,nterm)
-     RHS[0] = total(zp)
-     RHS[1] = total(xp*zp)
-     RHS[2] = total(yp*zp)
-     IF fitquad THEN BEGIN
-        RHS[3] = total(xp*xp*zp)
-        RHS[4] = total(yp*yp*zp)
-        RHS[5] = total(xp*yp*zp)
-     ENDIF
-
-     ;; Calculate the fit vector
-     fitvec = (invert(mat))##RHS
-
-     ;; Calculate I_MIR
-     Imir = fitvec[0] + fitvec[1]*(xarr-xcen) + fitvec[2]*(yarr-ycen)
-     IF fitquad THEN $
-        Imir += fitvec[3]*(xarr-xcen)*(xarr-xcen) + $
-                fitvec[4]*(yarr-ycen)*(yarr-ycen) + $
-                fitvec[5]*(xarr-xcen)*(yarr-ycen)
+    Returns
+    -------
+    `numpy.ndarray`
+        Array of 3 (plane) or 6 (quadric surface) fit coefficients
+    `numpy.ndarray`
+        The 2D array modeling the surface ensconced in the first return.  Array
+        is of same size as the input `data`.
     """
     # Construct the arrays for doing the matrix magic
-    ny, nx = data.shape
-    x_coord_arr = np.tile(np.arange(nx), (ny,1))
-    y_coord_arr = np.transpose(np.tile(np.arange(ny), (nx,1)))
+    n_y, n_x = data.shape
+    x_coord_arr = np.tile(np.arange(n_x), (n_y,1))
+    y_coord_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1)))
 
     # Construct the matrix for use with the LEAST SQUARES FIT
     #  np.dot(mat, fitvec) = RHS
