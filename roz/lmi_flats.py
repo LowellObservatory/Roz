@@ -72,11 +72,12 @@ def collect_flats(directory, mem_limit=8.192e9):
         Temporary bug, will need to expand this to handle multiple binnings
     """
     # Create an ImageFileCollection
-    icl = ccdp.ImageFileCollection(directory)
+    icl = ccdp.ImageFileCollection(directory, glob_include="lmi*.fits")
 
-    # Get the complete list of binnings used
+    # Get the complete list of binnings used -- but clear out "None" entries
     bin_list = icl.values('ccdsum', unique=True)
     if len(bin_list) > 1:
+        print(f"This is the bin_list: {bin_list}")
         raise ValueError("More than one binning exists in this directory!")
 
     # Before doing stuff with the flats, make sure we have a bias_frame
@@ -305,7 +306,7 @@ def bias_subtract(icl, bias_frame, binning=None, debug=True):
     return subtracted_ccds
 
 
-def fit_quadric_surface(data, fit_quad=True):
+def fit_quadric_surface(data, fit_quad=True, return_surface=False):
     """fit_quadric_surface Fit a quadric surface to an image array
 
     Performs a **LEAST SQUARES FIT** of a (plane or) quadric surface to an
@@ -330,12 +331,15 @@ def fit_quadric_surface(data, fit_quad=True):
         The image (as a 2D array) to be fit with a surface
     fit_quad : `bool`, optional
         Fit a quadric surface, rather than a plane, to the data [Default: True]
+    return_surface : `bool`, optional
+        Return the model surface, built up from the fit coefficients?
+        [Default: False]
 
     Returns
     -------
     `numpy.ndarray`
         Array of 3 (plane) or 6 (quadric surface) fit coefficients
-    `numpy.ndarray`
+    `numpy.ndarray` (if `return_surface == True`)
         The 2D array modeling the surface ensconced in the first return.  Array
         is of same size as the input `data`.
     """
@@ -402,6 +406,10 @@ def fit_quadric_surface(data, fit_quad=True):
 
     # Here's where the magic of matrix multiplication happens!
     fit_coefficients = np.dot(np.linalg.inv(matrix), right_hand_side)
+
+    # If not returning the model surface, go ahead and return now
+    if not return_surface:
+        return fit_coefficients
 
     # Build the model fit from the coefficients
     model_fit = fit_coefficients[0] + \
