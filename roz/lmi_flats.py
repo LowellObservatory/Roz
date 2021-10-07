@@ -199,15 +199,17 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     if debug:
         print(f"Processing flat frames with binning {binning}...")
 
-    # Gather a list of CCDData objects of the bais-subtracted flats
-    flat_frames = bias_subtract(flat_cl, bias_frame, binning=binning)
-
+    # Loop through flats, subtracting bias and gathering statistics
     flat_meta = []
-    # Loop over CCDData objects for this filter
-    for frame in flat_frames:
+    for ccd in flat_cl.ccds(ccdsum=binning, bitpix=16):
+
+        hdr = ccd.header
+        # Fit the overscan section, subtract it, then trim the image
+        ccd = trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
+        # Subtract master bias
+        ccd = ccdp.subtract_bias(ccd, bias_frame)
 
         # Statistics, statistics, statistics!!!!
-        hdr = frame.header
         flat_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
                             'utcstart': hdr['UTCSTART'],
                             'frametyp': hdr['OBSTYPE'],
@@ -225,10 +227,10 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
                             'icpos': hdr['ICPOS'],
                             'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
                             'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
-                            'flatavg': np.mean(frame.data),
-                            'flatmed': np.median(frame.data),
-                            'flatstd': np.std(frame.data),
-                            'quadsurf': fit_quadric_surface(frame.data)})
+                            'flatavg': np.mean(ccd.data),
+                            'flatmed': np.median(ccd.data),
+                            'flatstd': np.std(ccd.data),
+                            'quadsurf': fit_quadric_surface(ccd.data)})
 
     # Convert the list of dicts into a Table and return
     return Table(flat_meta)
@@ -300,52 +302,6 @@ def trim_oscan(ccd, biassec, trimsec):
 
     # Trim the overscan & return
     return ccdp.trim_image(ccd[:, xt.start:xt.stop])
-
-
-def bias_subtract(icl, bias_frame, binning=None, debug=True):
-    """bias_subtract Subtract the overscan and Master Bias from frames in a IFC
-
-    [extended_summary]
-
-    Parameters
-    ----------
-    icl : `ccdproc.ImageFileCollection`
-        The IFC containing frames to be subtracted
-    bias_frame : `astropy.nddata.CCDData`
-        The processed bias frame to subtract
-    binning : `str`, optional
-        Binning of the CCD -- must be specified by the caller [Default: None]
-    debug : `bool`, optional
-        Print debugging statements? [Default: True]
-
-    Returns
-    -------
-    `list` of `astropy.nddata.CCDData`
-        List of the overscan- and bias-subtracted images from the input IFC
-
-    Raises
-    ------
-    InputError
-        Raised if the binning is not set.
-    """
-    # Error checking for binning
-    if binning is None:
-        raise InputError('Binning not set.')
-    if debug:
-        print("Subtracting bias from frames...")
-
-    subtracted_ccds = []
-    # Loop through files in the input IFC
-    for ccd in icl.ccds(ccdsum=binning, bitpix=16):
-
-        hdr = ccd.header
-        # Fit the overscan section, subtract it, then trim the image
-        ccd = trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
-
-        # Subtract master bias & append the CCDData object to the list
-        subtracted_ccds.append(ccdp.subtract_bias(ccd, bias_frame))
-
-    return subtracted_ccds
 
 
 def fit_quadric_surface(data, fit_quad=True, return_surface=False):
