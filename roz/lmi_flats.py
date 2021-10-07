@@ -14,6 +14,7 @@ Further description.
 """
 
 # Built-In Libraries
+import os
 import warnings
 
 # 3rd Party Libraries
@@ -26,6 +27,7 @@ from ccdproc.utils.slices import slice_from_string
 import numpy as np
 
 # Internal Imports
+from .database_manager import CalDatabase
 
 
 # List of LMI Filters
@@ -243,16 +245,25 @@ def produce_database_object(bias_meta, flat_meta):
 
     Parameters
     ----------
-    bias_meta : [type]
-        [description]
-    flat_meta : [type]
-        [description]
+    bias_meta : `astropy.table.Table`
+        Table containing the metadata and statistics for BIAS frames
+    flat_meta : `astropy.table.Table`
+        Table containing the metadata and statistics for FLAT frames
 
     Returns
     -------
-    [type]
+    `some_king_of_object`
         [description]
     """
+    database = CalDatabase()
+
+    # First analyze the data in the bias_meta table
+
+
+    # Next analyze the data in the flat_meta table, sorted by LMI_FILTERS
+    for lmi_filt in LMI_FILTERS:
+        print(lmi_filt)
+
     return None
 
 
@@ -423,10 +434,22 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
 
 
 #=============================================================================#
-def main(args=None, directory=None, mem_limit=None):
+def main(args=None, directory=None, mem_limit=8.192e9):
     """
     This is the main body function.
     """
+
+    # Parse command-line arguments, if called that way
+    if args is not None:
+        if len(args) == 1:
+            print("ERROR: Must specify a directory to process.")
+            return
+
+        # If not passed a directory, exit
+        if not os.path.isdir(args[1]):
+            print("ERROR: Must specify a directory to process.")
+            return
+        directory = args[1]
 
     # Collect the BIAS & FLAT frames for this directory
     bias_cl, flat_cl, bin_list = gather_cal_frames(directory)
@@ -438,6 +461,7 @@ def main(args=None, directory=None, mem_limit=None):
     # Process the FLAT frames to produce statistics
     flat_meta = process_flats(flat_cl, bias_frame, binning=bin_list[0])
 
+    # Take the metadata from the BAIS and FLAT frames and produce something
     database_object = produce_database_object(bias_meta, flat_meta)
 
 

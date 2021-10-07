@@ -13,7 +13,8 @@
 Further description.
 """
 
-def function1():
+
+class CalDatabase():
     pass
 
 
