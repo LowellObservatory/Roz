@@ -47,32 +47,41 @@ class InputError(ValueError):
     """
 
 
-def collect_flats(directory, mem_limit=8.192e9):
-    """collect_flats Collect the flat field frames
+def gather_cal_frames(directory):
+    """gather_cal_frames Gather calibration frames from this directory
 
     [extended_summary]
 
     Parameters
     ----------
-    directory : `str`
-        The directory to scan for flats
-     mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    directory : `str` or `pathlib.Path`
+        Directory name to search for calibration files
 
     Returns
     -------
-    `astropy.table.Table` (bias_meta)
-        A table containing information about the bias frames for analysis
-    `astropy.table.Table` (flat_meta)
-        A table containing information about the flat frames for analysis
+    `ccdproc.ImageFileCollection`
+        ImageFileColleciton containing the BIAS frames from the directory
+    `ccdproc.ImageFileCollection`
+        ImageFileCollection containing the FLAT frames from the directory
+    `list`
+        List of binning setups found in this directory
 
     Raises
     ------
     ValueError
         Temporary bug, will need to expand this to handle multiple binnings
     """
-    # Create an ImageFileCollection
+    # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(directory, glob_include="lmi*.fits")
+
+    # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
+    bias_fns = icl.files_filtered(obstype='bias')
+    zero_fns = icl.files_filtered(exptime=0)
+    biases = np.unique(np.concatenate([bias_fns, zero_fns]))
+    bias_cl = ccdp.ImageFileCollection(filenames=biases.tolist())
+
+    # Gather any FLAT frames (OBSTYPE=`SKY FLAT` or OBSTYPE=`DOME FLAT`)
+    flat_cl = icl.filter(obstype='[a-zA-Z]+ flat', regex_match=True)
 
     # Get the complete list of binnings used -- but clear out "None" entries
     bin_list = icl.values('ccdsum', unique=True)
@@ -80,62 +89,7 @@ def collect_flats(directory, mem_limit=8.192e9):
         print(f"This is the bin_list: {bin_list}")
         raise ValueError("More than one binning exists in this directory!")
 
-    # Before doing stuff with the flats, make sure we have a bias_frame
-    #  Make bias collection for bias-subtraction
-    bias_cl = icl.filter(obstype='bias')
-    bias_frame, bias_meta = combine_bias_frames(bias_cl, binning=bin_list[0],
-                                                mem_limit=mem_limit)
-
-    for flat_type in ['DOME FLAT', 'SKY FLAT']:
-        # Grab all of the flats of this type
-        flat_cl = icl.filter(obstype=flat_type)
-
-        # If no files, move along, move along
-        if not flat_cl.files:
-            continue
-
-        # Gather a list of CCDData objects of the bais-subtracted flats
-        flat_frames = bias_subtract(flat_cl, bias_frame, binning=bin_list[0])
-
-        flat_meta = []
-        # Loop over CCDData objects for this filter
-        for frame in flat_frames:
-
-            hdr = frame.header
-            # Statistics, statistics, statistics!!!!
-
-            flat_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
-                              'utcstart': hdr['UTCSTART'],
-                              'frametyp': hdr['OBSTYPE'],
-                              'obserno': hdr['OBSERNO'],
-                              'binning': hdr['CCDSUM'],
-                              'numamp': hdr['NUMAMP'],
-                              'ampid': hdr['AMPID'],
-                              'mnttemp': hdr['MNTTEMP'],
-                              'tempamb': hdr['TEMPAMB'],
-                              'filter': hdr['FILTERS'],
-                              'exptime': hdr['EXPTIME'],
-                              'rc1pos': [hdr['P1X'], hdr['P1Y']],
-                              'rc2pos': [hdr['P2X'], hdr['P2Y']],
-                              'icstat': hdr['ICSTAT'],
-                              'icpos': hdr['ICPOS'],
-                              'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
-                              'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
-                              'flatavg': np.mean(frame.data),
-                              'flatmed': np.median(frame.data),
-                              'flatstd': np.std(frame.data),
-                              'quadsurf': fit_quadric_surface(frame.data)})
-
-        # This stuff will be in the analysis bit, I guess...  the above is
-        #  more like collection
-        # # I want to go through the filters in the same order as LMI_FILTERS...
-        # for lmi_filt in LMI_FILTERS:
-        #    # Retreive the list of unique filters for this set
-        #     flat_filt = sorted(flat_cl.values('filters', unique=True))
-        #     # If this filter wasn't used, move along, move along
-        #     if lmi_filt not in flat_filt: continue
-
-    return bias_meta, Table(flat_meta)
+    return bias_cl, flat_cl, bin_list
 
 
 def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
@@ -213,6 +167,94 @@ def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
                              sigma_clip_dev_func=mad_std), Table(bias_temp)
 
 
+def process_flats(flat_cl, bias_frame, binning=None, debug=True):
+    """process_flats Process the flat fields and return statistics
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    flat_cl : `ccdproc.ImageFileCollection`
+        The ImageFileCollection of FLAT frames to process
+    bias_frame : `astropy.nddata.CCDData`
+        The combined, overscan-subtracted bias frame
+    binning : `str`, optional
+        The binning to use for this routine [Default: None]
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The table of relevant metadata and statistics for each frame
+
+    Raises
+    ------
+    InputError
+        Raised if the binning is not set.
+    """
+    # Error checking for binning
+    if binning is None:
+        raise InputError('Binning not set.')
+    if debug:
+        print(f"Processing flat frames with binning {binning}...")
+
+    # Gather a list of CCDData objects of the bais-subtracted flats
+    flat_frames = bias_subtract(flat_cl, bias_frame, binning=binning)
+
+    flat_meta = []
+    # Loop over CCDData objects for this filter
+    for frame in flat_frames:
+
+        # Statistics, statistics, statistics!!!!
+        hdr = frame.header
+        flat_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
+                            'utcstart': hdr['UTCSTART'],
+                            'frametyp': hdr['OBSTYPE'],
+                            'obserno': hdr['OBSERNO'],
+                            'binning': hdr['CCDSUM'],
+                            'numamp': hdr['NUMAMP'],
+                            'ampid': hdr['AMPID'],
+                            'mnttemp': hdr['MNTTEMP'],
+                            'tempamb': hdr['TEMPAMB'],
+                            'filter': hdr['FILTERS'],
+                            'exptime': hdr['EXPTIME'],
+                            'rc1pos': [hdr['P1X'], hdr['P1Y']],
+                            'rc2pos': [hdr['P2X'], hdr['P2Y']],
+                            'icstat': hdr['ICSTAT'],
+                            'icpos': hdr['ICPOS'],
+                            'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
+                            'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
+                            'flatavg': np.mean(frame.data),
+                            'flatmed': np.median(frame.data),
+                            'flatstd': np.std(frame.data),
+                            'quadsurf': fit_quadric_surface(frame.data)})
+
+    # Convert the list of dicts into a Table and return
+    return Table(flat_meta)
+
+
+def produce_database_object(bias_meta, flat_meta):
+    """produce_database_object [summary]
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    bias_meta : [type]
+        [description]
+    flat_meta : [type]
+        [description]
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+    return None
+
+
+# Helper Functions ===========================================================#
 def trim_oscan(ccd, biassec, trimsec):
     """trim_oscan Subtract the overscan region and trim image to desired size
 
@@ -425,10 +467,22 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
 
 
 #=============================================================================#
-def main(args):
+def main(args=None, directory=None, mem_limit=None):
     """
     This is the main body function.
     """
+
+    # Collect the BIAS & FLAT frames for this directory
+    bias_cl, flat_cl, bin_list = gather_cal_frames(directory)
+
+    # Process the BIAS frames to produce a reduced frame and statistics
+    bias_frame, bias_meta = combine_bias_frames(bias_cl, binning=bin_list[0],
+                                                mem_limit=mem_limit)
+
+    # Process the FLAT frames to produce statistics
+    flat_meta = process_flats(flat_cl, bias_frame, binning=bin_list[0])
+
+    database_object = produce_database_object(bias_meta, flat_meta)
 
 
 if __name__ == "__main__":
