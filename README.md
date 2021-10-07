@@ -13,7 +13,8 @@ Filing Cabinet and Quality Control for LDT Instrument Calibration Frames
 - Create a dynamic page to replace https://jumar.lowell.edu/confluence/display/LDTOI/LMI+Filter+Characterization
 
 ### Future Functionality:
-- Analyze bias frames from LMI and DeVeny to find trends with mount temperature and other conditions.  Ensure some level of repeatability.
+- Analyze bias frames from LMI and DeVeny to find trends with mount temperature and other conditions.
+- Ensure some level of repeatability.
 - Automated monitoring of top-ring lamp spectra (DeVeny DV1) with respect to May 2021 lamp replacements.
 
 ## Requirements:
