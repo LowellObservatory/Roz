@@ -27,7 +27,7 @@ import numpy as np
 
 # Internal Imports
 from .database_manager import CalibrationDatabase
-from .lmi_calibrations import trim_oscan
+from .utils import trim_oscan
 
 
 # Silence Superflous AstroPy Warnings

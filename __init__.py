@@ -24,3 +24,4 @@ __status__ = 'Development Status :: 3 - Alpha'
 from .roz import lmi_calibrations
 from .roz import database_manager
 from .roz import webpage_updater
+from .roz import utils

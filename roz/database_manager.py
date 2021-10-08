@@ -18,7 +18,7 @@ Further description.
 # 3rd Party Libraries
 
 # Internal Imports
-from .lmi_calibrations import LMI_FILTERS
+from .utils import LMI_FILTERS
 
 
 class CalibrationDatabase():
