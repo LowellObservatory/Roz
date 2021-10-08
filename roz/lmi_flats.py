@@ -27,7 +27,7 @@ from ccdproc.utils.slices import slice_from_string
 import numpy as np
 
 # Internal Imports
-from .database_manager import CalDatabase
+from .database_manager import CalibrationDatabase
 
 
 # List of LMI Filters
@@ -94,8 +94,8 @@ def gather_cal_frames(directory):
     return bias_cl, flat_cl, bin_list
 
 
-def combine_bias_frames(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
-    """combine_bias_frames Combine available bias frames
+def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
+    """process_bias Process and combine available bias frames
 
     [extended_summary]
 
@@ -252,18 +252,26 @@ def produce_database_object(bias_meta, flat_meta):
 
     Returns
     -------
-    `some_king_of_object`
-        [description]
+    `database_manager.CalibrationDatabase`
+        Database object for use with... something?
     """
-    database = CalDatabase()
+    database = CalibrationDatabase()
 
     # First analyze the data in the bias_meta table
-
+    database.bias = validate_bias_table(bias_meta)
 
     # Next analyze the data in the flat_meta table, sorted by LMI_FILTERS
     for lmi_filt in LMI_FILTERS:
-        print(lmi_filt)
+        database.flat['lmi_filt'] = validate_flat_table(flat_meta, lmi_filt)
 
+    return database
+
+
+def validate_bias_table(bias_meta):
+    return None
+
+
+def validate_flat_table(flat_meta):
     return None
 
 
@@ -435,34 +443,50 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
 
 #=============================================================================#
 def main(args=None, directory=None, mem_limit=8.192e9):
-    """
-    This is the main body function.
+    """main This is the main body function
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    args : `list`, optional
+        If this file is called from the command line, these are the command
+        line arguments.  [Default: None]
+    directory : `str` or `pathlib.Path`, optional
+        The directory to operate on [Default: None]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+
+    Returns
+    -------
+    `database_manager.CalibrationDatabase`
+        Database object to be fed into... something?
     """
 
     # Parse command-line arguments, if called that way
     if args is not None:
         if len(args) == 1:
             print("ERROR: Must specify a directory to process.")
-            return
+            return None
 
         # If not passed a directory, exit
         if not os.path.isdir(args[1]):
             print("ERROR: Must specify a directory to process.")
-            return
+            return None
         directory = args[1]
 
     # Collect the BIAS & FLAT frames for this directory
     bias_cl, flat_cl, bin_list = gather_cal_frames(directory)
 
     # Process the BIAS frames to produce a reduced frame and statistics
-    bias_frame, bias_meta = combine_bias_frames(bias_cl, binning=bin_list[0],
+    bias_frame, bias_meta = process_bias(bias_cl, binning=bin_list[0],
                                                 mem_limit=mem_limit)
 
     # Process the FLAT frames to produce statistics
     flat_meta = process_flats(flat_cl, bias_frame, binning=bin_list[0])
 
     # Take the metadata from the BAIS and FLAT frames and produce something
-    database_object = produce_database_object(bias_meta, flat_meta)
+    return produce_database_object(bias_meta, flat_meta)
 
 
 if __name__ == "__main__":

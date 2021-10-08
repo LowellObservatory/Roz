@@ -13,9 +13,27 @@
 Further description.
 """
 
+# Built-In Libraries
 
-class CalDatabase():
-    pass
+# 3rd Party Libraries
+
+# Internal Imports
+from .lmi_flats import LMI_FILTERS
+
+
+class CalibrationDatabase():
+    """CalibrationDatabase
+
+    Database class for calibration frames
+    """
+
+    def __init__(self):
+
+        self.bias = None
+
+        flat_dict = {}
+        for lmi_filt in LMI_FILTERS:
+            flat_dict[lmi_filt] = None
 
 
 #=============================================================================#
@@ -23,7 +41,6 @@ def main():
     """
     This is the main body function.
     """
-    pass
 
 
 if __name__ == "__main__":
