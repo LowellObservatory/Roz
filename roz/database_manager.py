@@ -16,6 +16,7 @@ Further description.
 # Built-In Libraries
 
 # 3rd Party Libraries
+import numpy as np
 
 # Internal Imports
 from .utils import LMI_FILTERS
@@ -34,6 +35,21 @@ class CalibrationDatabase():
         self.flat = {}
         for lmi_filt in LMI_FILTERS:
             self.flat[lmi_filt] = None
+
+    @property
+    def bias_temp(self):
+        """bias_temp Bias level and Temperature
+
+        [extended_summary]
+
+        Returns
+        -------
+        `numpy.ndarray`, `numpy.ndarray`
+            A tuple of an array of the mean bias level in the [100:-100,100:-100]
+            region of the CCD along with an array of the corresponding mount
+            temperature.
+        """
+        return np.asarray(self.bias['cen_avg']), np.asarray(self.bias['mnttemp'])
 
 
 #=============================================================================#

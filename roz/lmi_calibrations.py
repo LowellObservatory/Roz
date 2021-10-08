@@ -317,18 +317,24 @@ def validate_flat_table(flat_meta, lmi_filt):
     [type]
         [description]
     """
+    # Find the rows of the table corresponding to this filter, return if 0
     idx = np.where(flat_meta['filter'] == lmi_filt)
-    if len(idx) == 0:
+    if len(idx[0]) == 0:
         return flat_meta
 
+    # For ease, pull these rows into a subtable
     subtable = flat_meta[idx]
 
+    # Do something...
     print("\nIn validate_flat_table():")
+    print(lmi_filt)
     subtable.pprint()
     print(np.mean(subtable['flatavg']), np.median(subtable['flatmed']))
-    print(subtable['quadsurf'])
-    print(lmi_filt)
 
+    # Find the mean quadric surface for this set of flats
+    quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
+    print(quadsurf)
+    
     return flat_meta
 
 
