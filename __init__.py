@@ -21,6 +21,6 @@ __email__ = 'tbowers@lowell.edu'
 __status__ = 'Development Status :: 3 - Alpha'
 
 
-from .roz import lmi_flats
+from .roz import lmi_calibrations
 from .roz import database_manager
 from .roz import webpage_updater
