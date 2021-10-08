@@ -8,7 +8,7 @@
 #
 #  @author: tbowers
 
-"""Analyze LMI Flat Field Frames for 1 Night
+"""Analyze LMI Calibration Frames for 1 Night
 
 Further description.
 """
@@ -133,12 +133,12 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
         print(f"Combining bias frames with binning {binning}...")
 
     # Double-check that we're combining bias frames of identical binning
-    bias_cl = bias_cl.filter(obstype='bias', ccdsum=binning)
+    bias_cl = bias_cl.filter(ccdsum=binning)
 
     bias_ccds = []
     bias_temp = []
     # Loop through files
-    for ccd in bias_cl.ccds(ccdsum=binning, bitpix=16, imagetyp='bias'):
+    for ccd in bias_cl.ccds(bitpix=16):
 
         hdr = ccd.header
         bias_data = ccd.data[slice_from_string(hdr['TRIMSEC'], fits_convention=True)]
@@ -445,7 +445,8 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
 def main(args=None, directory=None, mem_limit=8.192e9):
     """main This is the main body function
 
-    [extended_summary]
+    Collect the LMI calibration frames, produce statistics, and return a
+    `CalibrationDatabase` object for this one directory.
 
     Parameters
     ----------
