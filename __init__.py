@@ -21,7 +21,9 @@ __email__ = 'tbowers@lowell.edu'
 __status__ = 'Development Status :: 3 - Alpha'
 
 
-from .roz import lmi_calibrations
+# Import the modules to make them available under Roz
 from .roz import database_manager
-from .roz import webpage_updater
+from .roz import lmi_calibrations
+from .roz import graph_maker
 from .roz import utils
+from .roz import webpage_updater
