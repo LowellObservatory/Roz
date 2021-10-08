@@ -31,9 +31,9 @@ class CalibrationDatabase():
 
         self.bias = None
 
-        flat_dict = {}
+        self.flat = {}
         for lmi_filt in LMI_FILTERS:
-            flat_dict[lmi_filt] = None
+            self.flat[lmi_filt] = None
 
 
 #=============================================================================#
