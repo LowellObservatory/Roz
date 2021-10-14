@@ -325,6 +325,10 @@ def validate_flat_table(flat_meta, lmi_filt):
     # For ease, pull these rows into a subtable
     subtable = flat_meta[idx]
 
+    # Make sure 'flats' have a reasonable flat countrate, or total counts
+    #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
+    #  exptime).
+
     # Do something...
     print("\nIn validate_flat_table():")
     print(lmi_filt)
@@ -384,7 +388,13 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     flat_meta = process_flats(flat_cl, bias_frame, binning=bin_list[0])
 
     # Take the metadata from the BAIS and FLAT frames and produce something
-    return produce_database_object(bias_meta, flat_meta)
+    database = produce_database_object(bias_meta, flat_meta)
+
+    # Write to InfluxDB
+    database.write_to_influxdb()
+
+    # OR --- Could return the database to calling routine and have that call
+    #  the .write_to_influxdb() method.
 
 
 if __name__ == "__main__":

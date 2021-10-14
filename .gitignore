@@ -66,7 +66,7 @@ docs/build/
 target/
 
 # Don't track the actual, real stuff like passwords and hostnames
-
+config/dbconfig.conf
 
 # Ignore rando code dirs
 .vscode
