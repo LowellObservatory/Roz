@@ -29,17 +29,31 @@ class CalibrationDatabase():
     """CalibrationDatabase
 
     Database class for calibration frames
+    
+    Provides a container for the metadata from a night
     """
 
-    def __init__(self):
+    def __init__(self, lmi=True):
+        """__init__ Class initialization
 
+        [extended_summary]
+
+        Parameters
+        ----------
+        lmi : `bool`, optional
+            Is this instance for LMI data? [Default: True]
+        """
+        # Copy arguments to attributes
+        self.lmi = lmi
+
+        # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
+        if self.lmi:
+            self.flat = {}
+            for lmi_filt in LMI_FILTERS:
+                self.flat[lmi_filt] = None
 
-        self.flat = {}
-        for lmi_filt in LMI_FILTERS:
-            self.flat[lmi_filt] = None
-
-        # Read in our config file
+        # Read in the InfluxDB config file
         conf_file = './config/dbconfig.conf'
 
         # By doing it this way we ignore the 'enabled' key
@@ -85,6 +99,10 @@ class CalibrationDatabase():
         bias_pkt = utils.packetizer.makeInfluxPacket(meas=['bias'],
                                                      fields=self.bias)
         self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
+
+        # If not LMI, then bomb out now
+        if not self.lmi:
+            return
 
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
