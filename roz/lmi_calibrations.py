@@ -338,7 +338,7 @@ def validate_flat_table(flat_meta, lmi_filt):
     # Find the mean quadric surface for this set of flats
     quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
     print(quadsurf)
-    
+
     return flat_meta
 
 
@@ -369,12 +369,12 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     if args is not None:
         if len(args) == 1:
             print("ERROR: Must specify a directory to process.")
-            return None
+            return
 
         # If not passed a directory, exit
         if not os.path.isdir(args[1]):
             print("ERROR: Must specify a directory to process.")
-            return None
+            return
         directory = args[1]
 
     # Collect the BIAS & FLAT frames for this directory

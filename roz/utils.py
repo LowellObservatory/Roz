@@ -198,5 +198,3 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
                      fit_coefficients[5] * x_coord_arr * y_coord_arr
 
     return fit_coefficients, model_fit
-
-

@@ -16,8 +16,6 @@ Further description.
 """
 
 # Built-In Libraries
-import os
-import warnings
 
 # 3rd Party Libraries
 from astropy.table import Table
@@ -54,8 +52,10 @@ def test_confluence():
     t.write('coop_20211003.csv')
 
     # Attach the CSV file to the page
-    confluence.attach_file('coop_20211003.csv', name='Coop Data', content_type='application/fits', page_id=page_id, comment='Test Upload')
- 
+    confluence.attach_file('coop_20211003.csv', name='Coop Data',
+                           content_type='application/fits', page_id=page_id,
+                           comment='Test Upload')
+
     # Get some information
     info = confluence.get_attachments_from_content(page_id, start=0, limit=50)
     print(info)
