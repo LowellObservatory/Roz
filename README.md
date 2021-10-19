@@ -1,7 +1,8 @@
 # Roz
 
 ![logo](images/Roz.png)
-"Well, isn't that nice? But guess what? You didn't turn in your paperwork last night."
+
+_"Well, isn't that nice? But guess what? You didn't turn in your paperwork last night."_
 
 ## Description:
 
@@ -16,6 +17,7 @@ Filing Cabinet and Quality Control for LDT Instrument Calibration Frames
 - Analyze bias frames from LMI and DeVeny to find trends with mount temperature and other conditions.
 - Ensure some level of repeatability.
 - Automated monitoring of top-ring lamp spectra (DeVeny DV1) with respect to May 2021 lamp replacements.
+- Track LMI DIQ on a nightly basis.
 
 ## Requirements:
 - Python 3.8+
@@ -23,4 +25,5 @@ Filing Cabinet and Quality Control for LDT Instrument Calibration Frames
 - CCDPROC 2.1+
 - Numpy
 - Matplotlib
+- LowellObservatory/ligmos
 - A bunch of other stuff, too, I'm sure
