@@ -14,6 +14,7 @@ Further description.
 """
 
 # Built-In Libraries
+import datetime as dt
 
 # 3rd Party Libraries
 import numpy as np
@@ -29,7 +30,7 @@ class CalibrationDatabase():
     """CalibrationDatabase
 
     Database class for calibration frames
-    
+
     Provides a container for the metadata from a night
     """
 
@@ -48,12 +49,11 @@ class CalibrationDatabase():
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
-        if self.lmi:
-            self.flat = {}
-            for lmi_filt in LMI_FILTERS:
-                self.flat[lmi_filt] = None
+        self.flat = {} if self.lmi else None
 
         # Read in the InfluxDB config file
+        # TODO: This needs to be accessed relative to wherever the full code
+        #  is called from.
         conf_file = '/Users/tbowers/d1/codes/Roz/config/dbconfig.conf'
 
         # By doing it this way we ignore the 'enabled' key
@@ -93,27 +93,47 @@ class CalibrationDatabase():
 
         Following the example of Ryan's Docker_Pi/MesaTools/onewireTemps/,
         this method packetizes the bias and flat metadata dictionaries and
-        commits them to the InfluxDB database, whose locations and credentials
+        commits them to the InfluxDB database, whose location and credentials
         are in ../config/dbconfig.conf
         """
-        # Make BIAS packet and commit
-        print("Packetizing the bias metadata...")
-        bias_pkt = utils.packetizer.makeInfluxPacket(meas=['bias'],
-                                                     fields=self.bias)
-        print("Did we get so far as to make the packet?")
-        self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
-        print("Database Commit Successful!")
+        # Loop over frames in self.bias to commit each one individually
+        for entry in self.bias:
+
+            # entry is a Row of an AstroPy Table, need to convert back to dict
+            entry_dict = dict(zip(self.bias.colnames, entry))
+
+            # We want the database timestamp to be that of the image DATEOBS,
+            #  not the current time.  Therefore, we need to create a datetime()
+            #  object from the fields `utdate` and `utcstart`.
+            timestamp = dt.datetime.strptime(
+                f"{entry['utdate']}T{entry['utcstart']}", '%Y-%m-%dT%H:%M:%S.%f')
+
+            # Create the packet for upload to the InfluxDB
+            # NOTE: `meas` should reflect the instrument (LMI) OR the entire
+            #  self.idb object should point to a `tablename` reflecing LMI
+            bias_pkt = utils.packetizer.makeInfluxPacket(
+                meas=['bias'], ts=timestamp, fields=entry_dict, debug=True)
+
+            # Commit
+            self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
 
         # If not LMI, then bomb out now
         if not self.lmi:
             return
 
+        print("Do we even get this far?")
+
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
             # Skip filters not used in this data set
-            if self.flat[filt] is None:
+            print(f"Committing LMI filter {filt}...")
+            if filt not in self.flat.keys():
                 continue
+
             print(f"Packetizing the flat {filt} metadata...")
+            # Same shenanigans as with the bias entries above...
+
+
             flat_pkt = utils.packetizer.makeInfluxPacket(
                 meas=[f"flat_{filt}"], fields=self.flat[filt])
             self.idb.singleCommit(flat_pkt, table=self.db_set.tablename)
