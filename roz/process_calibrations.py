@@ -8,7 +8,7 @@
 #
 #  @author: tbowers
 
-"""Analyze LMI Calibration Frames for 1 Night
+"""Process the Calibration Frames for 1 Night for specified instrument
 
 Further description.
 """
@@ -28,6 +28,7 @@ from tqdm import tqdm
 
 # Internal Imports
 from .database_manager import CalibrationDatabase
+from .gather_frames import gather_cal_frames
 from .utils import fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
 
 
@@ -39,51 +40,6 @@ warnings.simplefilter('ignore', AstropyWarning)
 class InputError(ValueError):
     """InputError Locally defined error that inherits ValueError
     """
-
-
-def gather_cal_frames(directory):
-    """gather_cal_frames Gather calibration frames from this directory
-
-    [extended_summary]
-
-    Parameters
-    ----------
-    directory : `str` or `pathlib.Path`
-        Directory name to search for calibration files
-
-    Returns
-    -------
-    `ccdproc.ImageFileCollection`
-        ImageFileColleciton containing the BIAS frames from the directory
-    `ccdproc.ImageFileCollection`
-        ImageFileCollection containing the FLAT frames from the directory
-    `list`
-        List of binning setups found in this directory
-
-    Raises
-    ------
-    ValueError
-        Temporary bug, will need to expand this to handle multiple binnings
-    """
-    # Create an ImageFileCollection for the specified directory
-    icl = ccdp.ImageFileCollection(directory, glob_include="lmi*.fits")
-
-    # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
-    bias_fns = icl.files_filtered(obstype='bias')
-    zero_fns = icl.files_filtered(exptime=0)
-    biases = np.unique(np.concatenate([bias_fns, zero_fns]))
-    bias_cl = ccdp.ImageFileCollection(filenames=biases.tolist())
-
-    # Gather any FLAT frames (OBSTYPE=`SKY FLAT` or OBSTYPE=`DOME FLAT`)
-    flat_cl = icl.filter(obstype='[a-zA-Z]+ flat', regex_match=True)
-
-    # Get the complete list of binnings used -- but clear out "None" entries
-    bin_list = icl.values('ccdsum', unique=True)
-    if len(bin_list) > 1:
-        print(f"This is the bin_list: {bin_list}")
-        raise ValueError("More than one binning exists in this directory!")
-
-    return bias_cl, flat_cl, bin_list
 
 
 def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
@@ -104,10 +60,10 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
 
     Returns
     -------
-    `astropy.nddata.CCDData`
-        The combined, overscan-subtracted bias frame
     `astropy.table.Table`
         A table containing information about the bias frames for analysis
+    `astropy.nddata.CCDData`
+        The combined, overscan-subtracted bias frame
 
     Raises
     ------
@@ -166,10 +122,11 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
     if debug:
         print("Doing median combine of biases now...")
 
-    return ccdp.combine(bias_ccds, method='median', sigma_clip=True,
-                             sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
-                             sigma_clip_func=np.ma.median, mem_limit=mem_limit,
-                             sigma_clip_dev_func=mad_std), Table(b_meta)
+    return Table(b_meta), \
+        ccdp.combine(bias_ccds, method='median', sigma_clip=True,
+                     sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
+                     sigma_clip_func=np.ma.median, sigma_clip_dev_func=mad_std,
+                     mem_limit=mem_limit)
 
 
 def process_flats(flat_cl, bias_frame, binning=None, debug=True):
@@ -274,7 +231,7 @@ def produce_database_object(bias_meta, flat_meta):
 
     # Next analyze the data in the flat_meta table, sorted by LMI_FILTERS
     for lmi_filt in LMI_FILTERS:
-        database.flat['lmi_filt'] = validate_flat_table(flat_meta, lmi_filt)
+        database.flat[lmi_filt] = validate_flat_table(flat_meta, lmi_filt)
 
     return database
 
@@ -382,7 +339,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     bias_cl, flat_cl, bin_list = gather_cal_frames(directory)
 
     # Process the BIAS frames to produce a reduced frame and statistics
-    bias_frame, bias_meta = process_bias(bias_cl, binning=bin_list[0],
+    bias_meta, bias_frame = process_bias(bias_cl, binning=bin_list[0],
                                                 mem_limit=mem_limit)
 
     # Process the FLAT frames to produce statistics

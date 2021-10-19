@@ -23,6 +23,8 @@ import numpy as np
 
 # Internal Imports
 
+# List of supported instruments
+INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?
 
 # List of LMI Filters
 LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
