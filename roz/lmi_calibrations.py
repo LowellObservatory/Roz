@@ -30,6 +30,7 @@ from tqdm import tqdm
 from .database_manager import CalibrationDatabase
 from .utils import fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
 
+
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
 
@@ -396,6 +397,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     # OR --- Could return the database to calling routine and have that call
     #  the .write_to_influxdb() method.
 
+    return database
 
 if __name__ == "__main__":
     import sys

@@ -54,12 +54,13 @@ class CalibrationDatabase():
                 self.flat[lmi_filt] = None
 
         # Read in the InfluxDB config file
-        conf_file = './config/dbconfig.conf'
+        conf_file = '/Users/tbowers/d1/codes/Roz/config/dbconfig.conf'
 
         # By doing it this way we ignore the 'enabled' key
         #    but we avoid contortions needed if using
         #    utils.confparsers.parseConfig, so it's worth it
         self.db_set = utils.confparsers.rawParser(conf_file)
+        print(self.db_set.keys())
         self.db_set = workers.confUtils.assignConf(self.db_set['databaseSetup'],
                                                    utils.classes.baseTarget,
                                                    backfill=True)
@@ -96,9 +97,12 @@ class CalibrationDatabase():
         are in ../config/dbconfig.conf
         """
         # Make BIAS packet and commit
+        print("Packetizing the bias metadata...")
         bias_pkt = utils.packetizer.makeInfluxPacket(meas=['bias'],
                                                      fields=self.bias)
+        print("Did we get so far as to make the packet?")
         self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
+        print("Database Commit Successful!")
 
         # If not LMI, then bomb out now
         if not self.lmi:
@@ -109,6 +113,7 @@ class CalibrationDatabase():
             # Skip filters not used in this data set
             if self.flat[filt] is None:
                 continue
+            print(f"Packetizing the flat {filt} metadata...")
             flat_pkt = utils.packetizer.makeInfluxPacket(
                 meas=[f"flat_{filt}"], fields=self.flat[filt])
             self.idb.singleCommit(flat_pkt, table=self.db_set.tablename)
