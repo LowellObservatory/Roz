@@ -110,7 +110,8 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
                        'biasmed': np.ma.median(bias_data),
                        'cen_avg': np.mean(bias_data[100:-100,100:-100]),
                        'cen_med': np.ma.median(bias_data[100:-100,100:-100]),
-                       'cen_std': np.std(bias_data[100:-100,100:-100])})
+                       'cen_std': np.std(bias_data[100:-100,100:-100]),
+                       'quadsurf': fit_quadric_surface(bias_data)})
 
         # Fit the overscan section, subtract it, then trim the image
         # Append this to a list
@@ -122,6 +123,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
     if debug:
         print("Doing median combine of biases now...")
 
+    # Convert the list of dicts into a Table and return, plus combined bias
     return Table(b_meta), \
         ccdp.combine(bias_ccds, method='median', sigma_clip=True,
                      sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
@@ -261,7 +263,7 @@ def validate_bias_table(bias_meta):
 def validate_flat_table(flat_meta, lmi_filt):
     """validate_flat_table [summary]
 
-    [extended_summary]
+    Does nothing at the moment -- just returns the input metadata table
 
     Parameters
     ----------

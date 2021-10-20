@@ -23,6 +23,7 @@ import numpy as np
 from ligmos import utils, workers
 
 # Internal Imports
+from.gather_frames import InputError
 from .utils import LMI_FILTERS
 
 
@@ -34,22 +35,37 @@ class CalibrationDatabase():
     Provides a container for the metadata from a night
     """
 
-    def __init__(self, lmi=True):
+    def __init__(self, instrument='LMI'):
         """__init__ Class initialization
 
         [extended_summary]
 
         Parameters
         ----------
-        lmi : `bool`, optional
-            Is this instance for LMI data? [Default: True]
+        instrument : `str`, optional
+            Name of the instrument to gather calibration frames for
+            [Default: LMI]
         """
-        # Copy arguments to attributes
-        self.lmi = lmi
+        # Set various flags by instrument
+        if instrument == 'LMI':
+            prefix = 'lmi'
+            get_bias = True
+            get_flats = True
+            check_binning = True
+            # Other flags...
+        elif instrument == 'DEVENY':
+            prefix = '20'
+            get_bias = True
+            get_flats = False
+            check_binning = False
+            # Other flags...
+        else:
+            raise InputError(f"Developer: Add {instrument} to gather_frames.py")
+
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
-        self.flat = {} if self.lmi else None
+        self.flat = {} if get_flats else None
 
         # Read in the InfluxDB config file
         # TODO: This needs to be accessed relative to wherever the full code
@@ -109,7 +125,7 @@ class CalibrationDatabase():
                 f"{entry['utdate']}T{entry['utcstart']}", '%Y-%m-%dT%H:%M:%S.%f')
 
             # Create the packet for upload to the InfluxDB
-            # NOTE: `meas` should reflect the instrument (LMI) OR the entire
+            # TODO: `meas` should reflect the instrument (LMI) OR the entire
             #  self.idb object should point to a `tablename` reflecing LMI
             bias_pkt = utils.packetizer.makeInfluxPacket(
                 meas=['bias'], ts=timestamp, fields=entry_dict, debug=True)
@@ -121,7 +137,6 @@ class CalibrationDatabase():
         if not self.lmi:
             return
 
-        print("Do we even get this far?")
 
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:

@@ -38,6 +38,45 @@ class InputError(ValueError):
     """
 
 
+def butler_bell():
+    """butler_bell Ring for the data butler
+
+    This function will interact with Wadsworth (or appropriate successor) to
+    have the proper data buttled to a location suitable for processing and
+    analysis.
+
+    This function should receive from the Butler the location of the data,
+    which is returned.
+
+    Returns
+    -------
+    `str` or `pathlib.Path`
+        Directory name containing the files to be processed and analyzed.
+    """
+    directory = ''
+    return directory
+
+
+def dumbwaiter():
+    """dumbwaiter Carry the data to a processable location
+
+    This function will interact with Wadsworth (or appropriate successor) to
+    have the proper data buttled to a location suitable for processing and
+    analysis.
+
+    This function should do something related to getting the data where
+    we need it, whether it is physically moving the data (or should Wadsworth
+    do that?) or ensuring an external mount point is properly loaded.
+
+    Returns
+    -------
+    `str` or `pathlib.Path`
+        Directory name containing the files to be processed and analyzed.
+    """
+    directory = ''
+    return directory
+
+
 def gather_cal_frames(directory, instrument='lmi'):
     """gather_cal_frames Gather calibration frames from specified directory
 
