@@ -8,6 +8,8 @@ _"Well, isn't that nice? But guess what? You didn't turn in your paperwork last 
 
 Filing Cabinet and Quality Control for LDT Instrument Calibration Frames
 
+See https://jumar.lowell.edu/confluence/display/LIG/Quality+Assurance+of+Instrument+Data for concept flow chart.
+
 ### Initial Functionality:
 - When fed directory information by an automatic script, find and analyze LMI flat field frames.
 - Add analysis information to a database (somewhere).
