@@ -262,26 +262,28 @@ def validate_bias_table(bias_meta):
 
 
 def validate_flat_table(flat_meta, lmi_filt):
-    """validate_flat_table [summary]
+    """validate_flat_table Validate the metadata in the flat frame table
 
-    Does nothing at the moment -- just returns the input metadata table
+    Separates the wheat from the chaff -- returning a subtable for the
+    specified filter, or None.
 
     Parameters
     ----------
-    flat_meta : [type]
-        [description]
-    lmi_filt : [type]
-        [description]
+    flat_meta : `astropy.table.Table`
+        Table containing the flat frame metadata
+    lmi_filt : `str`
+        LMI filter to validate
 
     Returns
     -------
-    [type]
-        [description]
+    `astropy.table.Table` or `None`
+        If the `lmi_filt` was used in this set, return the subtable of
+        `flat_meta` containing that filter.  Otherwise, return `None`.
     """
     # Find the rows of the table corresponding to this filter, return if 0
     idx = np.where(flat_meta['filter'] == lmi_filt)
     if len(idx[0]) == 0:
-        return flat_meta
+        return None
 
     # For ease, pull these rows into a subtable
     subtable = flat_meta[idx]
@@ -300,7 +302,7 @@ def validate_flat_table(flat_meta, lmi_filt):
     quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
     print(quadsurf)
 
-    return flat_meta
+    return subtable
 
 
 #=============================================================================#

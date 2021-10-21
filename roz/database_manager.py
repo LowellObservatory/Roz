@@ -99,43 +99,57 @@ class CalibrationDatabase():
         # Loop over frames in self.bias to commit each one individually
         for entry in self.bias:
 
-            # entry is a Row of an AstroPy Table, need to convert back to dict
-            entry_dict = dict(zip(self.bias.colnames, entry))
-
-            # We want the database timestamp to be that of the image DATEOBS,
-            #  not the current time.  Therefore, we need to create a datetime()
-            #  object from the fields `utdate` and `utcstart`.
-            timestamp = dt.datetime.strptime(
-                f"{entry['utdate']}T{entry['utcstart']}", '%Y-%m-%dT%H:%M:%S.%f')
-
-            # Create the packet for upload to the InfluxDB
             # TODO: `meas` should reflect the instrument (LMI) OR the entire
             #  self.idb object should point to a `tablename` reflecing LMI
-            bias_pkt = utils.packetizer.makeInfluxPacket(
-                meas=['bias'], ts=timestamp, fields=entry_dict, debug=True)
-
-            # Commit
-            self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
+            self._packetize_commit_influxdb(entry, self.bias.colnames, 'bias')
 
         # If not LMI, then bomb out now
         if self.flags['instrument'] != 'LMI':
             return
 
-
+        print(f"Key names in self.flat: {self.flat.keys()}")
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
             # Skip filters not used in this data set
             print(f"Committing LMI filter {filt}...")
-            if filt not in self.flat.keys():
+            if self.flat[filt] is None:
                 continue
 
-            print(f"Packetizing the flat {filt} metadata...")
-            # Same shenanigans as with the bias entries above...
+            # Loop
+            for entry in self.flat[filt]:
+                self._packetize_commit_influxdb(
+                    entry, self.flat[filt].colnames, f"flat_{filt}")
 
+    def _packetize_commit_influxdb(self, table_row, colnames, measure):
+        """_packetize_commit_influxdb Make and commit InfluxDB Packet
 
-            flat_pkt = utils.packetizer.makeInfluxPacket(
-                meas=[f"flat_{filt}"], fields=self.flat[filt])
-            self.idb.singleCommit(flat_pkt, table=self.db_set.tablename)
+        [extended_summary]
+
+        Parameters
+        ----------
+        table_row : `astropy.table.Row`
+            The row of data to commit to InfluxDB
+        colnames : `list`
+            List of the column names corresponding to this row
+        measure : `str`
+            The database field into which to place this row (frame)
+        """
+        # Convert the AstroPy Table Row into a dict by adding colnames
+        row_as_dict = dict( zip(colnames, table_row) )
+
+        # We want the database timestamp to be that of the image DATEOBS,
+        #  not the current time.  Therefore, we need to create a datetime()
+        #  object from the fields `utdate` and `utcstart`.
+        timestamp = dt.datetime.strptime(
+                        f"{table_row['utdate']}T{table_row['utcstart']}",
+                        '%Y-%m-%dT%H:%M:%S.%f')
+
+        # Create the packet for upload to the InfluxDB
+        packet = utils.packetizer.makeInfluxPacket(
+                 meas=[measure], ts=timestamp, fields=row_as_dict, debug=True)
+
+        # Commit
+        self.idb.singleCommit(packet, table=self.db_set.tablename)
 
 
 #=============================================================================#
