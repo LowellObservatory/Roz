@@ -25,7 +25,6 @@ import ccdproc as ccdp
 import numpy as np
 
 # Internal Imports
-from .utils import INSTRUMENTS
 
 
 # Silence Superflous AstroPy Warnings
@@ -77,7 +76,7 @@ def dumbwaiter():
     return directory
 
 
-def gather_cal_frames(directory, instrument='lmi'):
+def gather_cal_frames(directory, inst_flag):
     """gather_cal_frames Gather calibration frames from specified directory
 
     [extended_summary]
@@ -103,33 +102,14 @@ def gather_cal_frames(directory, instrument='lmi'):
     ValueError
         Temporary bug, will need to expand this to handle multiple binnings
     """
-    # Check the instrument
-    if (instrument := instrument.upper()) not in INSTRUMENTS:
-        raise InputError(f"Instrument {instrument} not supported!")
-
-    # Set various flags by instrument
-    if instrument == 'LMI':
-        prefix = 'lmi'
-        get_bias = True
-        get_flats = True
-        check_binning = True
-        # Other flags...
-    elif instrument == 'DEVENY':
-        prefix = '20'
-        get_bias = True
-        get_flats = False
-        check_binning = False
-        # Other flags...
-    else:
-        raise InputError(f"Developer: Add {instrument} to gather_frames.py")
-
     # Create an ImageFileCollection for the specified directory
-    icl = ccdp.ImageFileCollection(directory, glob_include=f"{prefix}*.fits")
+    icl = ccdp.ImageFileCollection(
+        directory, glob_include=f"{inst_flag['prefix']}*.fits")
     return_object = []
 
     # Keep these separate for now, in case future instruments need one but
     #  not the other
-    if get_bias:
+    if inst_flag['get_bias']:
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
         bias_fns = icl.files_filtered(obstype='bias')
         zero_fns = icl.files_filtered(exptime=0)
@@ -137,12 +117,12 @@ def gather_cal_frames(directory, instrument='lmi'):
         bias_cl = ccdp.ImageFileCollection(filenames=biases.tolist())
         return_object.append(bias_cl)
 
-    if get_flats:
+    if inst_flag['get_flats']:
         # Gather any FLAT frames (OBSTYPE=`SKY FLAT` or OBSTYPE=`DOME FLAT`)
         flat_cl = icl.filter(obstype='[a-z]+ flat', regex_match=True)
         return_object.append(flat_cl)
 
-    if check_binning:
+    if inst_flag['check_binning']:
         # Get the complete list of binnings used -- but clear out `None` entries
         # TODO: Clear out any `None` entries
         bin_list = icl.values('ccdsum', unique=True)

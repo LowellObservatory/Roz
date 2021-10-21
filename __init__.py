@@ -22,8 +22,8 @@ __status__ = 'Development Status :: 3 - Alpha'
 
 
 # Import the modules to make them available under Roz
+from .roz import confluence_updater
 from .roz import database_manager
-from .roz import process_calibrations
 from .roz import graph_maker
+from .roz import process_calibrations
 from .roz import utils
-from .roz import webpage_updater

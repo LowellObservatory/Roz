@@ -36,6 +36,56 @@ LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
 FMS = ['A', 'B', 'C', 'D']
 
 
+# Create an error class to use
+class InputError(ValueError):
+    """InputError Locally defined error that inherits ValueError
+    """
+
+
+def set_instrument_flags(instrument='lmi'):
+    """set_instrument_flags Set the global instrument flags for processing
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    instrument : `str`, optional
+        Name of the instrument to use.  [Default: LMI]
+
+    Returns
+    -------
+    `dict`
+        Dictionary of instrument flags.
+
+    Raises
+    ------
+    InputError
+        If the input instrument is not in the list, raise error.
+    """
+    # Check the instrument
+    if (instrument := instrument.upper()) not in INSTRUMENTS:
+        raise InputError(f"Instrument {instrument} not supported!")
+
+    if instrument == 'LMI':
+        inst_flag = {'instrument': instrument,
+                     'prefix': 'lmi',
+                     'get_bias': True,
+                     'get_flats': True,
+                     'check_binning': True}
+                     # Other flags...
+    elif instrument == 'DEVENY':
+        inst_flag = {'instrument': instrument,
+                     'prefix': '20',
+                     'get_bias': True,
+                     'get_flats': False,
+                     'check_binning': False}
+                     # Other flags...
+    else:
+        raise InputError(f"Developer: Add {instrument} to utils.py")
+
+    return inst_flag
+
+
 # Helper Functions ===========================================================#
 def trim_oscan(ccd, biassec, trimsec):
     """trim_oscan Subtract the overscan region and trim image to desired size

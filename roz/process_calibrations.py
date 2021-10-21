@@ -29,7 +29,8 @@ from tqdm import tqdm
 # Internal Imports
 from .database_manager import CalibrationDatabase
 from .gather_frames import gather_cal_frames
-from .utils import fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
+from .utils import fit_quadric_surface, set_instrument_flags, trim_oscan, \
+                   LMI_FILTERS, FMS
 
 
 # Silence Superflous AstroPy Warnings
@@ -209,7 +210,7 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     return Table(flat_meta)
 
 
-def produce_database_object(bias_meta, flat_meta):
+def produce_database_object(bias_meta, flat_meta, inst_flags):
     """produce_database_object [summary]
 
     [extended_summary]
@@ -226,7 +227,7 @@ def produce_database_object(bias_meta, flat_meta):
     `database_manager.CalibrationDatabase`
         Database object for use with... something?
     """
-    database = CalibrationDatabase()
+    database = CalibrationDatabase(inst_flags)
 
     # First analyze the data in the bias_meta table
     database.bias = validate_bias_table(bias_meta)
@@ -329,16 +330,18 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     if args is not None:
         if len(args) == 1:
             print("ERROR: Must specify a directory to process.")
-            return
+            return None
 
         # If not passed a directory, exit
         if not os.path.isdir(args[1]):
             print("ERROR: Must specify a directory to process.")
-            return
+            return None
         directory = args[1]
 
+    inst_flags = set_instrument_flags('lmi')
+
     # Collect the BIAS & FLAT frames for this directory
-    bias_cl, flat_cl, bin_list = gather_cal_frames(directory)
+    bias_cl, flat_cl, bin_list = gather_cal_frames(directory, inst_flags)
 
     # Process the BIAS frames to produce a reduced frame and statistics
     bias_meta, bias_frame = process_bias(bias_cl, binning=bin_list[0],
@@ -348,7 +351,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     flat_meta = process_flats(flat_cl, bias_frame, binning=bin_list[0])
 
     # Take the metadata from the BAIS and FLAT frames and produce something
-    database = produce_database_object(bias_meta, flat_meta)
+    database = produce_database_object(bias_meta, flat_meta, inst_flags)
 
     # Write to InfluxDB
     database.write_to_influxdb()

@@ -23,7 +23,6 @@ import numpy as np
 from ligmos import utils, workers
 
 # Internal Imports
-from.gather_frames import InputError
 from .utils import LMI_FILTERS
 
 
@@ -35,37 +34,22 @@ class CalibrationDatabase():
     Provides a container for the metadata from a night
     """
 
-    def __init__(self, instrument='LMI'):
+    def __init__(self, inst_flags):
         """__init__ Class initialization
 
         [extended_summary]
 
         Parameters
         ----------
-        instrument : `str`, optional
-            Name of the instrument to gather calibration frames for
-            [Default: LMI]
+        inst_flags : `dict`
+            Dictionary of instrument flags.
         """
-        # Set various flags by instrument
-        if instrument == 'LMI':
-            prefix = 'lmi'
-            get_bias = True
-            get_flats = True
-            check_binning = True
-            # Other flags...
-        elif instrument == 'DEVENY':
-            prefix = '20'
-            get_bias = True
-            get_flats = False
-            check_binning = False
-            # Other flags...
-        else:
-            raise InputError(f"Developer: Add {instrument} to gather_frames.py")
-
+        # Set internal variables
+        self.flags = inst_flags
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
-        self.flat = {} if get_flats else None
+        self.flat = {} if self.flags['get_flats'] else None
 
         # Read in the InfluxDB config file
         # TODO: This needs to be accessed relative to wherever the full code
@@ -134,7 +118,7 @@ class CalibrationDatabase():
             self.idb.singleCommit(bias_pkt, table=self.db_set.tablename)
 
         # If not LMI, then bomb out now
-        if not self.lmi:
+        if self.flags['instrument'] != 'LMI':
             return
 
 
