@@ -22,8 +22,11 @@ __status__ = 'Development Status :: 3 - Alpha'
 
 
 # Import the modules to make them available under Roz
+# TODO: Figure out which need to be available externally vs. internally
+from .roz import analyze_alert
 from .roz import confluence_updater
 from .roz import database_manager
+from .roz import gather_frames
 from .roz import graph_maker
 from .roz import process_calibrations
 from .roz import utils
