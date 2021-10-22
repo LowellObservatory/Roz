@@ -10,7 +10,13 @@
 
 """Analyze the metadata tables, and issue alerts if there are "problems"
 
-Further description.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module analyzes the metadata from the frames in question for quality
+assurance.  If problems are found, alerts are issued via email/slack for
+humans to check on.
+
+This module primarily trades in AstroPy Table objects (`astropy.table.Table`).
 """
 
 # Built-In Libraries
@@ -34,20 +40,21 @@ class InputError(ValueError):
 
 
 def validate_bias_table(bias_meta):
-    """validate_bias_table [summary]
+    """validate_bias_table Analyze and validate the bias frame metadata table
 
     [extended_summary]
 
     Parameters
     ----------
-    bias_meta : [type]
-        [description]
+    bias_meta : `astropy.table.Table`
+        A table containing information about the bias frames for analysis
 
     Returns
     -------
-    [type]
-        [description]
+    `astropy.table.Table`
+        The, um, validated table?  This may change.
     """
+    # For now, just print some stats and return the table.
     print("\nIn validate_bias_table():")
     print(np.mean(bias_meta['cen_avg']), np.median(bias_meta['cen_med']),
           np.mean(bias_meta['cen_std']))
@@ -56,7 +63,7 @@ def validate_bias_table(bias_meta):
 
 
 def validate_flat_table(flat_meta, lmi_filt):
-    """validate_flat_table Validate the metadata in the flat frame table
+    """validate_flat_table Analyze and validate the flat frame metadata table
 
     Separates the wheat from the chaff -- returning a subtable for the
     specified filter, or None.

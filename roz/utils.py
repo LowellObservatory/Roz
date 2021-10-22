@@ -10,7 +10,12 @@
 
 """Utility Functions and Variables
 
-Further description.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module contains various utility routines and global variables from across
+the package.
+
+This module primarily trades in... utility?
 """
 
 # Built-In Libraries

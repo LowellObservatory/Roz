@@ -4,13 +4,18 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-#  Created on 23-Sep-2021
+#  Created on 22-Oct-2021
 #
 #  @author: tbowers
 
 """The imaginatively named main driver module
 
-Further description.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module sits in the driver's seat... literally.  It will be here that the
+manual and automatic interfaces to the Roz code attach.
+
+This module primarily trades in... driving?
 """
 
 # Built-In Libraries

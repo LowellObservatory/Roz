@@ -10,7 +10,13 @@
 
 """Manage the Database for LDT Instrument Calibration Frame Information
 
-Further description.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module houses the database class CalibrationDatabase().  Among its methods
+are those for committing data to an InfluxDB database for posterity.  Functions
+from the LIGMOS library are used for the InfluxDB pieces.
+
+This module primarily trades in its own class.
 """
 
 # Built-In Libraries
@@ -150,14 +156,3 @@ class CalibrationDatabase():
 
         # Commit
         self.idb.singleCommit(packet, table=self.db_set.tablename)
-
-
-#=============================================================================#
-def main():
-    """
-    This is the main body function.
-    """
-
-
-if __name__ == "__main__":
-    main()

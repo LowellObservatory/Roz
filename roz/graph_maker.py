@@ -10,20 +10,29 @@
 
 """Make graphs desired for inclusion on the Confluence page
 
-Further description.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module will eventually create graphs for investigative purposes and/or
+for upload to Confluence.  Alternatively, what could be produced here could
+also be produced by the Grafana interface with the InfluxDB database that will
+house the actual data from Roz.
+
+This module primarily trades in... hope?
 """
 
 # Built-In Libraries
 
 # 3rd Party Libraries
-import matplotlib.pyplot as plt
 
 # Internal Imports
-from .utils import LMI_FILTERS
 
 
 def plot_lmi_bias_temp():
-    pass
+    """plot_lmi_bias_temp [summary]
+
+    [extended_summary]
+    """
+
 
 #=============================================================================#
 def main():

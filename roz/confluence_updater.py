@@ -10,9 +10,16 @@
 
 """Update the Confluence (or other) Webpage with Latest Stats
 
-Confluence API Documentation: https://atlassian-python-api.readthedocs.io/index.html
+This module is part of the Roz package, written at Lowell Observatory.
 
-Further description.
+This module takes the database objects produces elsewhere and prepares updated
+content tables for upload to Confluence.
+
+Confluence API Documentation:
+        https://atlassian-python-api.readthedocs.io/index.html
+
+This module primarily trades in internal databse objects
+(`roz.database_manager.CalibrationDatabase`).
 """
 
 # Built-In Libraries

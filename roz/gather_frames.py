@@ -4,16 +4,22 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-#  Created on 23-Sep-2021
+#  Created on 19-Oct-2021
 #
 #  @author: tbowers
 
 """Module for gathering whatever frames are required by Roz.
 
-This module will need to interface at some level with Wadsworth to either
-buttle data to whatever machine is running Roz, or to let Roz know that
-data has been buttled to the proper location (laforge?) and provide the
-proper directory information.
+This module is part of the Roz package, written at Lowell Observatory.
+
+This module will need to interface at some level with Wadsworth (the LIG Data
+Butler) to either buttle data to whatever machine is running Roz, or to let Roz
+know that data has been buttled to the proper location (laforge?) and provide
+the proper directory information.
+
+This module primarily trades in CCDPROC Image File Collections
+(`ccdproc.ImageFileCollection`), along with whatever data structures are
+sent to or recieved by Wadsworth.
 """
 
 # Built-In Libraries
@@ -107,8 +113,8 @@ def gather_cal_frames(directory, inst_flag):
         directory, glob_include=f"{inst_flag['prefix']}*.fits")
     return_object = []
 
-    # Keep these separate for now, in case future instruments need one but
-    #  not the other
+    # Keep these items separate for now, in case future instruments need one
+    #  but not the others
     if inst_flag['get_bias']:
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
         bias_fns = icl.files_filtered(obstype='bias')
