@@ -91,6 +91,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
 
     bias_ccds = []
     b_meta = []
+    coord_arrays = None
     # Loop through files
     for ccd in bias_cl.ccds(bitpix=16):
 
@@ -98,7 +99,9 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
         bias_data = ccd.data[slice_from_string(hdr['TRIMSEC'],
                                                fits_convention=True)]
 
+
         # For posterity, gather the mount temperature and mean bias level
+        quadsurf, coord_arrays = fit_quadric_surface(bias_data, coord_arrays)
         b_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
                        'utcstart': hdr['UTCSTART'],
                        'frametyp': hdr['OBSTYPE'],
@@ -113,7 +116,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
                        'cen_avg': np.mean(bias_data[100:-100,100:-100]),
                        'cen_med': np.ma.median(bias_data[100:-100,100:-100]),
                        'cen_std': np.std(bias_data[100:-100,100:-100]),
-                       'quadsurf': fit_quadric_surface(bias_data)})
+                       'quadsurf': quadsurf})
 
         # Fit the overscan section, subtract it, then trim the image
         # Append this to a list
@@ -171,6 +174,7 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
 
     # Loop through flats, subtracting bias and gathering statistics
     flat_meta = []
+    coord_arrays = None
     for ccd in flat_cl.ccds(ccdsum=binning, bitpix=16):
 
         hdr = ccd.header
@@ -180,9 +184,10 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
         ccd = ccdp.subtract_bias(ccd, bias_frame)
 
         # Work entirely in COUNT RATE -- ergo divide by exptime
-        count_rate_img = ccd.divide(hdr['EXPTIME'])
+        count_rates = ccd.divide(hdr['EXPTIME'])
 
         # Statistics, statistics, statistics!!!!
+        quadsurf, coord_arrays = fit_quadric_surface(count_rates, coord_arrays)
         flat_meta.append({'utdate': hdr['DATE-OBS'].split('T')[0],
                             'utcstart': hdr['UTCSTART'],
                             'frametyp': hdr['OBSTYPE'],
@@ -200,10 +205,10 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
                             'icpos': hdr['ICPOS'],
                             'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
                             'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
-                            'flatavg': np.mean(count_rate_img),
-                            'flatmed': np.ma.median(count_rate_img),
-                            'flatstd': np.std(count_rate_img),
-                            'quadsurf': fit_quadric_surface(count_rate_img)})
+                            'flatavg': np.mean(count_rates),
+                            'flatmed': np.ma.median(count_rates),
+                            'flatstd': np.std(count_rates),
+                            'quadsurf': quadsurf})
         progress_bar.update(1)
     progress_bar.close()
 

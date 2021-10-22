@@ -86,7 +86,6 @@ def set_instrument_flags(instrument='lmi'):
     return inst_flag
 
 
-# Helper Functions ===========================================================#
 def trim_oscan(ccd, biassec, trimsec):
     """trim_oscan Subtract the overscan region and trim image to desired size
 
@@ -134,7 +133,8 @@ def trim_oscan(ccd, biassec, trimsec):
     return ccdp.trim_image(ccd[:, xt.start:xt.stop])
 
 
-def fit_quadric_surface(data, fit_quad=True, return_surface=False):
+# Quadric Surface Functions ==================================================#
+def fit_quadric_surface(data, ca=None, fit_quad=True, return_surface=False):
     """fit_quadric_surface Fit a quadric surface to an image array
 
     Performs a **LEAST SQUARES FIT** of a (plane or) quadric surface to an
@@ -157,6 +157,9 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
     ----------
     data : `numpy.ndarray`
         The image (as a 2D array) to be fit with a surface
+    ca : `dict`, optional
+        Dictionary of coefficient arrays needed for creating the matrix
+        [Default: None]
     fit_quad : `bool`, optional
         Fit a quadric surface, rather than a plane, to the data [Default: True]
     return_surface : `bool`, optional
@@ -167,86 +170,115 @@ def fit_quadric_surface(data, fit_quad=True, return_surface=False):
     -------
     `numpy.ndarray`
         Array of 3 (plane) or 6 (quadric surface) fit coefficients
+    `dict`
+        Dictionary of coefficient arrays needed for creating the matrix
     `numpy.ndarray` (if `return_surface == True`)
         The 2D array modeling the surface ensconced in the first return.  Array
         is of same size as the input `data`.
     """
-    # Construct the arrays for doing the matrix magic
-    n_y, n_x = data.shape
-    x_coord_arr = np.tile(np.arange(n_x), (n_y,1))
-    y_coord_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1)))
-
     # Construct the matrix for use with the LEAST SQUARES FIT
     #  np.dot(mat, fitvec) = RHS
     n_terms = 6 if fit_quad else 3
     matrix = np.empty((n_terms, n_terms))
 
-    # Compute the terms needed for the matrix
-    n_pixels = x_coord_arr.size
-    sum_x = np.sum(x_coord_arr)
-    sum_y = np.sum(y_coord_arr)
-    sum_x2 = np.sum(x_coord_arr * x_coord_arr)
-    sum_xy = np.sum(x_coord_arr * y_coord_arr)
-    sum_y2 = np.sum(y_coord_arr * y_coord_arr)
-    sum_x3 = np.sum(x_coord_arr * x_coord_arr * x_coord_arr)
-    sum_x2y = np.sum(x_coord_arr * x_coord_arr * y_coord_arr)
-    sum_xy2 = np.sum(x_coord_arr * y_coord_arr * y_coord_arr)
-    sum_y3 = np.sum(y_coord_arr * y_coord_arr * y_coord_arr)
-    sum_x4 = np.sum(x_coord_arr * x_coord_arr * x_coord_arr * x_coord_arr)
-    sum_x3y = np.sum(x_coord_arr * x_coord_arr * x_coord_arr * y_coord_arr)
-    sum_x2y2 = np.sum(x_coord_arr * x_coord_arr * y_coord_arr * y_coord_arr)
-    sum_xy3 = np.sum(x_coord_arr * y_coord_arr * y_coord_arr * y_coord_arr)
-    sum_y4 = np.sum(y_coord_arr * y_coord_arr * y_coord_arr * y_coord_arr)
+    # Produce the coordinate arrays, if not fed an existing dict
+    ca = produce_coordinate_arrays(data.shape) if ca is None else ca
 
     # Fill in the matrix elements
     #  Upper left quadrant (or only quadrant, if fitting linear):
-    matrix[:3,:3] = [[n_pixels, sum_x, sum_y],
-                     [sum_x, sum_x2, sum_xy],
-                     [sum_y, sum_xy, sum_y2]]
+    matrix[:3,:3] = [[ca['n_pixels'], ca['sum_x'], ca['sum_y']],
+                     [ca['sum_x'], ca['sum_x2'], ca['sum_xy']],
+                     [ca['sum_y'], ca['sum_xy'], ca['sum_y2']]]
 
     # And the other 3 quadrants, if fitting a quadric surface
     if fit_quad:
         # Lower left quadrant:
-        matrix[3:,:3] = [[sum_x2, sum_x3, sum_x2y],
-                         [sum_y2, sum_xy2, sum_y3],
-                         [sum_xy, sum_x2y, sum_xy2]]
+        matrix[3:,:3] = [[ca['sum_x2'], ca['sum_x3'], ca['sum_x2y']],
+                         [ca['sum_y2'], ca['sum_xy2'], ca['sum_y3']],
+                         [ca['sum_xy'], ca['sum_x2y'], ca['sum_xy2']]]
         # Right half:
-        matrix[:,3:] = [[sum_x2, sum_y2, sum_xy],
-                        [sum_x3, sum_xy2, sum_x2y],
-                        [sum_x2y, sum_y3, sum_xy2],
-                        [sum_x4, sum_x2y2, sum_x3y],
-                        [sum_x2y2, sum_y4, sum_xy3],
-                        [sum_x3y, sum_xy3, sum_x2y2]]
+        matrix[:,3:] = [[ca['sum_x2'], ca['sum_y2'], ca['sum_xy']],
+                        [ca['sum_x3'], ca['sum_xy2'], ca['sum_x2y']],
+                        [ca['sum_x2y'], ca['sum_y3'], ca['sum_xy2']],
+                        [ca['sum_x4'], ca['sum_x2y2'], ca['sum_x3y']],
+                        [ca['sum_x2y2'], ca['sum_y4'], ca['sum_xy3']],
+                        [ca['sum_x3y'], ca['sum_xy3'], ca['sum_x2y2']]]
 
     # The right-hand side of the matrix equation:
     right_hand_side = np.empty(n_terms)
 
     # Top half:
     right_hand_side[:3] = [np.sum(data),
-                           np.sum(x_coord_arr * data),
-                           np.sum(y_coord_arr * data)]
+                           np.sum(xd := np.multiply(ca['x_coord_arr'], data)),
+                           np.sum(yd := np.multiply(ca['y_coord_arr'], data))]
 
     if fit_quad:
         # Bottom half:
-        right_hand_side[3:] = [np.sum(x_coord_arr * x_coord_arr * data),
-                               np.sum(y_coord_arr * y_coord_arr * data),
-                               np.sum(x_coord_arr * y_coord_arr * data)]
+        right_hand_side[3:] = [np.sum(np.multiply(ca['x_coord_arr'], xd)),
+                               np.sum(np.multiply(ca['y_coord_arr'], yd)),
+                               np.sum(np.multiply(ca['x_coord_arr'], yd))]
 
     # Here's where the magic of matrix multiplication happens!
     fit_coefficients = np.dot(np.linalg.inv(matrix), right_hand_side)
 
     # If not returning the model surface, go ahead and return now
     if not return_surface:
-        return fit_coefficients
+        return fit_coefficients, ca
 
     # Build the model fit from the coefficients
     model_fit = fit_coefficients[0] + \
-                fit_coefficients[1] * x_coord_arr + \
-                fit_coefficients[2] * y_coord_arr
+                fit_coefficients[1] * ca['x_coord_arr'] + \
+                fit_coefficients[2] * ca['y_coord_arr']
 
     if fit_quad:
-        model_fit += fit_coefficients[3] * x_coord_arr * x_coord_arr + \
-                     fit_coefficients[4] * y_coord_arr * y_coord_arr + \
-                     fit_coefficients[5] * x_coord_arr * y_coord_arr
+        model_fit += fit_coefficients[3] * ca['x2'] + \
+                     fit_coefficients[4] * ca['y2'] + \
+                     fit_coefficients[5] * ca['xy']
 
-    return fit_coefficients, model_fit
+    return fit_coefficients, ca, model_fit
+
+
+def produce_coordinate_arrays(shape):
+    """produce_coordinate_arrays Produce the dictionary of coordinate arrays
+
+    Since these coordinate arrays are dependent ONLY upon the SHAPE of the
+    input array, when doing multiple fits of data arrays with the same size, it
+    greatly speeds things up to compute these arrays once and reuse them.
+
+    Parameters
+    ----------
+    shape : `tuple`
+        The .shape of the data (numpy ndarray)
+
+    Returns
+    -------
+    `dict`
+        Dictionary of coefficient arrays needed for creating the matrix
+    """
+    # Construct the arrays for doing the matrix magic
+    n_y, n_x = shape
+    x_arr = np.tile(np.arange(n_x), (n_y,1))
+    y_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1)))
+
+    # Compute the terms needed for the matrix
+    return {'n_x': n_x, 'n_y': n_y,
+            'x_coord_arr': x_arr,
+            'y_coord_arr': y_arr,
+            'n_pixels': x_arr.size,
+            'sum_x': np.sum(x_arr),
+            'sum_y': np.sum(y_arr),
+            'sum_x2': np.sum(x2 := np.multiply(x_arr, x_arr)),
+            'sum_xy': np.sum(xy := np.multiply(x_arr, y_arr)),
+            'sum_y2': np.sum(y2 := np.multiply(y_arr, y_arr)),
+            'sum_x3': np.sum(np.multiply(x2, x_arr)),
+            'sum_x2y': np.sum(np.multiply(x2, y_arr)),
+            'sum_xy2': np.sum(np.multiply(x_arr, y2)),
+            'sum_y3': np.sum(np.multiply(y2, y_arr)),
+            'sum_x4': np.sum(np.multiply(x2, x2)),
+            'sum_x3y': np.sum(np.multiply(x2, xy)),
+            'sum_x2y2': np.sum(np.multiply(x2, y2)),
+            'sum_xy3': np.sum(np.multiply(xy, y2)),
+            'sum_y4': np.sum(np.multiply(y2, y2)),
+            'x2': x2,
+            'xy': xy,
+            'y2': y2}
