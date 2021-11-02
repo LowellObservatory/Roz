@@ -105,21 +105,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
 
         # Statistics, statistics, statistics!!!!
         quadsurf, coord_arrays = fit_quadric_surface(data, coord_arrays)
-        metadata.append({'utdate': hdr['DATE-OBS'].split('T')[0],
-                         'utcstart': hdr['UTCSTART'],
-                         'frametyp': hdr['OBSTYPE'],
-                         'obserno': hdr['OBSERNO'],
-                         'binning': hdr['CCDSUM'],
-                         'numamp': hdr['NUMAMP'],
-                         'ampid': hdr['AMPID'],
-                         'mnttemp': hdr['MNTTEMP'],
-                         'tempamb': hdr['TEMPAMB'],
-                         'biasavg': np.mean(data),
-                         'biasmed': np.ma.median(data),
-                         'cen_avg': np.mean(data[100:-100,100:-100]),
-                         'cen_med': np.ma.median(data[100:-100,100:-100]),
-                         'cen_std': np.std(data[100:-100,100:-100]),
-                         'quadsurf': quadsurf})
+        metadata.append(base_metadata_dict(hdr, data, quadsurf))
 
         # Fit the overscan section, subtract it, then trim the image
         #  Append this to a list, update the progress bar and repeat!
@@ -189,33 +175,73 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
 
         # Statistics, statistics, statistics!!!!
         quadsurf, coord_arrays = fit_quadric_surface(count_rate, coord_arrays)
-        metadata.append({'utdate': hdr['DATE-OBS'].split('T')[0],
-                         'utcstart': hdr['UTCSTART'],
-                         'frametyp': hdr['OBSTYPE'],
-                         'obserno': hdr['OBSERNO'],
-                         'binning': hdr['CCDSUM'],
-                         'numamp': hdr['NUMAMP'],
-                         'ampid': hdr['AMPID'],
-                         'mnttemp': hdr['MNTTEMP'],
-                         'tempamb': hdr['TEMPAMB'],
-                         'filter': hdr['FILTERS'],
-                         'exptime': hdr['EXPTIME'],
-                         'rc1pos': [hdr['P1X'], hdr['P1Y']],
-                         'rc2pos': [hdr['P2X'], hdr['P2Y']],
-                         'icstat': hdr['ICSTAT'],
-                         'icpos': hdr['ICPOS'],
-                         'fmstat': [hdr[f"FM{x}STAT"] for x in FMS],
-                         'fmpos': [hdr[f"FM{x}POS"] for x in FMS],
-                         'flatavg': np.mean(count_rate),
-                         'flatmed': np.ma.median(count_rate),
-                         'flatstd': np.std(count_rate),
-                         'quadsurf': quadsurf})
+
+        metadict = base_metadata_dict(hdr, count_rate, quadsurf)
+
+        # For additional fields, do type-forcing to make InfluxDB happy
+        metadict['filter'] = f"{hdr['FILTERS']}"
+        metadict['exptime'] = float(hdr['EXPTIME'])
+        for n in [1,2]:
+            for x in ['x','y']:
+                metadict[f"rc{n}pos_{x.lower()}"] = \
+                    float(hdr[f"P{n}{x.upper()}"])
+        metadict['icstat'] = f"{hdr['ICSTAT']}"
+        metadict['icpos'] = float(hdr['ICPOS'])
+        for x in FMS:
+            metadict[f"fmstat_{x.lower()}"] = f'{hdr[f"FM{x.upper()}STAT"]}'
+            metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
+
+        metadata.append(metadict)
         progress_bar.update(1)
 
     progress_bar.close()
 
     # Convert the list of dicts into a Table and return
     return Table(metadata)
+
+
+def base_metadata_dict(hdr, data, quadsurf, crop=100):
+    """base_metadata_dict Create the basic metadata dictionary
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    hdr : `astropy.io.fits.Header`
+        FITS header for this frame
+    data : `numpy.ndarray` or `astropy.nddata.CCDData`
+        FITS image data for this frame
+    crop : `int`, optional
+        Size of the border around the edge of the frame to crop off
+        [Default: 100]
+
+    Returns
+    -------
+    `dict`
+        The base metadata dictionary
+    """
+    # Make things easier by creating a slice for cropping
+    allslice = np.s_[:,:]
+    cropslice = np.s_[crop:-crop, crop:-crop]
+
+    # TODO: Add error checking or type-forcing here to keep InfluxDB happy
+    metadict = {'dateobs': hdr['DATE-OBS'],
+                'frametyp': f"{hdr['OBSTYPE']}",
+                'obserno': int(hdr['OBSERNO']),
+                'binning': 'x'.join(hdr['CCDSUM'].split()),
+                'numamp': int(hdr['NUMAMP']),
+                'ampid': f"{hdr['AMPID']}",
+                'mnttemp': float(hdr['MNTTEMP']),
+                'tempamb': float(hdr['TEMPAMB']),
+                'cropsize': int(crop)}
+    for name, slice in zip(['frame','crop'], [allslice, cropslice]):
+        metadict[f"{name}_avg"] = np.mean(data[slice])
+        metadict[f"{name}_med"] = np.ma.median(data[slice])
+        metadict[f"{name}_std"] = np.std(data[slice])
+    for i, m in enumerate(['b','x','y','xx','yy','xy']):
+        metadict[f"qs_{m}"] = quadsurf[i]
+
+    return metadict
 
 
 def produce_database_object(bias_meta, flat_meta, inst_flags):

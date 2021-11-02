@@ -56,8 +56,10 @@ def validate_bias_table(bias_meta):
     """
     # For now, just print some stats and return the table.
     print("\nIn validate_bias_table():")
-    print(np.mean(bias_meta['cen_avg']), np.median(bias_meta['cen_med']),
-          np.mean(bias_meta['cen_std']))
+    print(np.mean(bias_meta['crop_avg']), np.median(bias_meta['crop_med']),
+          np.mean(bias_meta['crop_std']))
+
+    # Add logic checks for header datatypes (edge cases)
 
     return bias_meta
 
@@ -97,11 +99,11 @@ def validate_flat_table(flat_meta, lmi_filt):
     print("\nIn validate_flat_table():")
     print(lmi_filt)
     subtable.pprint()
-    print(np.mean(subtable['flatavg']), np.median(subtable['flatmed']))
+    print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
 
     # Find the mean quadric surface for this set of flats
-    quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
-    print(quadsurf)
+    # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
+    # print(quadsurf)
 
     return subtable
 

@@ -37,7 +37,8 @@ class CalibrationDatabase():
 
     Database class for calibration frames
 
-    Provides a container for the metadata from a night
+    Provides a container for the metadata from a night plus the methods needed
+    to insert them into the InfluxDB database
     """
 
     def __init__(self, inst_flags):
@@ -91,7 +92,7 @@ class CalibrationDatabase():
             [100:-100,100:-100] region of the CCD along with an array of the
             corresponding mount temperature.
         """
-        return np.asarray(self.bias['cen_avg']), \
+        return np.asarray(self.bias['crop_avg']), \
                np.asarray(self.bias['mnttemp'])
 
     def write_to_influxdb(self):
@@ -107,7 +108,9 @@ class CalibrationDatabase():
 
             # TODO: `meas` should reflect the instrument (LMI) OR the entire
             #  self.idb object should point to a `tablename` reflecing LMI
-            self._packetize_commit_influxdb(entry, self.bias.colnames, 'bias')
+            packet = self.neatly_package(entry, self.bias.colnames, 'bias')
+            # Commit
+            #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
         # If not LMI, then bomb out now
         if self.flags['instrument'] != 'LMI':
@@ -123,13 +126,15 @@ class CalibrationDatabase():
 
             # Loop
             for entry in self.flat[filt]:
-                self._packetize_commit_influxdb(
+                packet = self.neatly_package(
                     entry, self.flat[filt].colnames, f"flat_{filt}")
+                # Commit
+                #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
-    def _packetize_commit_influxdb(self, table_row, colnames, measure):
-        """_packetize_commit_influxdb Make and commit InfluxDB Packet
+    def neatly_package(self, table_row, colnames, measure):
+        """neatly_package Carefully curate and package the InfluxDB packet
 
-        [extended_summary]
+        This method translates the internal database into an InfluxDB object.
 
         Parameters
         ----------
@@ -141,18 +146,16 @@ class CalibrationDatabase():
             The database field into which to place this row (frame)
         """
         # Convert the AstroPy Table Row into a dict by adding colnames
-        row_as_dict = dict( zip(colnames, table_row) )
+        row_as_dict = dict(zip(colnames, table_row))
 
         # We want the database timestamp to be that of the image DATEOBS,
         #  not the current time.  Therefore, we need to create a datetime()
-        #  object from the fields `utdate` and `utcstart`.
-        timestamp = dt.datetime.strptime(
-                        f"{table_row['utdate']}T{table_row['utcstart']}",
-                        '%Y-%m-%dT%H:%M:%S.%f')
+        #  object from the field `dateobs`.
+        timestamp = dt.datetime.strptime(f"{row_as_dict.pop('dateobs')}",
+                                         '%Y-%m-%dT%H:%M:%S.%f')
 
         # Create the packet for upload to the InfluxDB
         packet = utils.packetizer.makeInfluxPacket(
                  meas=[measure], ts=timestamp, fields=row_as_dict, debug=True)
 
-        # Commit
-        self.idb.singleCommit(packet, table=self.db_set.tablename)
+        return packet
