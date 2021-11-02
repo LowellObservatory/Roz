@@ -260,10 +260,10 @@ def produce_coordinate_arrays(shape):
     `dict`
         Dictionary of coefficient arrays needed for creating the matrix
     """
-    # Construct the arrays for doing the matrix magic
+    # Construct the arrays for doing the matrix magic -- origin in center
     n_y, n_x = shape
-    x_arr = np.tile(np.arange(n_x), (n_y,1))
-    y_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1)))
+    x_arr = np.tile(np.arange(n_x), (n_y,1)) - (n_x / 2.)
+    y_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1))) - (n_y / 2.)
 
     # Compute the terms needed for the matrix
     return {'n_x': n_x, 'n_y': n_y,
