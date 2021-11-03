@@ -34,6 +34,14 @@ def plot_lmi_bias_temp():
     """
 
 
+def make_png_thumbnail():
+    """make_png_thumbnail Make PNG thumbnails of calibration frames
+
+    These thumbnails will be uploaded to the Confluence page and will be
+    linked to from the table created in Roz and uploaded.
+    """
+
+
 #=============================================================================#
 def main():
     """
