@@ -101,6 +101,8 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
     for ccd in bias_cl.ccds(bitpix=16):
 
         hdr = ccd.header
+        # For BIAS set header FILTERS keyword to "DARK"
+        hdr['FILTERS'] = "DARK"
         data = ccd.data[get_slice(hdr['TRIMSEC'], fits_convention=True)]
 
         # Statistics, statistics, statistics!!!!
@@ -178,17 +180,16 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
 
         metadict = base_metadata_dict(hdr, count_rate, quadsurf)
 
-        # For additional fields, do type-forcing to make InfluxDB happy
-        metadict['filter'] = f"{hdr['FILTERS']}"
-        metadict['exptime'] = float(hdr['EXPTIME'])
+        # Additional fields for flats: Stuff that can block the light path
+        #  Do type-forcing to make InfluxDB happy
         for n in [1,2]:
             for x in ['x','y']:
                 metadict[f"rc{n}pos_{x.lower()}"] = \
                     float(hdr[f"P{n}{x.upper()}"])
-        metadict['icstat'] = f"{hdr['ICSTAT']}"
+        metadict['icstat'] = f"{hdr['ICSTAT'].strip()}"
         metadict['icpos'] = float(hdr['ICPOS'])
         for x in FMS:
-            metadict[f"fmstat_{x.lower()}"] = f'{hdr[f"FM{x.upper()}STAT"]}'
+            metadict[f"fmstat_{x.lower()}"] = f'{hdr[f"FM{x.upper()}STAT"].strip()}'
             metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
 
         metadata.append(metadict)
@@ -226,11 +227,14 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
 
     # TODO: Add error checking or type-forcing here to keep InfluxDB happy
     metadict = {'dateobs': hdr['DATE-OBS'],
-                'frametyp': f"{hdr['OBSTYPE']}",
+                'instrument': f"{hdr['INSTRUME'].strip()}",
+                'frametyp': f"{hdr['OBSTYPE'].strip()}",
                 'obserno': int(hdr['OBSERNO']),
                 'binning': 'x'.join(hdr['CCDSUM'].split()),
+                'filter': f"{hdr['FILTERS'].strip()}",
                 'numamp': int(hdr['NUMAMP']),
-                'ampid': f"{hdr['AMPID']}",
+                'ampid': f"{hdr['AMPID'].strip()}",
+                'exptime': float(hdr['EXPTIME']),
                 'mnttemp': float(hdr['MNTTEMP']),
                 'tempamb': float(hdr['TEMPAMB']),
                 'cropsize': int(crop)}
@@ -238,6 +242,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         metadict[f"{name}_avg"] = np.mean(data[slice])
         metadict[f"{name}_med"] = np.ma.median(data[slice])
         metadict[f"{name}_std"] = np.std(data[slice])
+    metadict['flatness'] = float(0.)    # Create a metric for this from qs[i]
     for i, m in enumerate(['b','x','y','xx','yy','xy']):
         metadict[f"qs_{m}"] = quadsurf[i]
 

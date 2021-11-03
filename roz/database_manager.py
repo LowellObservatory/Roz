@@ -108,7 +108,7 @@ class CalibrationDatabase():
 
             # TODO: `meas` should reflect the instrument (LMI) OR the entire
             #  self.idb object should point to a `tablename` reflecing LMI
-            packet = self.neatly_package(entry, self.bias.colnames, 'bias')
+            packet = self.neatly_package(entry, self.bias.colnames)
             # Commit
             #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
@@ -126,12 +126,12 @@ class CalibrationDatabase():
 
             # Loop
             for entry in self.flat[filt]:
-                packet = self.neatly_package(
-                    entry, self.flat[filt].colnames, f"flat_{filt}")
+                packet = self.neatly_package(entry, self.flat[filt].colnames)
                 # Commit
                 #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
-    def neatly_package(self, table_row, colnames, measure):
+    def neatly_package(self, table_row, colnames, measure='Instrument_Data', 
+                       tags=None):
         """neatly_package Carefully curate and package the InfluxDB packet
 
         This method translates the internal database into an InfluxDB object.
@@ -142,8 +142,12 @@ class CalibrationDatabase():
             The row of data to commit to InfluxDB
         colnames : `list`
             List of the column names corresponding to this row
-        measure : `str`
-            The database field into which to place this row (frame)
+        measure : `str`, optional
+            The database MEASUREMENT into which to place this row
+            [Default: "Instrument_Data"]
+        tags : `dict`, optional
+            Tags with which to mark these fields within the measurement
+            [Default: None] -- If `None`, build standard tags
         """
         # Convert the AstroPy Table Row into a dict by adding colnames
         row_as_dict = dict(zip(colnames, table_row))
@@ -154,8 +158,19 @@ class CalibrationDatabase():
         timestamp = dt.datetime.strptime(f"{row_as_dict.pop('dateobs')}",
                                          '%Y-%m-%dT%H:%M:%S.%f')
 
+        # Build the tags from information in the table Row
+        if tags is None:
+            tags = {'instrument': row_as_dict.pop('instrument').lower(),
+                    'frametype': row_as_dict.pop('frametyp').lower(),
+                    'filter': row_as_dict.pop('filter'),
+                    'binning': row_as_dict.pop('binning'),
+                    'numamp': row_as_dict.pop('numamp'),
+                    'ampid': row_as_dict.pop('ampid'),
+                    'cropborder': row_as_dict.pop('cropsize')}
+
         # Create the packet for upload to the InfluxDB
         packet = utils.packetizer.makeInfluxPacket(
-                 meas=[measure], ts=timestamp, fields=row_as_dict, debug=True)
+                 meas=[measure], ts=timestamp, fields=row_as_dict,
+                 tags=tags, debug=True)
 
         return packet
