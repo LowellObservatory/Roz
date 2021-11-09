@@ -139,12 +139,18 @@ def trim_oscan(ccd, biassec, trimsec):
 
 
 # Quadric Surface Functions ==================================================#
-def fit_quadric_surface(data, ca=None, fit_quad=True, return_surface=False):
+def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     """fit_quadric_surface Fit a quadric surface to an image array
 
     Performs a **LEAST SQUARES FIT** of a (plane or) quadric surface to an
     input image array.  The basic equation is:
             matrix ## fit_coeff = right_hand_side
+
+    In specific, the quadric surface fit is either an elliptic or hyperbolic
+    paraboloid (of arbitrary orientation), since the resulting equation is:
+        z = a0 + a1•x + a2•y + a3•x^2 + a4•y^2 + a5•xy
+    https://en.wikipedia.org/wiki/Quadric
+    https://en.wikipedia.org/wiki/Paraboloid
 
     This routine computes the `matrix` needed, as well as the right_hand_side.
     The fit coefficients are found by miltiplying matrix^(-1) by the RHS.
@@ -187,60 +193,60 @@ def fit_quadric_surface(data, ca=None, fit_quad=True, return_surface=False):
     matrix = np.empty((n_terms, n_terms))
 
     # Produce the coordinate arrays, if not fed an existing dict
-    ca = produce_coordinate_arrays(data.shape) if ca is None else ca
+    c_arr = produce_coordinate_arrays(data.shape) if c_arr is None else c_arr
 
     # Fill in the matrix elements
     #  Upper left quadrant (or only quadrant, if fitting linear):
-    matrix[:3,:3] = [[ca['n_pixels'], ca['sum_x'], ca['sum_y']],
-                     [ca['sum_x'], ca['sum_x2'], ca['sum_xy']],
-                     [ca['sum_y'], ca['sum_xy'], ca['sum_y2']]]
+    matrix[:3,:3] = [[c_arr['n_pixels'], c_arr['sum_x'], c_arr['sum_y']],
+                     [c_arr['sum_x'], c_arr['sum_x2'], c_arr['sum_xy']],
+                     [c_arr['sum_y'], c_arr['sum_xy'], c_arr['sum_y2']]]
 
     # And the other 3 quadrants, if fitting a quadric surface
     if fit_quad:
         # Lower left quadrant:
-        matrix[3:,:3] = [[ca['sum_x2'], ca['sum_x3'], ca['sum_x2y']],
-                         [ca['sum_y2'], ca['sum_xy2'], ca['sum_y3']],
-                         [ca['sum_xy'], ca['sum_x2y'], ca['sum_xy2']]]
+        matrix[3:,:3] = [[c_arr['sum_x2'], c_arr['sum_x3'], c_arr['sum_x2y']],
+                         [c_arr['sum_y2'], c_arr['sum_xy2'], c_arr['sum_y3']],
+                         [c_arr['sum_xy'], c_arr['sum_x2y'], c_arr['sum_xy2']]]
         # Right half:
-        matrix[:,3:] = [[ca['sum_x2'], ca['sum_y2'], ca['sum_xy']],
-                        [ca['sum_x3'], ca['sum_xy2'], ca['sum_x2y']],
-                        [ca['sum_x2y'], ca['sum_y3'], ca['sum_xy2']],
-                        [ca['sum_x4'], ca['sum_x2y2'], ca['sum_x3y']],
-                        [ca['sum_x2y2'], ca['sum_y4'], ca['sum_xy3']],
-                        [ca['sum_x3y'], ca['sum_xy3'], ca['sum_x2y2']]]
+        matrix[:,3:] = [[c_arr['sum_x2'], c_arr['sum_y2'], c_arr['sum_xy']],
+                        [c_arr['sum_x3'], c_arr['sum_xy2'], c_arr['sum_x2y']],
+                        [c_arr['sum_x2y'], c_arr['sum_y3'], c_arr['sum_xy2']],
+                        [c_arr['sum_x4'], c_arr['sum_x2y2'], c_arr['sum_x3y']],
+                        [c_arr['sum_x2y2'], c_arr['sum_y4'], c_arr['sum_xy3']],
+                        [c_arr['sum_x3y'], c_arr['sum_xy3'], c_arr['sum_x2y2']]]
 
     # The right-hand side of the matrix equation:
     right_hand_side = np.empty(n_terms)
 
     # Top half:
     right_hand_side[:3] = [np.sum(data),
-                           np.sum(xd := np.multiply(ca['x_coord_arr'], data)),
-                           np.sum(yd := np.multiply(ca['y_coord_arr'], data))]
+                           np.sum(xd := np.multiply(c_arr['x_coord_arr'], data)),
+                           np.sum(yd := np.multiply(c_arr['y_coord_arr'], data))]
 
     if fit_quad:
         # Bottom half:
-        right_hand_side[3:] = [np.sum(np.multiply(ca['x_coord_arr'], xd)),
-                               np.sum(np.multiply(ca['y_coord_arr'], yd)),
-                               np.sum(np.multiply(ca['x_coord_arr'], yd))]
+        right_hand_side[3:] = [np.sum(np.multiply(c_arr['x_coord_arr'], xd)),
+                               np.sum(np.multiply(c_arr['y_coord_arr'], yd)),
+                               np.sum(np.multiply(c_arr['x_coord_arr'], yd))]
 
     # Here's where the magic of matrix multiplication happens!
     fit_coefficients = np.dot(np.linalg.inv(matrix), right_hand_side)
 
     # If not returning the model surface, go ahead and return now
     if not return_surface:
-        return fit_coefficients, ca
+        return fit_coefficients, c_arr
 
     # Build the model fit from the coefficients
     model_fit = fit_coefficients[0] + \
-                fit_coefficients[1] * ca['x_coord_arr'] + \
-                fit_coefficients[2] * ca['y_coord_arr']
+                fit_coefficients[1] * c_arr['x_coord_arr'] + \
+                fit_coefficients[2] * c_arr['y_coord_arr']
 
     if fit_quad:
-        model_fit += fit_coefficients[3] * ca['x2'] + \
-                     fit_coefficients[4] * ca['y2'] + \
-                     fit_coefficients[5] * ca['xy']
+        model_fit += fit_coefficients[3] * c_arr['x2'] + \
+                     fit_coefficients[4] * c_arr['y2'] + \
+                     fit_coefficients[5] * c_arr['xy']
 
-    return fit_coefficients, ca, model_fit
+    return fit_coefficients, c_arr, model_fit
 
 
 def produce_coordinate_arrays(shape):
@@ -287,3 +293,145 @@ def produce_coordinate_arrays(shape):
             'x2': x2,
             'xy': xy,
             'y2': y2}
+
+
+def compute_human_readable_surface(coefficients):
+    """compute_human_readable_surface Rotate surface into standard-ish form
+
+    Use the standard form of:
+        z = Ax^2 + Bxy + Cy^ + Dx + Ey + F
+
+    Find the rotation when the axes of the surface are along x' and y':
+        x = x'*cos(th) - y'*sin(th)
+        y = x'*sin(th) + y'*cos(th)
+
+    Rotate this into standard form of:
+        z = x'^2/a^2 + y'^2/b^2 + x'/c + y'/d + F
+    where a = semimajor axis (slower-changing direction) -> x'
+          b = semiminor axis (faster-changing direction) -> y'
+          c = 1 / slope along x'  (Scale of the change, like a,b)
+          d = 1 / slope along y'  (Scale of the change, like a,b)
+
+    https://courses.lumenlearning.com/ivytech-collegealgebra/chapter/
+    writing-equations-of-rotated-conics-in-standard-form/
+
+    Parameters
+    ----------
+    coefficients : `numpy.ndarray`
+        Coefficients output from fit_quadric_surface()
+
+    Returns
+    -------
+    `dict`
+        Dictionary of human-readable quantities
+    """
+
+    # Parse the coefficients from the quadric surface into standard form
+    F, D, E, A, C, B = tuple(coefficients)
+
+    # Compute the rotation of the axes of the surface away from x-y
+    theta = 0.5 * np.arctan2(B, A-C)
+
+    # Use a WHILE loop to check for orientation issues
+    good_orient = False
+    while not good_orient:
+
+        # Always use a theta between 0º and 180º:
+        theta = theta + np.pi if theta < 0 else theta
+        theta = theta - np.pi if theta > np.pi else theta
+
+        # Define sine and cosine for ease of typing and reading
+        costh = np.cos(theta)
+        sinth = np.sin(theta)
+
+        # Compute the rotated coefficients
+        #  xpxp == coefficient on x'^2 in Standard Form
+        #  ypyp == coefficient on y'^2 in Standard Form
+        xpxp = A*costh**2 + B*sinth*costh + C*sinth**2
+        ypyp = A*sinth**2 - B*sinth*costh + C*costh**2
+
+        # Convert to "semimajor" and "semiminor" axes from Standard Form
+        semimaj = 1/np.sqrt(np.absolute(xpxp))
+        semimin = 1/np.sqrt(np.absolute(ypyp))
+
+        # Check orientation (s.t. semimajor axis is larger than semiminor)
+        if semimaj > semimin:
+            good_orient = True
+        else:
+            theta += np.pi/2.
+
+    # Along the native axes, the coefficient on x'y' == 0
+    #  Compute as a check
+    #xpyp = 2*(C-A)*sinth*costh + B*(costh**2 - sinth**2)
+
+    # Convert values into human-readable things
+    return {'rot': np.rad2deg(theta),
+            'maj': semimaj,
+            'min': semimin,
+            'bma': 1./(D*costh + E*sinth),
+            'bmi': 1./(-D*sinth + E*costh),
+            'zpt': F,
+            'oma': int(np.sign(xpxp)),
+            'omi': int(np.sign(ypyp)),
+            'typ': f"Elliptic Paraboloid {'Up' if np.sign(xpxp) == 1 else 'Down'}" \
+                if np.sign(xpxp) == np.sign(ypyp) else "Hyperbolic Paraboloid"}
+
+
+def compute_flatness(human, shape, stddev):
+    """compute_flatness Compute "flatness" statistics
+
+    This function computes a pair of "flatness" statistics for calibration
+    frames.  These are used as both a measure in themselves and as a marker
+    for investigating change over time.  Changes in "flatness" are used as one
+    of the alerting criteria.
+
+    The statistics are basically computed as how fast the large-scale shape
+    changes compared to both the smaller dimension of the image and the
+    variability within the image, as defined by the "cropped" standard
+    deviation.
+
+    For each of the linear (plane) and quadratic portions of the quadric
+    surface fit, the flatness statistic is computed as:
+        flatness = (smaller dimension, pix) / (change scale, pix per ADU) /
+                   (standard deviation, ADU)
+
+    The resulting statistic is unitless, and always positive.  A value of 1
+    implies that the fit surface changes by 1 standard deviation over the
+    length of the image's smaller dimension.  A perfectly flat image would
+    have a value of zero -- highly curved or tilted images would have values
+    much larger than 1.
+
+    Parameters
+    ----------
+    human : `dict`
+        Dictionary of human-readable quantities from
+        compute_human_readable_surface()
+    shape : `int`,`int`
+        Tuple of frame sizes (nx, ny)
+    stddev : `float`
+        Standard deviation of the "crop" section of the frame, used as a scale
+        aganist which the tilt or curvature nonflatness is measured.
+
+    Returns
+    -------
+    `float`, `float`
+        Tuple of flatness stat for linear tilt, flatness stat for quadratic
+        curvature.
+    """
+    # Frame minimum dimension
+    dim_min = np.minimum(shape[0], shape[1])
+
+    # The keys 'maj' and 'min' refer to the # of pixels until the quadradic
+    #  changes by 1 sigma from the center of the paraboloid.  Multiply by the
+    #  standard deviation to yield a value for use.
+    # NOTE: This is not strictly correct, since the quadratic will actually
+    #       reach the value of the standard deviation much faster than this
+    #       linear approximation.  Need to think about how to handle this
+    #       more correctly.
+    pix_quad = human['min'] * stddev
+
+    # Get the lower pixel count of the two linear axes (distance to 1 sigma)
+    pix_lin = np.minimum(np.absolute(human['bma']),
+                         np.absolute(human['bmi'])) * stddev
+
+    return dim_min/pix_lin, dim_min/pix_quad

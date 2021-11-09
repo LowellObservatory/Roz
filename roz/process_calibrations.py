@@ -38,7 +38,8 @@ from tqdm import tqdm
 # Internal Imports
 from .analyze_alert import validate_bias_table, validate_flat_table
 from .database_manager import CalibrationDatabase
-from .utils import fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
+from .utils import compute_human_readable_surface, compute_flatness, \
+                   fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
 
 
 # Silence Superflous AstroPy Warnings
@@ -102,7 +103,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
 
         hdr = ccd.header
         # For BIAS set header FILTERS keyword to "DARK"
-        hdr['FILTERS'] = "DARK"
+        hdr['FILTERS'] = 'DARK'
         data = ccd.data[get_slice(hdr['TRIMSEC'], fits_convention=True)]
 
         # Statistics, statistics, statistics!!!!
@@ -224,6 +225,9 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     # Make things easier by creating a slice for cropping
     allslice = np.s_[:,:]
     cropslice = np.s_[crop:-crop, crop:-crop]
+    human_readable = compute_human_readable_surface(quadsurf)
+    _ = human_readable.pop('typ')
+    shape = (hdr['naxis1'], hdr['naxis2'])
 
     # TODO: Add error checking or type-forcing here to keep InfluxDB happy
     metadict = {'dateobs': hdr['DATE-OBS'],
@@ -238,13 +242,19 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
                 'mnttemp': float(hdr['MNTTEMP']),
                 'tempamb': float(hdr['TEMPAMB']),
                 'cropsize': int(crop)}
-    for name, slice in zip(['frame','crop'], [allslice, cropslice]):
-        metadict[f"{name}_avg"] = np.mean(data[slice])
-        metadict[f"{name}_med"] = np.ma.median(data[slice])
-        metadict[f"{name}_std"] = np.std(data[slice])
-    metadict['flatness'] = float(0.)    # Create a metric for this from qs[i]
-    for i, m in enumerate(['b','x','y','xx','yy','xy']):
-        metadict[f"qs_{m}"] = quadsurf[i]
+    for name, the_slice in zip(['frame','crop'], [allslice, cropslice]):
+        metadict[f"{name}_avg"] = np.mean(data[the_slice])
+        metadict[f"{name}_med"] = np.ma.median(data[the_slice])
+        metadict[f"{name}_std"] = np.std(data[the_slice])
+    for key, val in human_readable.items():
+        metadict[f"qs_{key}"] = val
+    lin_flat, quad_flat = compute_flatness(human_readable, shape,
+                                           metadict['crop_std'])
+    metadict['lin_flat'] = lin_flat
+    metadict['quad_flat'] = quad_flat
+
+    # for i, m in enumerate(['b','x','y','xx','yy','xy']):
+    #     metadict[f"qs_{m}"] = quadsurf[i]
 
     return metadict
 

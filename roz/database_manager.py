@@ -130,7 +130,7 @@ class CalibrationDatabase():
                 # Commit
                 #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
-    def neatly_package(self, table_row, colnames, measure='Instrument_Data', 
+    def neatly_package(self, table_row, colnames, measure='Instrument_Data',
                        tags=None):
         """neatly_package Carefully curate and package the InfluxDB packet
 
