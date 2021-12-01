@@ -23,55 +23,28 @@ This module primarily trades in internal databse objects
 """
 
 # Built-In Libraries
+import datetime as dt
 
 # 3rd Party Libraries
-from astropy.table import Table
+from astropy.table import Column, Table
 from atlassian import Confluence
+from bs4 import BeautifulSoup
 import keyring
 
 # Internal Imports
+from .utils import LMI_FILTERS
 
 
-def test_confluence():
-    """test_confluence Dummy test routine
-
-    [extended_summary]
-    """
-    # Instantiate the class
-    confluence = setup_confluence()
-
-    # This the page we want to muck with
-    space = 'LDTOI'
-    title = 'LMI Filter Characterization 2'
-
-    # If it doesn't already exist, create it, then get the page_id
-    if not confluence.page_exists(space, title):
-        body = "Junk content added by python script."
-        confluence.create_page(space, title, body, parent_id=55214493)
-    page_id = confluence.get_page_id(space, title)
-
-    # Add a comment!
-    text = 'This comment was added via the atlassian-python-api'
-    confluence.add_comment(page_id, text)
-
-    # Make a CSV file to add to this page
-    t = Table.read('/Users/tbowers/d1/codes/chicken-pi/data/coop_20211003.fits')
-    t.write('coop_20211003.csv')
-
-    # Attach the CSV file to the page
-    confluence.attach_file('coop_20211003.csv', name='Coop Data',
-                           content_type='application/fits', page_id=page_id,
-                           comment='Test Upload')
-
-    # Get some information
-    info = confluence.get_attachments_from_content(page_id, start=0, limit=50)
-    print(info)
-
-
-def update_filter_characterization():
+def update_filter_characterization(delete_existing=True):
     """update_filter_characterization Update the Confluence Page
 
     This routine updates the Confluence page for LMI Filter Characterization
+
+    Parameters
+    ----------
+    delete_existing : `bool`, optional
+        Delete the existing table on Confluence before upoading the new one?
+        [Defualt: True]  NOTE: Once in production, maybe turn this to False?
     """
     # Instantiate the class
     confluence = setup_confluence()
@@ -86,15 +59,19 @@ def update_filter_characterization():
         confluence.create_page(space, title, body, parent_id=55214493)
     page_id = confluence.get_page_id(space, title)
 
-    # Make sure the CSV file(s) we want to update are extant
-    filename = 'csvtable.csv'
+    # Create the updated version of the CSV table
+    filename = 'lmi_filter_table.html'
+
+    success = create_lmi_filter_table(filename)
 
     # Remove the attachment on the Confluence page before uploading the new one
-    confluence.delete_attachment(page_id, filename)
+    # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
+    if delete_existing:
+        confluence.delete_attachment(page_id, filename)
 
-    # Attach the CSV file(s) to the Confluence page
-    confluence.attach_file(filename, name='Something', content_type='text/csv',
-                           page_id=page_id, comment='Something')
+    # Attach the HTML file to the Confluence page
+    confluence.attach_file(filename, name=filename, content_type='text/html',
+                           page_id=page_id, comment='HTML Table')
 
 
 def setup_confluence():
@@ -119,12 +96,210 @@ def setup_confluence():
                        password=keyring.get_password('confluence', 'passwd') )
 
 
+def create_lmi_filter_table(filename):
+    """create_lmi_filter_table Create the LMI Filter Information Table
+
+    Creates the HTML table of LMI filter information for upload to Confluence.
+    This table is partially static (basic information about the filters, etc.),
+    and partially dynamic, listing the UT date of the last flatfield, and the
+    most recent estimation of countrate for that filter/lamp combination.
+
+    This table also holds (links to) PNG images of 1) a carefully curated
+    "best of" flatfield, and 2) the most recent flatfield in this filter.
+
+    Parameters
+    ----------
+    filename : `string`
+        Local filename of the HTML table to create.
+
+    Returns
+    -------
+    `int`
+        Success/failure bit
+    """
+    # Get the base (static) table
+    lmi_filt = lmi_filter_table()
+
+    # Add the fun stuff!  NOTE: It's just filler for the moment...
+    lastflat = []
+    countrate = []
+    timeto20k = []
+    bestlink = []
+    lastlink = []
+    for i in range(1,len(LMI_FILTERS)+7):
+        lastflat.append('2022-01-01')
+        countrate.append(i*i)
+        timeto20k.append(20000/(i*i))
+        bestlink.append('Click Here')
+        lastlink.append('Click Here')
+    lmi_filt['"Best Of" Image'] = bestlink
+    lmi_filt['Latest Image'] = lastlink
+    lmi_filt['UT Date of Last Flat'] = Column(lastflat)
+    lmi_filt['Count Rate (ADU/s)'] = Column(countrate, format='.0f')
+    lmi_filt['Exptime for 20k cts (s)'] = Column(timeto20k, format='.0f')
+
+    # Print to screen for the time being... will remove later.
+    lmi_filt.pprint()
+
+    # HTML CSS stuff for writing the AstroPy Table to HTML
+    cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
+                      '   table {\n      width: 100%;\n'#      table-layout: fixed;\n'
+                      '      border-collapse: collapse;\n   }\n   '
+                      'td {\n      padding: 10px;\n   }\n   th {\n      color: white;\n'
+                      '      background: #6D6E70;\n   }'}
+    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
+
+    # Get the number of columns for use with the table stuff below
+    ncols = len(lmi_filt.colnames)
+
+    # Now that AstroPy has done the hard work writing this table to HTML,
+    #  we need tpo modify it a bit for visual clarity.  Use BeautifulSoup.
+    with open(filename) as html:
+        soup = BeautifulSoup(html, 'html.parser')
+
+    # Add the side-heads for the different filter groups:
+    for i,row in enumerate(soup.find_all('tr')):
+        if i == 0:
+            row.insert_after(add_cutin_head(soup, ncols, 'Non-Filter Positions'))
+        elif i == 3:
+            row.insert_after(add_cutin_head(soup, ncols, 'Johnson-Cousins Filters'))
+        elif i == 8:
+            row.insert_after(add_cutin_head(soup, ncols, 'Sloan (SDSS) Filters'))
+        elif i == 13:
+            row.insert_after(add_cutin_head(soup, ncols, 'Other Broad Band Filters'))
+        elif i == 15:
+            row.insert_after(add_cutin_head(soup, ncols, 'General Narrow Band Filters'))
+        elif i == 18:
+            row.insert_after(add_cutin_head(soup, ncols, 'Wolf-Rayet Filters'))
+        elif i == 21:
+            row.insert_after(add_cutin_head(soup, ncols, 'Comet Filters',
+            '(Note: These filters are 4 inches round and suffer some vignetting on LMI)'))
+        elif i == 32:
+            row.insert_after(add_cutin_head(soup, ncols, 'Assorted Other Filters',
+            '(inquire if you want to use, as they may not be readily available)'))
+        elif i == 35:
+            now = dt.datetime.utcnow()
+            timestr = now.strftime('%Y-%m-%dT%H:%M:%S UTC')
+            row.insert_after(add_cutin_head(soup, ncols, '',
+            f"Table Auto-Generated {timestr} by Roz and uploaded by Nanni the Robot."))
+
+    # Now that we've mucked with the HTML document, rewerite it disk
+    with open(filename, "wb") as f_output:
+        f_output.write(soup.prettify("utf-8"))
+
+    # Return value -- 0 is success!
+    return 0
+
+
+def add_cutin_head(soup, ncols, text, extra=''):
+    """add_cutin_head Put together the "Cut-in Headings" for the HTML Table
+
+    This is a bunch of BeautifulSoup tag stuff needed to make the section
+    headings in the HTML table.  This function is purely a DRY block.
+
+    Parameters
+    ----------
+    soup : `bs4.BeautifulSoup`
+        The BeautifulSoup parsed-HTML object
+    ncols : `int`
+        Number of columns in the HTML table, needed for spanning
+    text : `str`
+        The bold/underlined text for the header
+    extra : `str`, optional
+        Regular text to appear after the bold/underlined text [Default: '']
+
+    Returns
+    -------
+    `bs4.element.Tag`
+        The newly tagged row for insertion into the HTML table
+    """
+    # Create the new row tag, and everything that goes inside it
+    newrow = soup.new_tag('tr')
+    newcol = soup.new_tag('td', attrs={'colspan':ncols, 'bgcolor':'#DBDCDC'})
+    bold = soup.new_tag('b')
+    uline = soup.new_tag('u')
+    uline.string = text
+    bold.append(uline)
+    newcol.append(bold)
+    newcol.append(extra)
+    newrow.append(newcol)
+    return newrow
+
+
+def lmi_filter_table():
+    """lmi_filter_table Create the static portions of the LMI Filter Table
+
+    This function creates the static portions of the table that will be
+    augmented in the calling function with dynamically calculated information.
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The basic portions of the AstroPy table for LMI Filter Information
+    """
+    # Create the empty table
+    t = Table()
+
+    t['Filter'] = ['OPEN', 'DARK', '4 Hole Mask',
+                   'U', 'B', 'V', 'R', 'I',
+                   'SDSS u\'', 'SDSS g\'', 'SDSS r\'', 'SDSS i\'', 'SDSS z\'',
+                   'V+R', 'Yish', '[OIII]', 'Hα-On', 'Hα-Off',
+                   'WC', 'WN', 'CT',
+                   'Ultraviolet Continuum','Blue Continuum','Green Continuum',
+                   'Red Continuum','C2','C3','CN','CO+','H2O+','OH','NH',
+                   'W032', '5027', 'K1593']
+    t['FITS Header Value'] = ['OPEN', 'DARK', '4HOLEMASK'] + LMI_FILTERS + \
+                             ['W032', '5027', 'K1593']
+    t['Pattern String'] = ['OPEN', 'DARK', '4Hole',
+                           'U', 'B', 'V', 'R', 'I',
+                           'SL-u', 'SL-g', 'SL-r', 'SL-i', 'SL-z',
+                           'VR', 'YISH', 'OIII', 'Ha-on', 'Ha-off',
+                           'WC', 'WN', 'CT',
+                           'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH',
+                           'W032', '5027', 'K1593']
+    t['Focus Offset (µm)'] = ['0', 'N/A', '',
+                         '+140', '+105', '+105', '+140', '+140',
+                         '+180', '+180', '+180', '+180', '+180',
+                         '+185', '+105', '+205', '+155', '+155',
+                         '+165', '+160', '+170',
+                         '+175','+175','+175',
+                         '+175','+175','+175','+175','+175','+175','+175','+175',
+                         '+176','+130','194']
+    t['Filter Central Wavelength (Å)'] = ['','','',
+                                      '3652', '4448', '5505', '6581', '8059',
+                                      '3557', '4825', '6261', '7672', '9097',
+                                      '6091.7', '', '5001.7', '6564.9', '6459.1',
+                                      '4660.4', '4690.9', '4756.1',
+                                      '3449','4453','5259','7133','5135','4063',
+                                      '3869','4266','7028','3097','3361',
+                                      '5300','5027','5010']
+    t['Filter Width (Å)'] = ['','','',
+                         '524', '1008', '826', '1576', '1543',
+                         '599', '1379', '1382', '1535', '1370',
+                         '1763.9', '', '25.5', '30.1', '114.6',
+                         '49.5', '49.6', '54.6',
+                         '79','61','56','58','119','58',
+                         '56','64','164','58','54',
+                         '','','']
+    p_f, d_l = 'Photo Floods', 'Dome Lamps, 12V'
+    t['Flatfield Lamps'] = ['','','',
+                            p_f, d_l, d_l, d_l, d_l,
+                            p_f, d_l, d_l, d_l, d_l,
+                            d_l, d_l, d_l, d_l, d_l,
+                            d_l, d_l, d_l,
+                            p_f, p_f, d_l, d_l, d_l,
+                            p_f, p_f, p_f, d_l, p_f, p_f,
+                            '','','']
+
+    return t
+
+
 #=============================================================================#
 def main():
     """
     This is the main body function.
     """
-    test_confluence()
+    update_filter_characterization()
 
 
 if __name__ == "__main__":
