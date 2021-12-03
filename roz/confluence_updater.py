@@ -26,13 +26,14 @@ This module primarily trades in internal databse objects
 import datetime as dt
 
 # 3rd Party Libraries
+from astropy.io.votable import parse
 from astropy.table import Column, Table
 from atlassian import Confluence
 from bs4 import BeautifulSoup
 import keyring
 
 # Internal Imports
-from .utils import LMI_FILTERS
+from utils import LMI_FILTERS
 
 
 def update_filter_characterization(delete_existing=True):
@@ -124,15 +125,15 @@ def create_lmi_filter_table(filename):
     lastflat = []
     countrate = []
     timeto20k = []
-    bestlink = []
+    nominallink = []
     lastlink = []
     for i in range(1,len(LMI_FILTERS)+7):
         lastflat.append('2022-01-01')
         countrate.append(i*i)
         timeto20k.append(20000/(i*i))
-        bestlink.append('Click Here')
+        nominallink.append('Click Here')
         lastlink.append('Click Here')
-    lmi_filt['"Best Of" Image'] = bestlink
+    lmi_filt['Nominal Image'] = nominallink
     lmi_filt['Latest Image'] = lastlink
     lmi_filt['UT Date of Last Flat'] = Column(lastflat)
     lmi_filt['Count Rate (ADU/s)'] = Column(countrate, format='.0f')
@@ -141,7 +142,7 @@ def create_lmi_filter_table(filename):
     # Print to screen for the time being... will remove later.
     lmi_filt.pprint()
 
-    # HTML CSS stuff for writing the AstroPy Table to HTML
+    # CSS stuff to make the HTML table pretty
     cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
                       '   table {\n      width: 100%;\n'#      table-layout: fixed;\n'
                       '      border-collapse: collapse;\n   }\n   '
@@ -153,10 +154,17 @@ def create_lmi_filter_table(filename):
     ncols = len(lmi_filt.colnames)
 
     # Now that AstroPy has done the hard work writing this table to HTML,
-    #  we need tpo modify it a bit for visual clarity.  Use BeautifulSoup.
+    #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
     with open(filename) as html:
         soup = BeautifulSoup(html, 'html.parser')
 
+    # Add the `creation date` line to the body of the HTML above the table
+    timestr = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    table_tag = soup.find('table')
+    itdate = soup.new_tag('i')                # Italics, for the fun of it
+    itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
+    table_tag.insert_before(itdate)
+    
     # Add the side-heads for the different filter groups:
     for i,row in enumerate(soup.find_all('tr')):
         if i == 0:
@@ -177,11 +185,6 @@ def create_lmi_filter_table(filename):
         elif i == 32:
             row.insert_after(add_cutin_head(soup, ncols, 'Assorted Other Filters',
             '(inquire if you want to use, as they may not be readily available)'))
-        elif i == 35:
-            now = dt.datetime.utcnow()
-            timestr = now.strftime('%Y-%m-%dT%H:%M:%S UTC')
-            row.insert_after(add_cutin_head(soup, ncols, '',
-            f"Table Auto-Generated {timestr} by Roz and uploaded by Nanni the Robot."))
 
     # Now that we've mucked with the HTML document, rewerite it disk
     with open(filename, "wb") as f_output:
@@ -215,92 +218,65 @@ def add_cutin_head(soup, ncols, text, extra=''):
     """
     # Create the new row tag, and everything that goes inside it
     newrow = soup.new_tag('tr')
+    # One column spanning the whole row, with Lowell-gray for background
     newcol = soup.new_tag('td', attrs={'colspan':ncols, 'bgcolor':'#DBDCDC'})
+    # Bold/Underline the main `text` for the header; append to newcol
     bold = soup.new_tag('b')
     uline = soup.new_tag('u')
     uline.string = text
     bold.append(uline)
     newcol.append(bold)
+    # Add any `extra` text in standard font after the bold/underline portion
     newcol.append(extra)
+    # Put the column tag inside the row tag
     newrow.append(newcol)
+    # All done
     return newrow
 
 
 def lmi_filter_table():
     """lmi_filter_table Create the static portions of the LMI Filter Table
 
-    This function creates the static portions of the table that will be
-    augmented in the calling function with dynamically calculated information.
+    This function reads in the XML information for the static portion of the
+    LMI Filter Table.
+
+    The previous version of this function had the information hard-coded,
+    which would have been a pain to add new filters to.
 
     Returns
     -------
     `astropy.table.Table`
         The basic portions of the AstroPy table for LMI Filter Information
     """
-    # Create the empty table
-    t = Table()
-
-    t['Filter'] = ['OPEN', 'DARK', '4 Hole Mask',
-                   'U', 'B', 'V', 'R', 'I',
-                   'SDSS u\'', 'SDSS g\'', 'SDSS r\'', 'SDSS i\'', 'SDSS z\'',
-                   'V+R', 'Yish', '[OIII]', 'Hα-On', 'Hα-Off',
-                   'WC', 'WN', 'CT',
-                   'Ultraviolet Continuum','Blue Continuum','Green Continuum',
-                   'Red Continuum','C2','C3','CN','CO+','H2O+','OH','NH',
-                   'W032', '5027', 'K1593']
-    t['FITS Header Value'] = ['OPEN', 'DARK', '4HOLEMASK'] + LMI_FILTERS + \
-                             ['W032', '5027', 'K1593']
-    t['Pattern String'] = ['OPEN', 'DARK', '4Hole',
-                           'U', 'B', 'V', 'R', 'I',
-                           'SL-u', 'SL-g', 'SL-r', 'SL-i', 'SL-z',
-                           'VR', 'YISH', 'OIII', 'Ha-on', 'Ha-off',
-                           'WC', 'WN', 'CT',
-                           'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH',
-                           'W032', '5027', 'K1593']
-    t['Focus Offset (µm)'] = ['0', 'N/A', '',
-                         '+140', '+105', '+105', '+140', '+140',
-                         '+180', '+180', '+180', '+180', '+180',
-                         '+185', '+105', '+205', '+155', '+155',
-                         '+165', '+160', '+170',
-                         '+175','+175','+175',
-                         '+175','+175','+175','+175','+175','+175','+175','+175',
-                         '+176','+130','194']
-    t['Filter Central Wavelength (Å)'] = ['','','',
-                                      '3652', '4448', '5505', '6581', '8059',
-                                      '3557', '4825', '6261', '7672', '9097',
-                                      '6091.7', '', '5001.7', '6564.9', '6459.1',
-                                      '4660.4', '4690.9', '4756.1',
-                                      '3449','4453','5259','7133','5135','4063',
-                                      '3869','4266','7028','3097','3361',
-                                      '5300','5027','5010']
-    t['Filter Width (Å)'] = ['','','',
-                         '524', '1008', '826', '1576', '1543',
-                         '599', '1379', '1382', '1535', '1370',
-                         '1763.9', '', '25.5', '30.1', '114.6',
-                         '49.5', '49.6', '54.6',
-                         '79','61','56','58','119','58',
-                         '56','64','164','58','54',
-                         '','','']
-    p_f, d_l = 'Photo Floods', 'Dome Lamps, 12V'
-    t['Flatfield Lamps'] = ['','','',
-                            p_f, d_l, d_l, d_l, d_l,
-                            p_f, d_l, d_l, d_l, d_l,
-                            d_l, d_l, d_l, d_l, d_l,
-                            d_l, d_l, d_l,
-                            p_f, p_f, d_l, d_l, d_l,
-                            p_f, p_f, p_f, d_l, p_f, p_f,
-                            '','','']
-
-    return t
+    # Read in the XML table.
+    # TODO: We need to deal with file locations once we have that structure.
+    votable = parse('lmi_filter_table.xml')
+    return votable.get_first_table().to_table(use_names_over_ids=True)
 
 
 #=============================================================================#
-def main():
+def main(args):
     """
     This is the main body function.
     """
-    update_filter_characterization()
+    # Main use for testing
+    if len(args) == 1:
+        update_filter_characterization()
+
+    # Stuff related to saving the static LMI Filter table as XML rather than
+    #  hard-coded in python.    
+    if len(args) == 2:
+        if args[1] == 'lmi2xml':
+            t = lmi_filter_table()
+            t.write('lmi_filter_table.xml', format='votable')
+        elif args[1] == 'xml2lmi':
+            votable = parse('lmi_filter_table.xml')
+            t = votable.get_first_table().to_table(use_names_over_ids=True)
+            t.pprint()
+        else:
+            print(f"The argument {args[1]} is not recognized.")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(sys.argv)
