@@ -234,7 +234,7 @@ def add_cutin_head(soup, ncols, text, extra=''):
     return newrow
 
 
-def lmi_filter_table():
+def lmi_filter_table(xml_table='lmi_filter_table.xml'):
     """lmi_filter_table Create the static portions of the LMI Filter Table
 
     This function reads in the XML information for the static portion of the
@@ -243,6 +243,11 @@ def lmi_filter_table():
     The previous version of this function had the information hard-coded,
     which would have been a pain to add new filters to.
 
+    Parameters
+    ----------
+    xml_table : `str`, optional
+        Filename of the XML file containing the LMI Filter Information
+
     Returns
     -------
     `astropy.table.Table`
@@ -250,7 +255,7 @@ def lmi_filter_table():
     """
     # Read in the XML table.
     # TODO: We need to deal with file locations once we have that structure.
-    votable = parse('lmi_filter_table.xml')
+    votable = parse(xml_table)
     return votable.get_first_table().to_table(use_names_over_ids=True)
 
 
