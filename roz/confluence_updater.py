@@ -27,7 +27,7 @@ import datetime as dt
 
 # 3rd Party Libraries
 from astropy.io.votable import parse
-from astropy.table import Column, Table
+from astropy.table import Column
 from atlassian import Confluence
 from bs4 import BeautifulSoup
 import keyring
@@ -119,7 +119,7 @@ def create_lmi_filter_table(filename):
         Success/failure bit
     """
     # Get the base (static) table
-    lmi_filt = lmi_filter_table()
+    lmi_filt, section_head = lmi_filter_table()
 
     # Add the fun stuff!  NOTE: It's just filler for the moment...
     lastflat = []
@@ -164,29 +164,17 @@ def create_lmi_filter_table(filename):
     itdate = soup.new_tag('i')                # Italics, for the fun of it
     itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
     table_tag.insert_before(itdate)
-    
-    # Add the side-heads for the different filter groups:
-    for i,row in enumerate(soup.find_all('tr')):
-        if i == 0:
-            row.insert_after(add_cutin_head(soup, ncols, 'Non-Filter Positions'))
-        elif i == 3:
-            row.insert_after(add_cutin_head(soup, ncols, 'Johnson-Cousins Filters'))
-        elif i == 8:
-            row.insert_after(add_cutin_head(soup, ncols, 'Sloan (SDSS) Filters'))
-        elif i == 13:
-            row.insert_after(add_cutin_head(soup, ncols, 'Other Broad Band Filters'))
-        elif i == 15:
-            row.insert_after(add_cutin_head(soup, ncols, 'General Narrow Band Filters'))
-        elif i == 18:
-            row.insert_after(add_cutin_head(soup, ncols, 'Wolf-Rayet Filters'))
-        elif i == 21:
-            row.insert_after(add_cutin_head(soup, ncols, 'Comet Filters',
-            '(Note: These filters are 4 inches round and suffer some vignetting on LMI)'))
-        elif i == 32:
-            row.insert_after(add_cutin_head(soup, ncols, 'Assorted Other Filters',
-            '(inquire if you want to use, as they may not be readily available)'))
 
-    # Now that we've mucked with the HTML document, rewerite it disk
+    # Add the section headings for the different filter groups:
+    for i,row in enumerate(soup.find_all('tr')):
+        # At each row, search through the `section_head` table to correctly
+        #  insert the appropriate section header
+        for sechead in section_head:
+            if i == sechead['insert_after']:
+                row.insert_after(add_cutin_head(soup, ncols, sechead['section'],
+                                                sechead['extra']))
+
+    # Now that we've mucked with the HTML document, rewerite it to disk
     with open(filename, "wb") as f_output:
         f_output.write(soup.prettify("utf-8"))
 
@@ -238,7 +226,7 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
     """lmi_filter_table Create the static portions of the LMI Filter Table
 
     This function reads in the XML information for the static portion of the
-    LMI Filter Table.
+    LMI Filter Table, including the section headers (and locations).
 
     The previous version of this function had the information hard-coded,
     which would have been a pain to add new filters to.
@@ -250,13 +238,20 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
 
     Returns
     -------
-    `astropy.table.Table`
+    filter_table : `astropy.table.Table`
         The basic portions of the AstroPy table for LMI Filter Information
+    section_head : `astropy.table.Table`
+        The section headings for the HTML table
     """
     # Read in the XML table.
     # TODO: We need to deal with file locations once we have that structure.
     votable = parse(xml_table)
-    return votable.get_first_table().to_table(use_names_over_ids=True)
+
+    # The VOTable has both the LMI Filter Info and the section heads for the HTML
+    filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
+    section_head = votable.get_table_by_index(1).to_table()
+
+    return filter_table, section_head
 
 
 #=============================================================================#
@@ -267,19 +262,6 @@ def main(args):
     # Main use for testing
     if len(args) == 1:
         update_filter_characterization()
-
-    # Stuff related to saving the static LMI Filter table as XML rather than
-    #  hard-coded in python.    
-    if len(args) == 2:
-        if args[1] == 'lmi2xml':
-            t = lmi_filter_table()
-            t.write('lmi_filter_table.xml', format='votable')
-        elif args[1] == 'xml2lmi':
-            votable = parse('lmi_filter_table.xml')
-            t = votable.get_first_table().to_table(use_names_over_ids=True)
-            t.pprint()
-        else:
-            print(f"The argument {args[1]} is not recognized.")
 
 
 if __name__ == "__main__":

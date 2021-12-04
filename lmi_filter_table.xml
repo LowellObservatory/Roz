@@ -331,5 +331,54 @@
     </TABLEDATA>
    </DATA>
   </TABLE>
+  <TABLE>
+   <FIELD ID="section" arraysize="27" datatype="unicodeChar" name="section"/>
+   <FIELD ID="extra" arraysize="74" datatype="unicodeChar" name="extra"/>
+   <FIELD ID="insert_after" datatype="long" name="insert_after"/>
+   <DATA>
+    <TABLEDATA>
+     <TR>
+      <TD>Non-Filter Positions</TD>
+      <TD/>
+      <TD>0</TD>
+     </TR>
+     <TR>
+      <TD>Johnson-Cousins Filters</TD>
+      <TD/>
+      <TD>3</TD>
+     </TR>
+     <TR>
+      <TD>Sloan (SDSS) Filters</TD>
+      <TD/>
+      <TD>8</TD>
+     </TR>
+     <TR>
+      <TD>Other Broad Band Filters</TD>
+      <TD/>
+      <TD>13</TD>
+     </TR>
+     <TR>
+      <TD>General Narrow Band Filters</TD>
+      <TD/>
+      <TD>15</TD>
+     </TR>
+     <TR>
+      <TD>Wolf-Rayet Filters</TD>
+      <TD/>
+      <TD>18</TD>
+     </TR>
+     <TR>
+      <TD>Comet Filters</TD>
+      <TD>(Note: These filters are 4 inches round and suffer some vignetting on LMI)</TD>
+      <TD>21</TD>
+     </TR>
+     <TR>
+      <TD>Assorted Other Filters</TD>
+      <TD>(inquire if you want to use, as they may not be readily available)</TD>
+      <TD>32</TD>
+     </TR>
+    </TABLEDATA>
+   </DATA>
+  </TABLE>
  </RESOURCE>
 </VOTABLE>
