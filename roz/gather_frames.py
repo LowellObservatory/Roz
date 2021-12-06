@@ -86,7 +86,7 @@ def dumbwaiter():
 
 
 def divine_instrument(directory):
-    """divine_directory Divine the instrument whose data is in this directory
+    """divine_instrument Divine the instrument whose data is in this directory
 
     Opens one of the FITS files and reads in the INSTRUME header keyword,
     returns as a lowercase string.
@@ -140,10 +140,6 @@ def gather_cal_frames(directory, inst_flag):
     `list`, optional (LMI only)
         List of binning setups found in this directory
 
-    Raises
-    ------
-    ValueError
-        Temporary bug, will need to expand this to handle multiple binnings
     """
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
@@ -169,9 +165,6 @@ def gather_cal_frames(directory, inst_flag):
         # Get the complete list of binnings used -- but clear out `None` entries
         bin_list = icl.values('ccdsum', unique=True)
         bin_list = sorted(list(filter(None, bin_list)))
-        if len(bin_list) > 1:
-            print(f"This is the bin_list: {bin_list}")
-            #raise ValueError("More than one binning exists in this directory!")
         return_object.append(bin_list)
 
     # Return the accumulated objects as a tuple

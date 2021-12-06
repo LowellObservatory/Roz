@@ -29,7 +29,7 @@ import numpy as np
 
 # Internal Imports
 
-# Data directory
+# Data & config directories
 ROZ_DATA = files('Roz.data')
 ROZ_CONFIG = files('Roz.config')
 
