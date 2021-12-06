@@ -29,7 +29,8 @@ import numpy as np
 from ligmos import utils, workers
 
 # Internal Imports
-from .utils import LMI_FILTERS
+from .confluence_updater import update_filter_characterization
+from .utils import LMI_FILTERS, ROZ_CONFIG
 
 
 class CalibrationDatabase():
@@ -59,9 +60,7 @@ class CalibrationDatabase():
         self.flat = {} if self.flags['get_flats'] else None
 
         # Read in the InfluxDB config file
-        # TODO: This needs to be accessed relative to wherever the full code
-        #  is called from.
-        conf_file = '/Users/tbowers/d1/codes/Roz/config/dbconfig.conf'
+        conf_file = ROZ_CONFIG.joinpath('/dbconfig.conf')
 
         # By doing it this way we ignore the 'enabled' key
         #    but we avoid contortions needed if using
@@ -171,6 +170,15 @@ class CalibrationDatabase():
         # Create the packet for upload to the InfluxDB
         packet = utils.packetizer.makeInfluxPacket(
                  meas=[measure], ts=timestamp, fields=row_as_dict,
-                 tags=tags, debug=True)
+                 tags=tags, debug=False)
 
         return packet
+
+    def update_filter_table(self):
+        """update_filter_table Call the Confluence updating code
+
+        Seems a little funny to make this a class method instead of just
+        calling update_filter_characterization() on the database object in
+        the main routine, but this looks cleaner in the main routine.
+        """
+        update_filter_characterization(self)

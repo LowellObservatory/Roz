@@ -23,15 +23,18 @@ sent to or recieved by Wadsworth.
 """
 
 # Built-In Libraries
+import glob
+import os
 import warnings
 
 # 3rd Party Libraries
+from astropy.io.fits import getheader
 from astropy.utils.exceptions import AstropyWarning
 import ccdproc as ccdp
 import numpy as np
 
 # Internal Imports
-
+from .analyze_alert import send_alert, BadDirectoryAlert
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
@@ -82,6 +85,40 @@ def dumbwaiter():
     return directory
 
 
+def divine_instrument(directory):
+    """divine_directory Divine the instrument whose data is in this directory
+
+    Opens one of the FITS files and reads in the INSTRUME header keyword,
+    returns as a lowercase string.
+
+    Parameters
+    ----------
+    directory : `str` or `pathlib.Path`
+        The directory for which to divine the instrument
+
+    Returns
+    -------
+    `str`
+        Lowercase string of the contents of the FITS `INSTRUME` keyword
+    """
+    # Get a sorted list of all the FITS files
+    fitsfiles = sorted(glob.glob(f"{directory}/*.fits"))
+
+    # Loop through the files, looking for a valid INSTRUME keyword
+    for fitsfile in fitsfiles:
+        # print(f"Attempting to find INSTRUME in {fitsfile}")
+        try:
+            # If we're good to go...
+            if os.path.isfile(fitsfile):
+                header = getheader(fitsfile)
+                return header['instrume'].lower()
+        except KeyError:
+            continue
+    # Otherwise...
+    send_alert(BadDirectoryAlert)
+    return None
+
+
 def gather_cal_frames(directory, inst_flag):
     """gather_cal_frames Gather calibration frames from specified directory
 
@@ -130,11 +167,11 @@ def gather_cal_frames(directory, inst_flag):
 
     if inst_flag['check_binning']:
         # Get the complete list of binnings used -- but clear out `None` entries
-        # TODO: Clear out any `None` entries
         bin_list = icl.values('ccdsum', unique=True)
+        bin_list = sorted(list(filter(None, bin_list)))
         if len(bin_list) > 1:
             print(f"This is the bin_list: {bin_list}")
-            raise ValueError("More than one binning exists in this directory!")
+            #raise ValueError("More than one binning exists in this directory!")
         return_object.append(bin_list)
 
     # Return the accumulated objects as a tuple

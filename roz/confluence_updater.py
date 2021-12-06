@@ -33,22 +33,27 @@ from bs4 import BeautifulSoup
 import keyring
 
 # Internal Imports
-from analyze_alert import send_alert, ConfluenceAlert
-from utils import LMI_FILTERS
+from .analyze_alert import send_alert, ConfluenceAlert
+from .utils import LMI_FILTERS, ROZ_DATA
 
 
-def update_filter_characterization(delete_existing=False):
+def update_filter_characterization(database, delete_existing=False):
     """update_filter_characterization Update the Confluence Page
 
     This routine updates the Confluence page for LMI Filter Characterization
 
     Parameters
     ----------
+    database : `roz.database_manager.CalibrationDatabase`
+        The database of calibration frames
     delete_existing : `bool`, optional
         Delete the existing table on Confluence before upoading the new one?
         [Defualt: True]  NOTE: Once in production, maybe turn this to False?
     """
-    # Instantiate the class
+    if database:
+        print("We have the database being passed to Confluence!")
+
+    # Instantiate the Confluence class
     confluence = setup_confluence()
 
     # This the page we want to update -- we'll request the page_id for ease
@@ -63,7 +68,7 @@ def update_filter_characterization(delete_existing=False):
     page_id = confluence.get_page_id(space, title)
 
     # Update the HTML table attached to the Confluence page
-    filename = 'lmi_filter_table.html'
+    filename = ROZ_DATA.joinpath(just_file := 'lmi_filter_table.html')
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
@@ -73,7 +78,7 @@ def update_filter_characterization(delete_existing=False):
     success = update_lmi_filter_table(filename)
 
     # Attach the HTML file to the Confluence page
-    confluence.attach_file(filename, name=filename, content_type='text/html',
+    confluence.attach_file(filename, name=just_file, content_type='text/html',
                            page_id=page_id, comment='LMI Filter Information Table')
 
 
@@ -207,8 +212,7 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
         The section headings for the HTML table
     """
     # Read in the XML table.
-    # TODO: We need to deal with file locations once we have that structure.
-    votable = parse(xml_table)
+    votable = parse(ROZ_DATA.joinpath(xml_table))
 
     # The VOTable has both the LMI Filter Info and the section heads for the HTML
     filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
@@ -262,9 +266,6 @@ def main(args):
     """
     This is the main body function.
     """
-    # Main use for testing
-    if len(args) == 1:
-        update_filter_characterization()
 
 
 if __name__ == "__main__":

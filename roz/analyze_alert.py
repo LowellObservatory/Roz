@@ -40,9 +40,35 @@ class InputError(ValueError):
 
 
 # Create various alert classes to use
-class ConfluenceAlert():
+class _BaseAlert():
+    """_Baselert Base alert class, to contain useful common things
+    """
+    def __init__(self):
+        pass
+
+
+class BadDirectoryAlert(_BaseAlert):
+    """ConfluenceAlert Caused by a bad directory used in the call
+    """
+    def __init__(self):
+        _BaseAlert.__init__(self)
+        self.type = 'Bad Directory'
+
+
+class CantRunAlert(_BaseAlert):
+    """ConfluenceAlert Caused by the code not being able to run
+    """
+    def __init__(self):
+        _BaseAlert.__init__(self)
+        self.type = 'Cannot Run on Anything'
+
+
+class ConfluenceAlert(_BaseAlert):
     """ConfluenceAlert Caused by an issue connecting with Confluence
     """
+    def __init__(self):
+        _BaseAlert.__init__(self)
+        self.type = 'Confluence Issue'
 
 
 def validate_bias_table(bias_meta):
@@ -115,8 +141,12 @@ def validate_flat_table(flat_meta, lmi_filt):
 
 
 def send_alert(alertclass):
-    """send_alert Send out an alert for "funny" frames
+    """send_alert Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
     lig.nanni@lowell.edu, or over Slack, or both, or something different?
+
+    There are various types of alerts that can be send... maybe choose the
+    medium based on the input `alertclass`?
     """
+    print(f"Alert Alert Alert: {alertclass.type}")

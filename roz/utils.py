@@ -24,9 +24,14 @@ This module primarily trades in... utility?
 from astropy.modeling import models
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
+from importlib_resources import files
 import numpy as np
 
 # Internal Imports
+
+# Data directory
+ROZ_DATA = files('Roz.data')
+ROZ_CONFIG = files('Roz.config')
 
 # List of supported instruments
 INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?
@@ -37,9 +42,9 @@ LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
                'VR', 'YISH', 'OIII', 'HALPHAON', 'HALPHAOFF',
                'WR-WC', 'WR-WN', 'WR-CT',
                'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH']
+
 # Fold Mirror Names
 FMS = ['A', 'B', 'C', 'D']
-
 
 # Create an error class to use
 class InputError(ValueError):
@@ -83,7 +88,7 @@ def set_instrument_flags(instrument='lmi'):
                      'prefix': '20',
                      'get_bias': True,
                      'get_flats': False,
-                     'check_binning': False}
+                     'check_binning': True}
                      # Other flags...
     else:
         raise InputError(f"Developer: Add {instrument} to utils.py")

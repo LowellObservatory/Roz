@@ -80,5 +80,6 @@ config/*.conf
 # New File Template
 newPythonFileTemplate.py
 
-# For now, at least, random CSV files I create as part of building/testing
+# And CSV or HTML files created as part of the running
 *.csv
+*.html
