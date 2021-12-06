@@ -33,10 +33,11 @@ from bs4 import BeautifulSoup
 import keyring
 
 # Internal Imports
+from analyze_alert import send_alert, ConfluenceAlert
 from utils import LMI_FILTERS
 
 
-def update_filter_characterization(delete_existing=True):
+def update_filter_characterization(delete_existing=False):
     """update_filter_characterization Update the Confluence Page
 
     This routine updates the Confluence page for LMI Filter Characterization
@@ -54,25 +55,26 @@ def update_filter_characterization(delete_existing=True):
     space = 'LDTOI'
     title = 'LMI Filter Characterization 2'
 
-    # If it doesn't already exist, create it, then get the page_id
+    # If the page doesn't already exist, send alert
     if not confluence.page_exists(space, title):
-        body = "New Page!!!  You must add the appropriate macros to read the attached file."
-        confluence.create_page(space, title, body, parent_id=55214493)
+        send_alert(ConfluenceAlert)
+        return
+    # Get the `page_id` needed for intracting with it
     page_id = confluence.get_page_id(space, title)
 
-    # Create the updated version of the CSV table
+    # Update the HTML table attached to the Confluence page
     filename = 'lmi_filter_table.html'
-
-    success = create_lmi_filter_table(filename)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
         confluence.delete_attachment(page_id, filename)
 
+    success = update_lmi_filter_table(filename)
+
     # Attach the HTML file to the Confluence page
     confluence.attach_file(filename, name=filename, content_type='text/html',
-                           page_id=page_id, comment='HTML Table')
+                           page_id=page_id, comment='LMI Filter Information Table')
 
 
 def setup_confluence():
@@ -97,7 +99,7 @@ def setup_confluence():
                        password=keyring.get_password('confluence', 'passwd') )
 
 
-def create_lmi_filter_table(filename):
+def update_lmi_filter_table(filename):
     """create_lmi_filter_table Create the LMI Filter Information Table
 
     Creates the HTML table of LMI filter information for upload to Confluence.
@@ -164,6 +166,7 @@ def create_lmi_filter_table(filename):
     itdate = soup.new_tag('i')                # Italics, for the fun of it
     itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
     table_tag.insert_before(itdate)
+    print(timestr)
 
     # Add the section headings for the different filter groups:
     for i,row in enumerate(soup.find_all('tr')):
@@ -180,6 +183,38 @@ def create_lmi_filter_table(filename):
 
     # Return value -- 0 is success!
     return 0
+
+
+def lmi_filter_table(xml_table='lmi_filter_table.xml'):
+    """lmi_filter_table Create the static portions of the LMI Filter Table
+
+    This function reads in the XML information for the static portion of the
+    LMI Filter Table, including the section headers (and locations).
+
+    The previous version of this function had the information hard-coded,
+    which would have been a pain to add new filters to.
+
+    Parameters
+    ----------
+    xml_table : `str`, optional
+        Filename of the XML file containing the LMI Filter Information
+
+    Returns
+    -------
+    filter_table : `astropy.table.Table`
+        The basic portions of the AstroPy table for LMI Filter Information
+    section_head : `astropy.table.Table`
+        The section headings for the HTML table
+    """
+    # Read in the XML table.
+    # TODO: We need to deal with file locations once we have that structure.
+    votable = parse(xml_table)
+
+    # The VOTable has both the LMI Filter Info and the section heads for the HTML
+    filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
+    section_head = votable.get_table_by_index(1).to_table()
+
+    return filter_table, section_head
 
 
 def add_cutin_head(soup, ncols, text, extra=''):
@@ -220,38 +255,6 @@ def add_cutin_head(soup, ncols, text, extra=''):
     newrow.append(newcol)
     # All done
     return newrow
-
-
-def lmi_filter_table(xml_table='lmi_filter_table.xml'):
-    """lmi_filter_table Create the static portions of the LMI Filter Table
-
-    This function reads in the XML information for the static portion of the
-    LMI Filter Table, including the section headers (and locations).
-
-    The previous version of this function had the information hard-coded,
-    which would have been a pain to add new filters to.
-
-    Parameters
-    ----------
-    xml_table : `str`, optional
-        Filename of the XML file containing the LMI Filter Information
-
-    Returns
-    -------
-    filter_table : `astropy.table.Table`
-        The basic portions of the AstroPy table for LMI Filter Information
-    section_head : `astropy.table.Table`
-        The section headings for the HTML table
-    """
-    # Read in the XML table.
-    # TODO: We need to deal with file locations once we have that structure.
-    votable = parse(xml_table)
-
-    # The VOTable has both the LMI Filter Info and the section heads for the HTML
-    filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
-    section_head = votable.get_table_by_index(1).to_table()
-
-    return filter_table, section_head
 
 
 #=============================================================================#

@@ -33,9 +33,15 @@ import numpy as np
 warnings.simplefilter('ignore', AstropyWarning)
 
 
-# Create an error class to use
+# Create various error classes to use
 class InputError(ValueError):
     """InputError Locally defined error that inherits ValueError
+    """
+
+
+# Create various alert classes to use
+class ConfluenceAlert():
+    """ConfluenceAlert Caused by an issue connecting with Confluence
     """
 
 
@@ -108,7 +114,7 @@ def validate_flat_table(flat_meta, lmi_filt):
     return subtable
 
 
-def send_alert():
+def send_alert(alertclass):
     """send_alert Send out an alert for "funny" frames
 
     The medium for alerts needs to be decided -- should it be via email from

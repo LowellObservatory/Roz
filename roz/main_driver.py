@@ -53,7 +53,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
         Database object to be fed into... something?
     """
     # Parse command-line arguments, if called that way
-    if args is not None:
+    if args:
         if len(args) == 1:
             print("ERROR: Must specify a directory to process.")
             return None

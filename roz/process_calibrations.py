@@ -38,9 +38,14 @@ from tqdm import tqdm
 # Internal Imports
 from .analyze_alert import validate_bias_table, validate_flat_table
 from .database_manager import CalibrationDatabase
-from .utils import compute_human_readable_surface, compute_flatness, \
-                   fit_quadric_surface, trim_oscan, LMI_FILTERS, FMS
-
+from .utils import (
+    compute_human_readable_surface,
+    compute_flatness,
+    fit_quadric_surface,
+    trim_oscan,
+    LMI_FILTERS,
+    FMS
+)
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
