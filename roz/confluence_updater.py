@@ -36,7 +36,7 @@ from ligmos import utils as lig_utils, workers as lig_workers
 
 # Internal Imports
 from .send_alerts import send_alert, ConfluenceAlert
-from .utils import LMI_FILTERS, ROZ_DATA
+from .utils import HTML_TABLE_FN, LMI_FILTERS, ROZ_CONFIG, ROZ_DATA, XML_TABLE
 
 
 def update_filter_characterization(database, delete_existing=False):
@@ -65,18 +65,19 @@ def update_filter_characterization(database, delete_existing=False):
     page_id = confluence.get_page_id(space, title)
 
     # Update the HTML table attached to the Confluence page
-    filename = ROZ_DATA.joinpath(just_file := 'lmi_filter_table.html')
+    local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
-        confluence.delete_attachment(page_id, filename)
+        confluence.delete_attachment(page_id, HTML_TABLE_FN)
 
-    success = update_lmi_filter_table(filename)
+    success = update_lmi_filter_table(local_filename)
 
     # Attach the HTML file to the Confluence page
-    confluence.attach_file(filename, name=just_file, content_type='text/html',
-                           page_id=page_id, comment='LMI Filter Information Table')
+    confluence.attach_file(local_filename, name=HTML_TABLE_FN, page_id=page_id,
+                           content_type='text/html',
+                           comment='LMI Filter Information Table')
 
 
 def setup_confluence():
@@ -140,10 +141,11 @@ def update_lmi_filter_table(filename):
     timeto20k = []
     nominallink = []
     lastlink = []
-    for i in range(1,len(LMI_FILTERS)+7):
+    for i in range(len(LMI_FILTERS)):
+        j = i+1
         lastflat.append('2022-01-01')
-        countrate.append(i*i)
-        timeto20k.append(20000/(i*i))
+        countrate.append(j*j)
+        timeto20k.append(20000/(j*j))
         nominallink.append('Click Here')
         lastlink.append('Click Here')
     lmi_filt['Nominal Image'] = nominallink
@@ -196,7 +198,7 @@ def update_lmi_filter_table(filename):
     return 0
 
 
-def lmi_filter_table(xml_table='lmi_filter_table.xml'):
+def lmi_filter_table(xml_table=XML_TABLE):
     """lmi_filter_table Create the static portions of the LMI Filter Table
 
     This function reads in the XML information for the static portion of the
@@ -208,7 +210,8 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
     Parameters
     ----------
     xml_table : `str`, optional
-        Filename of the XML file containing the LMI Filter Information
+        Path + filename of the XML file containing the LMI Filter Information
+        [Default: utils.XML_TABLE]
 
     Returns
     -------
@@ -218,7 +221,7 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
         The section headings for the HTML table
     """
     # Read in the XML table.
-    votable = vo_parse(ROZ_DATA.joinpath(xml_table))
+    votable = vo_parse(xml_table)
 
     # The VOTable has both the LMI Filter Info and the section heads for the HTML
     filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)

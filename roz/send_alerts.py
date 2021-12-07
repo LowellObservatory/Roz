@@ -48,7 +48,7 @@ class BadDirectoryAlert(_BaseAlert):
     """ConfluenceAlert Caused by a bad directory used in the call
     """
     def __init__(self):
-        _BaseAlert.__init__(self)
+        super().__init__()
         self.type = 'Bad Directory'
 
 
@@ -56,7 +56,7 @@ class CantRunAlert(_BaseAlert):
     """ConfluenceAlert Caused by the code not being able to run
     """
     def __init__(self):
-        _BaseAlert.__init__(self)
+        super().__init__()
         self.type = 'Cannot Run on Anything'
 
 
@@ -64,7 +64,7 @@ class ConfluenceAlert(_BaseAlert):
     """ConfluenceAlert Caused by an issue connecting with Confluence
     """
     def __init__(self):
-        _BaseAlert.__init__(self)
+        super().__init__()
         self.type = 'Confluence Issue'
 
 

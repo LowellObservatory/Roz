@@ -69,7 +69,7 @@ def run_lmi_cals(directory, mem_limit=None):
 
         # Print out a nice status message for those interested
         human_bin = binning.replace(' ','x')
-        print(f"Processing the database for {human_bin} LMI binning.")
+        print(f"Processing the database for {human_bin} LMI binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
         bias_meta, bias_frame = process_bias(bias_cl, binning=binning,
@@ -129,7 +129,7 @@ def run_deveny_cals(directory, mem_limit=None):
 
         # Print out a nice status message for those interested
         human_bin = binning.replace(' ','x')
-        print(f"Processing the database for {human_bin} LMI binning.")
+        print(f"Processing the database for {human_bin} DeVeny binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
         bias_meta = process_bias(bias_cl, binning=bin_list[0],

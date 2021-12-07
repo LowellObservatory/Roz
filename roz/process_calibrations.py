@@ -96,7 +96,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     if binning is None:
         raise InputError('Binning not set.')
     if debug:
-        print(f"Combining bias frames with binning {binning}...")
+        print('Combining bias frames...')
 
     # Double-check that we're combining bias frames of identical binning
     bias_cl = bias_cl.filter(ccdsum=binning)
@@ -167,7 +167,7 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     if binning is None:
         raise InputError('Binning not set.')
     if debug:
-        print(f"Processing flat frames with binning {binning}...")
+        print('Processing flat frames...')
 
     # Show progress bar for processing flat frames
     progress_bar = tqdm(total=len(flat_cl.files), unit='frame',

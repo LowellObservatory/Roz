@@ -21,27 +21,26 @@ This module primarily trades in... utility?
 # Built-In Libraries
 
 # 3rd Party Libraries
+from astropy.io.votable import parse
 from astropy.modeling import models
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
-from importlib_resources import files
+from importlib_resources import files as pkg_files
 import numpy as np
 
 # Internal Imports
 
 # Data & config directories
-ROZ_CONFIG = files('Roz.config')
-ROZ_DATA = files('Roz.data')
+ROZ_CONFIG = pkg_files('Roz.config')
+ROZ_DATA = pkg_files('Roz.data')
+XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
+HTML_TABLE_FN = 'lmi_filter_table.html'
 
 # List of supported instruments
 INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?
 
 # List of LMI Filters
-LMI_FILTERS = ['U', 'B', 'V', 'R', 'I',
-               'SDSS-U', 'SDSS-G', 'SDSS-R', 'SDSS-I', 'SDSS-Z',
-               'VR', 'YISH', 'OIII', 'HALPHAON', 'HALPHAOFF',
-               'WR-WC', 'WR-WN', 'WR-CT',
-               'UC','BC','GC','RC','C2','C3','CN','CO+','H2O+','OH','NH']
+LMI_FILTERS = parse(XML_TABLE).get_first_table().to_table()['FITS_Header_Value']
 
 # Fold Mirror Names
 FMS = ['A', 'B', 'C', 'D']
