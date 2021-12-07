@@ -35,6 +35,7 @@ ROZ_CONFIG = pkg_files('Roz.config')
 ROZ_DATA = pkg_files('Roz.data')
 XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
 HTML_TABLE_FN = 'lmi_filter_table.html'
+LMI_DYNTABLE = ROZ_DATA.joinpath('lmi_dynamic_filter.fits')
 
 # List of supported instruments
 INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?

@@ -133,7 +133,7 @@ class CalibrationDatabase():
                 #self.idb.singleCommit(packet, table=self.db_set.tablename)
 
 
-# Non-Class Functions =======================================================#
+# Non-Class Functions ========================================================#
 def neatly_package(table_row, colnames, measure='Instrument_Data'):
     """neatly_package Carefully curate and package the InfluxDB packet
 
