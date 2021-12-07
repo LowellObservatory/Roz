@@ -30,7 +30,9 @@ from astropy.io.votable import parse as vo_parse
 from astropy.table import Column
 from atlassian import Confluence
 from bs4 import BeautifulSoup
-import keyring
+
+# Lowell Libraries
+from ligmos import utils as lig_utils, workers as lig_workers
 
 # Internal Imports
 from .send_alerts import send_alert, ConfluenceAlert
@@ -50,15 +52,10 @@ def update_filter_characterization(database, delete_existing=False):
         Delete the existing table on Confluence before upoading the new one?
         [Defualt: True]  NOTE: Once in production, maybe turn this to False?
     """
-    if database:
-        print("We have the database being passed to Confluence!")
-
-    # Instantiate the Confluence class
-    confluence = setup_confluence()
+    # Instantiate the Confluence communication class and read in SPACE and TITLE
+    confluence, space, title = setup_confluence()
 
     # This the page we want to update -- we'll request the page_id for ease
-    space = 'LDTOI'
-    title = 'LMI Filter Characterization 2'
 
     # If the page doesn't already exist, send alert
     if not confluence.page_exists(space, title):
@@ -85,23 +82,32 @@ def update_filter_characterization(database, delete_existing=False):
 def setup_confluence():
     """setup_confluence Set up the Confluence class instance
 
-    Uses `keyring` to hold API credentials for Confluence, including the URL.
-
-    As such, the appropriate values for `url`, `uname`, and `passwd` need to
-    be loaded into the keyring `service` = `confluence` on the machine running
-    this code.
-
-    The python package `keyring` includes a CLI for adding this information:
-        `keyring set confluence [url,uname,passwd]`
+    Reads in the confluence.conf configuration file, which contains the URL,
+    username, and password.  Also contained in the configuration file are
+    the Confluence space and page title into which the updated table will be
+    placed.
 
     Returns
     -------
-    `atlassian.Confluence`
+    confluence : `atlassian.Confluence`
         Confluence class, initialized with credentials
+    space : `str`
+        The Confluence space containing the LMI Filter Information page
+    title : `str`
+        The page title for the LMI Filter Information
     """
-    return Confluence( url=keyring.get_password('confluence', 'url'),
-                       username=keyring.get_password('confluence', 'uname'),
-                       password=keyring.get_password('confluence', 'passwd') )
+    # Read in and parse the configuration file
+    setup = lig_utils.confparsers.rawParser(
+                                  ROZ_CONFIG.joinpath('confluence.conf'))
+    setup = lig_workers.confUtils.assignConf(
+                                  setup['confluenceSetup'],
+                                  lig_utils.classes.baseTarget,
+                                  backfill=True)
+    # Return
+    return Confluence( url=setup.host,
+                       username=setup.user,
+                       password=setup.password ), \
+           setup.space, setup.lmi_filter_title
 
 
 def update_lmi_filter_table(filename):
