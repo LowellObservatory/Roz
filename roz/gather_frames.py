@@ -139,7 +139,6 @@ def gather_cal_frames(directory, inst_flag):
         ImageFileCollection containing the FLAT frames from the directory
     `list`, optional (LMI only)
         List of binning setups found in this directory
-
     """
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(

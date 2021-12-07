@@ -26,10 +26,10 @@ import datetime as dt
 import numpy as np
 
 # Lowell Libraries
-from ligmos import utils, workers
+from ligmos import utils as lig_utils
+from ligmos import workers as lig_workers
 
 # Internal Imports
-from .confluence_updater import update_filter_characterization
 from .utils import LMI_FILTERS, ROZ_CONFIG
 
 
@@ -65,18 +65,17 @@ class CalibrationDatabase():
         # By doing it this way we ignore the 'enabled' key
         #    but we avoid contortions needed if using
         #    utils.confparsers.parseConfig, so it's worth it
-        self.db_set = utils.confparsers.rawParser(conf_file)
+        self.db_set = lig_utils.confparsers.rawParser(conf_file)
         print(self.db_set.keys())
-        self.db_set = workers.confUtils.assignConf(self.db_set['databaseSetup'],
-                                                   utils.classes.baseTarget,
-                                                   backfill=True)
+        self.db_set = lig_workers.confUtils.assignConf(
+                       self.db_set['databaseSetup'], 
+                       lig_utils.classes.baseTarget,
+                       backfill=True)
 
-        self.idb = utils.database.influxobj(tablename=self.db_set.tablename,
-                                            host=self.db_set.host,
-                                            port=self.db_set.port,
-                                            user=self.db_set.user,
-                                            pw=self.db_set.password,
-                                            connect=True)
+        self.idb = lig_utils.database.influxobj(
+                    tablename=self.db_set.tablename, host=self.db_set.host,
+                    port=self.db_set.port, user=self.db_set.user,
+                    pw=self.db_set.password, connect=True)
 
     @property
     def bias_temp(self):
@@ -168,17 +167,8 @@ class CalibrationDatabase():
                     'cropborder': row_as_dict.pop('cropsize')}
 
         # Create the packet for upload to the InfluxDB
-        packet = utils.packetizer.makeInfluxPacket(
-                 meas=[measure], ts=timestamp, fields=row_as_dict,
-                 tags=tags, debug=False)
+        packet = lig_utils.packetizer.makeInfluxPacket(
+                  meas=[measure], ts=timestamp, fields=row_as_dict,
+                  tags=tags, debug=False)
 
         return packet
-
-    def update_filter_table(self):
-        """update_filter_table Call the Confluence updating code
-
-        Seems a little funny to make this a class method instead of just
-        calling update_filter_characterization() on the database object in
-        the main routine, but this looks cleaner in the main routine.
-        """
-        update_filter_characterization(self)

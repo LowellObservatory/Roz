@@ -36,7 +36,6 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from .analyze_alert import validate_bias_table, validate_flat_table
 from .database_manager import CalibrationDatabase
 from .utils import (
     compute_human_readable_surface,
@@ -57,7 +56,8 @@ class InputError(ValueError):
     """
 
 
-def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
+def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9, 
+                 produce_combined=True):
     """process_bias Process and combine available bias frames
 
     [extended_summary]
@@ -72,13 +72,16 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
         Print debugging statements? [Default: True]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    produce_combined : `bool`, optional
+        Produce and return a combined bais image?  [Default: True]
 
     Returns
     -------
     `astropy.table.Table`
         A table containing information about the bias frames for analysis
     `astropy.nddata.CCDData`
-        The combined, overscan-subtracted bias frame
+        The combined, overscan-subtracted bias frame (if 
+        `produce_combined == True`)
 
     Raises
     ------
@@ -122,15 +125,16 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9):
 
     progress_bar.close()
 
-    if debug:
-        print("Doing median combine of biases now...")
-
     # Convert the list of dicts into a Table and return, plus combined bias
-    return Table(metadata), \
-        ccdp.combine(bias_ccds, method='median', sigma_clip=True,
-                     sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
-                     sigma_clip_func=np.ma.median, sigma_clip_dev_func=mad_std,
-                     mem_limit=mem_limit)
+    if produce_combined:
+        if debug:
+            print("Doing median combine of biases now...")
+        return Table(metadata), \
+            ccdp.combine(bias_ccds, method='median', sigma_clip=True,
+                        sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
+                        sigma_clip_func=np.ma.median, mem_limit=mem_limit,
+                        sigma_clip_dev_func=mad_std)
+    return Table(metadata)
 
 
 def process_flats(flat_cl, bias_frame, binning=None, debug=True):
@@ -296,3 +300,72 @@ def produce_database_object(bias_meta, flat_meta, inst_flags):
 
     # Return the filled database
     return database
+
+
+def validate_bias_table(bias_meta):
+    """validate_bias_table Analyze and validate the bias frame metadata table
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    bias_meta : `astropy.table.Table`
+        A table containing information about the bias frames for analysis
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The, um, validated table?  This may change.
+    """
+    # For now, just print some stats and return the table.
+    print("\nIn validate_bias_table():")
+    print(np.mean(bias_meta['crop_avg']), np.median(bias_meta['crop_med']),
+          np.mean(bias_meta['crop_std']))
+
+    # Add logic checks for header datatypes (edge cases)
+
+    return bias_meta
+
+
+def validate_flat_table(flat_meta, lmi_filt):
+    """validate_flat_table Analyze and validate the flat frame metadata table
+
+    Separates the wheat from the chaff -- returning a subtable for the
+    specified filter, or None.
+
+    Parameters
+    ----------
+    flat_meta : `astropy.table.Table`
+        Table containing the flat frame metadata
+    lmi_filt : `str`
+        LMI filter to validate
+
+    Returns
+    -------
+    `astropy.table.Table` or `None`
+        If the `lmi_filt` was used in this set, return the subtable of
+        `flat_meta` containing that filter.  Otherwise, return `None`.
+    """
+    # Find the rows of the table corresponding to this filter, return if 0
+    idx = np.where(flat_meta['filter'] == lmi_filt)
+    if len(idx[0]) == 0:
+        return None
+
+    # For ease, pull these rows into a subtable
+    subtable = flat_meta[idx]
+
+    # Make sure 'flats' have a reasonable flat countrate, or total counts
+    #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
+    #  exptime).
+
+    # Do something...
+    print("\nIn validate_flat_table():")
+    print(lmi_filt)
+    subtable.pprint()
+    print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
+
+    # Find the mean quadric surface for this set of flats
+    # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
+    # print(quadsurf)
+
+    return subtable

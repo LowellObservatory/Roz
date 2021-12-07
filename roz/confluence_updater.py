@@ -26,7 +26,7 @@ This module primarily trades in internal databse objects
 import datetime as dt
 
 # 3rd Party Libraries
-from astropy.io.votable import parse
+from astropy.io.votable import parse as vo_parse
 from astropy.table import Column
 from atlassian import Confluence
 from bs4 import BeautifulSoup
@@ -212,7 +212,7 @@ def lmi_filter_table(xml_table='lmi_filter_table.xml'):
         The section headings for the HTML table
     """
     # Read in the XML table.
-    votable = parse(ROZ_DATA.joinpath(xml_table))
+    votable = vo_parse(ROZ_DATA.joinpath(xml_table))
 
     # The VOTable has both the LMI Filter Info and the section heads for the HTML
     filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)

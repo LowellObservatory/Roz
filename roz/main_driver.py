@@ -25,6 +25,7 @@ import os
 
 # Internal Imports
 from .analyze_alert import send_alert, CantRunAlert
+from .confluence_updater import update_filter_characterization
 from .gather_frames import divine_instrument, gather_cal_frames
 from .process_calibrations import (
     process_bias,
@@ -37,20 +38,25 @@ from .utils import set_instrument_flags
 def run_lmi_cals(directory, mem_limit=None):
     """run_lmi_cals Run Roz on the LMI Calibration frames
 
-    Collect the LMI calibration frames, produce statistics, and return a
-    `CalibrationDatabase` object for this one directory.
+    Collect the LMI calibration frames, produce statistics, and return a list
+    of `CalibrationDatabase` objects for each binning scheme in this one
+    directory.
+
+    This is the main driver routine for LMI frames, and will call all of the
+    various other modules, as needed.  As such, there should be little need
+    for cross-calling between the other modules in this package.
 
     Parameters
     ----------
-    directory : `str` or `pathlib.Path`, optional
-        The directory to operate on [Default: None]
+    directory : `str` or `pathlib.Path`
+        The directory containing LMI frames to analyze.
     mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+        Memory limit for the image combination routine.  [Default: None]
 
     Returns
     -------
-    [type]
-        [description]
+    `list` of `roz.database_manager.CalibrationDatabase`
+        A list of the Calibration Database objects for each binning scheme
     """
     inst_flags = set_instrument_flags('lmi')
 
@@ -67,7 +73,7 @@ def run_lmi_cals(directory, mem_limit=None):
 
         # Process the BIAS frames to produce a reduced frame and statistics
         bias_meta, bias_frame = process_bias(bias_cl, binning=binning,
-                                                    mem_limit=mem_limit)
+                                             mem_limit=mem_limit)
 
         # Process the FLAT frames to produce statistics
         flat_meta = process_flats(flat_cl, bias_frame, binning=binning)
@@ -79,51 +85,76 @@ def run_lmi_cals(directory, mem_limit=None):
         database.write_to_influxdb()
 
         # Update the LMI Filter Information page on Confluence for 2x2 binning
-        if binning == '2 2':
-            database.update_filter_table()
+        if human_bin == '2x2':
+            update_filter_characterization(database)
 
         # Add the database to a dictionary containing the different binnings
         db_list[human_bin] = database
 
-    # Return the database object to the calling function
+    # Return the list of database objects to the calling function
     return db_list
 
 
 def run_deveny_cals(directory, mem_limit=None):
-    """run_lmi_cals Run Roz on the LMI Calibration frames
+    """run_lmi_cals Run Roz on the DeVeny Calibration frames
 
-    Collect the LMI calibration frames, produce statistics, and return a
-    `CalibrationDatabase` object for this one directory.
+    Collect the DeVeny calibration frames, produce statistics, and return a
+    list of `CalibrationDatabase` objects for each binning scheme in this one
+    directory.
+
+    This is the main driver routine for DeVeny frames, and will call all of
+    the various other modules, as needed.  As such, there should be little
+    need for cross-calling between the other modules in this package.
 
     Parameters
     ----------
-    directory : `str` or `pathlib.Path`, optional
-        The directory to operate on [Default: None]
+    directory : `str` or `pathlib.Path`
+        The directory containing DeVeny frames to analyze.
     mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+        Memory limit for the image combination routine.  [Default: None]
 
     Returns
     -------
-    [type]
-        [description]
+    `list` of `roz.database_manager.CalibrationDatabase`
+        A list of the Calibration Database objects for each binning scheme
     """
-    # TODO: Deal with multiple binning schemes for DeVeny
-
     inst_flags = set_instrument_flags('deveny')
 
     # Collect the BIAS frames for this directory
     bias_cl, bin_list = gather_cal_frames(directory, inst_flags)
 
-    # Process the BIAS frames to produce a reduced frame and statistics
-    bias_meta, bias_frame = process_bias(bias_cl, binning=bin_list[0],
-                                                mem_limit=mem_limit)
+    db_list = {}
+    # Loop through the binning schemes used
+    for binning in bin_list:
 
-    return produce_database_object(bias_meta, bias_meta, inst_flags)
+        # Print out a nice status message for those interested
+        human_bin = binning.replace(' ','x')
+        print(f"Processing the database for {human_bin} LMI binning.")
+
+        # Process the BIAS frames to produce a reduced frame and statistics
+        bias_meta = process_bias(bias_cl, binning=bin_list[0],
+                                 mem_limit=mem_limit, produce_combined=False)
+
+        # Take the metadata from the BAIS frames and produce DATABASE
+        database = produce_database_object(bias_meta, bias_meta, inst_flags)
+
+        # Add the database to a dictionary containing the different binnings
+        db_list[human_bin] = database
+
+    # Return the list of database objects to the calling function
+    return db_list
 
 
 #=============================================================================#
 def main(args=None, directory=None, mem_limit=8.192e9):
-    """main This is the main body function
+    """main This is the main function.
+
+    This function takes the directory input, determines which instrument is
+    in questions, and calls the appropriate run_*_cals() function.
+
+    In the future, if Roz is employed to analyze more than calibration frames,
+    other argmuments to this function will be needed, and other driving
+    routines will need to be added above.
 
     Parameters
     ----------
@@ -137,8 +168,8 @@ def main(args=None, directory=None, mem_limit=8.192e9):
 
     Returns
     -------
-    `database_manager.CalibrationDatabase`
-        Database object to be fed into... something?
+    `list` of `roz.database_manager.CalibrationDatabase`
+        A list of the Calibration Database objects for each binning scheme
     """
     # Parse command-line arguments, if called that way
     if args:
@@ -162,10 +193,11 @@ def main(args=None, directory=None, mem_limit=8.192e9):
         db_list = run_deveny_cals(directory, mem_limit=mem_limit)
     else:
         send_alert(CantRunAlert)
-        db_list = {}
+        db_list = [{}]
 
-    # Return the Database
+    # Return the Database List
     return db_list
+
 
 if __name__ == "__main__":
     import sys

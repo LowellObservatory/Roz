@@ -30,8 +30,8 @@ import numpy as np
 # Internal Imports
 
 # Data & config directories
-ROZ_DATA = files('Roz.data')
 ROZ_CONFIG = files('Roz.config')
+ROZ_DATA = files('Roz.data')
 
 # List of supported instruments
 INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?
@@ -55,7 +55,11 @@ class InputError(ValueError):
 def set_instrument_flags(instrument='lmi'):
     """set_instrument_flags Set the global instrument flags for processing
 
-    [extended_summary]
+    These instrument-specific flags are used throughout the code.  As more
+    instruments are added to Roz, this function will grow commensurately.
+
+    Alternatively, this information could be placed in an XML VOTABLE that
+    could simply be read in -- to eliminiate one more hard-coded things.
 
     Parameters
     ----------
