@@ -60,7 +60,7 @@ class CalibrationDatabase():
         self.flat = {} if self.flags['get_flats'] else None
 
         # Read in the InfluxDB config file
-        conf_file = ROZ_CONFIG.joinpath('/dbconfig.conf')
+        conf_file = ROZ_CONFIG.joinpath('dbconfig.conf')
 
         # By doing it this way we ignore the 'enabled' key
         #    but we avoid contortions needed if using
@@ -68,7 +68,7 @@ class CalibrationDatabase():
         self.db_set = lig_utils.confparsers.rawParser(conf_file)
         print(self.db_set.keys())
         self.db_set = lig_workers.confUtils.assignConf(
-                       self.db_set['databaseSetup'], 
+                       self.db_set['databaseSetup'],
                        lig_utils.classes.baseTarget,
                        backfill=True)
 

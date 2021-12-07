@@ -33,7 +33,7 @@ from bs4 import BeautifulSoup
 import keyring
 
 # Internal Imports
-from .analyze_alert import send_alert, ConfluenceAlert
+from .send_alerts import send_alert, ConfluenceAlert
 from .utils import LMI_FILTERS, ROZ_DATA
 
 

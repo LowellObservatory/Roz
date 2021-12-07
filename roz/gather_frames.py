@@ -34,7 +34,7 @@ import ccdproc as ccdp
 import numpy as np
 
 # Internal Imports
-from .analyze_alert import send_alert, BadDirectoryAlert
+from .send_alerts import send_alert, BadDirectoryAlert
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)

@@ -26,7 +26,6 @@ from astropy.utils.exceptions import AstropyWarning
 
 # Internal Imports
 
-
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
 

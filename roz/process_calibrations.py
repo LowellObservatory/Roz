@@ -56,7 +56,7 @@ class InputError(ValueError):
     """
 
 
-def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9, 
+def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
                  produce_combined=True):
     """process_bias Process and combine available bias frames
 
@@ -80,7 +80,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     `astropy.table.Table`
         A table containing information about the bias frames for analysis
     `astropy.nddata.CCDData`
-        The combined, overscan-subtracted bias frame (if 
+        The combined, overscan-subtracted bias frame (if
         `produce_combined == True`)
 
     Raises

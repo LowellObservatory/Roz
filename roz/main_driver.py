@@ -24,7 +24,6 @@ import os
 # 3rd Party Libraries
 
 # Internal Imports
-from .analyze_alert import send_alert, CantRunAlert
 from .confluence_updater import update_filter_characterization
 from .gather_frames import divine_instrument, gather_cal_frames
 from .process_calibrations import (
@@ -32,6 +31,7 @@ from .process_calibrations import (
     process_flats,
     produce_database_object
 )
+from .send_alerts import send_alert, CantRunAlert
 from .utils import set_instrument_flags
 
 

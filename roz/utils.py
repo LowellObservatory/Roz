@@ -59,7 +59,7 @@ def set_instrument_flags(instrument='lmi'):
     instruments are added to Roz, this function will grow commensurately.
 
     Alternatively, this information could be placed in an XML VOTABLE that
-    could simply be read in -- to eliminiate one more hard-coded things.
+    could simply be read in -- to eliminiate one more hard-coded thing.
 
     Parameters
     ----------
