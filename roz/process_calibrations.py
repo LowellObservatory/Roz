@@ -24,6 +24,7 @@ dictionaries (`dict`).
 """
 
 # Built-In Libraries
+import os
 import warnings
 
 # 3rd Party Libraries
@@ -96,7 +97,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     if binning is None:
         raise InputError('Binning not set.')
     if debug:
-        print('Combining bias frames...')
+        print('Processing bias frames...')
 
     # Double-check that we're combining bias frames of identical binning
     bias_cl = bias_cl.filter(ccdsum=binning)
@@ -107,11 +108,12 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
 
     # Loop through files
     bias_ccds, metadata, coord_arrays = [], [], None
-    for ccd in bias_cl.ccds(bitpix=16):
+    for ccd, fname in bias_cl.ccds(bitpix=16, return_fname=True):
 
         hdr = ccd.header
         # For BIAS set header FILTERS keyword to "DARK"
         hdr['FILTERS'] = 'DARK'
+        hdr['SHORT_FN'] = fname.split(os.sep)[-1]
         data = ccd.data[get_slice(hdr['TRIMSEC'], fits_convention=True)]
 
         # Statistics, statistics, statistics!!!!
@@ -169,15 +171,19 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     if debug:
         print('Processing flat frames...')
 
+    # Double-check that we're processing flat frames of identical binning
+    flat_cl = flat_cl.filter(ccdsum=binning)
+
     # Show progress bar for processing flat frames
     progress_bar = tqdm(total=len(flat_cl.files), unit='frame',
                         unit_scale=False, colour='yellow')
 
     # Loop through flat frames, subtracting bias and gathering statistics
     metadata, coord_arrays = [], None
-    for ccd in flat_cl.ccds(ccdsum=binning, bitpix=16):
+    for ccd, fname in flat_cl.ccds(bitpix=16, return_fname=True):
 
         hdr = ccd.header
+        hdr['SHORT_FN'] = fname.split(os.sep)[-1]
         # Fit & subtract the overscan section, trim the image, subtract bias
         ccd = trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
         ccd = ccdp.subtract_bias(ccd, bias_frame)
@@ -235,7 +241,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     allslice = np.s_[:,:]
     cropslice = np.s_[crop:-crop, crop:-crop]
     human_readable = compute_human_readable_surface(quadsurf)
-    _ = human_readable.pop('typ')
+    human_readable.pop('typ')
     shape = (hdr['naxis1'], hdr['naxis2'])
 
     # TODO: Add error checking or type-forcing here to keep InfluxDB happy
@@ -243,6 +249,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
                 'instrument': f"{hdr['INSTRUME'].strip()}",
                 'frametyp': f"{hdr['OBSTYPE'].strip()}",
                 'obserno': int(hdr['OBSERNO']),
+                'filename': f"{hdr['SHORT_FN'].strip()}",
                 'binning': 'x'.join(hdr['CCDSUM'].split()),
                 'filter': f"{hdr['FILTERS'].strip()}",
                 'numamp': int(hdr['NUMAMP']),

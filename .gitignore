@@ -80,6 +80,7 @@ config/*.conf
 # New File Template
 newPythonFileTemplate.py
 
-# And CSV or HTML files created as part of the running
+# And CSV or HTML or FITS files created as part of the running
 *.csv
 *.html
+*.fits

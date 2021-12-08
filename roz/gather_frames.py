@@ -156,9 +156,10 @@ def gather_cal_frames(directory, inst_flag):
         return_object.append(bias_cl)
 
     if inst_flag['get_flats']:
-        # Gather any FLAT frames (OBSTYPE=`SKY FLAT` or OBSTYPE=`DOME FLAT`)
-        flat_cl = icl.filter(obstype='[a-z]+ flat', regex_match=True)
-        return_object.append(flat_cl)
+        # Gather DOME FLAT frames -- SKY FLAT not supported at this time
+        # TODO: Figure out how to add support for SKY FLAT
+        domeflat_cl = icl.filter(obstype='dome flat')
+        return_object.append(domeflat_cl)
 
     if inst_flag['check_binning']:
         # Get the complete list of binnings used -- but clear out `None` entries

@@ -44,7 +44,7 @@ def run_lmi_cals(directory, mem_limit=None):
 
     This is the main driver routine for LMI frames, and will call all of the
     various other modules, as needed.  As such, there should be little need
-    for cross-calling between the other modules in this package.
+    for cross-calling between the other non-utility modules in this package.
 
     Parameters
     ----------

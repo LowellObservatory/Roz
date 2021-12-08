@@ -25,12 +25,14 @@ This module primarily trades in internal databse objects
 
 # Built-In Libraries
 import datetime as dt
+import os
 
 # 3rd Party Libraries
 from astropy.io.votable import parse as vo_parse
-from astropy.table import Column
+from astropy.table import hstack, Column, Table
 from atlassian import Confluence
 from bs4 import BeautifulSoup
+import numpy as np
 
 # Lowell Libraries
 from ligmos import utils as lig_utils, workers as lig_workers
@@ -38,6 +40,7 @@ from ligmos import utils as lig_utils, workers as lig_workers
 # Internal Imports
 from .send_alerts import send_alert, ConfluenceAlert
 from .utils import (
+    two_sigfig,
     HTML_TABLE_FN,
     LMI_FILTERS,
     LMI_DYNTABLE,
@@ -118,9 +121,7 @@ def update_lmi_filter_table(filename, database, debug=True):
 
     # Use the `database` to create the dynamic portions of the LMI table
     lmi_filt = construct_lmi_dynamic_table(lmi_filt, database)
-
     if debug:
-        # Print the table to screen for debugging
         lmi_filt.pprint()
 
     # Use the AstroPy Table `lmi_filt` to construct the HTML table
@@ -136,6 +137,11 @@ def construct_lmi_dynamic_table(lmi_filt, database):
     This function augments the static table (from the XML file) with dynamic
     information contained in the `database`.
 
+    It should be noted that the Count Rate and Exptime columns are generated
+    solely from the last night's flats.  So, if something funny was going on
+    for those frames, the quoted values for these columns will be incorrect
+    until closer-to-nominal flats are collected again.
+
     Parameters
     ----------
     lmi_filt : `astropy.table.Table`
@@ -149,24 +155,51 @@ def construct_lmi_dynamic_table(lmi_filt, database):
     `astropy.table.Table`
         The dynamically augmented LMI Filter Information Table
     """
-    # Add the fun stuff!  NOTE: It's just filler for the moment...
-    lastflat = []
-    countrate = []
-    timeto20k = []
-    nominallink = []
-    lastlink = []
-    for i in range(len(LMI_FILTERS)):
-        j = i+1
-        lastflat.append('2022-01-01')
-        countrate.append(j*j)
-        timeto20k.append(20000/(j*j))
-        nominallink.append('Click Here')
-        lastlink.append('Click Here')
-    lmi_filt['Nominal Image'] = nominallink
-    lmi_filt['Latest Image'] = lastlink
-    lmi_filt['UT Date of Last Flat'] = Column(lastflat)
-    lmi_filt['Count Rate (ADU/s)'] = Column(countrate, format='.0f')
-    lmi_filt['Exptime for 20k cts (s)'] = Column(timeto20k, format='.0f')
+    # Check if the dynamic FITS table is extant
+    if os.path.isfile(LMI_DYNTABLE):
+        # Read it in!
+        dyntable = Table.read(LMI_DYNTABLE)
+    else:
+        # Make a blank table
+        nrow = len(LMI_FILTERS)
+        col1 = Column(name='Latest Image', length=nrow, dtype='U128')
+        col2 = Column(name='UT Date of Last Flat', length=nrow, dtype='U128')
+        col3 = Column(name='Count Rate (ADU/s)', length=nrow, dtype=float)
+        col4 = Column(name='Exptime for 20k cts (s)', length=nrow, dtype=float)
+        dyntable = Table([col1, col2, col3, col4])
+
+   # Loop through the filters, updating the relevant columns of the table
+    for i,filt in enumerate(LMI_FILTERS):
+        # Skip filters not used in this data set
+        if database.flat[filt] is None:
+            continue
+
+        # But, only update if the DATOBS of this flat is LATER than what's
+        #  already in the table.  If OLD > NEW, skip.
+        new_date = database.flat[filt]['dateobs'][-1].split('T')[0]
+        if ( existing_date := dyntable['UT Date of Last Flat'][i].strip() ):
+            if dt.datetime.strptime(existing_date, "%Y-%m-%d") > \
+                dt.datetime.strptime(new_date, "%Y-%m-%d"):
+                continue
+
+        # Update the `dyntable` columns
+        dyntable['Latest Image'][i] = database.flat[filt]['filename'][-1]
+        dyntable['UT Date of Last Flat'][i] = new_date
+        dyntable['Count Rate (ADU/s)'][i] = \
+                    (count_rate := np.mean(database.flat[filt]['crop_med']))
+        dyntable['Exptime for 20k cts (s)'][i] = 20000. / count_rate
+
+    # Save the dynamic portion back to a FITS bintable for future use
+    dyntable.write(LMI_DYNTABLE, overwrite=True)
+
+    # Merge the static and dynamic portions together
+    lmi_filt = hstack([lmi_filt, dyntable])
+
+    # Add formatting constraints to the `lmi_filt` table columns
+    lmi_filt['Count Rate (ADU/s)'] = \
+                Column(lmi_filt['Count Rate (ADU/s)'], format=two_sigfig)
+    lmi_filt['Exptime for 20k cts (s)'] = \
+                Column(lmi_filt['Exptime for 20k cts (s)'], format=two_sigfig)
 
     return lmi_filt
 
@@ -254,16 +287,18 @@ def construct_lmi_html_table(lmi_filt, section_head, filename, debug=False):
     debug : `bool`, optional
         Print debugging statements? [Default: False]
     """
+    # Count the number of columns for use with the HTML table stuff below
+    ncols = len(lmi_filt.colnames)
+
     # CSS stuff to make the HTML table pretty -- yeah, keep this hard-coded
     cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
                       '   table {\n      width: 100%;\n'
                       '      border-collapse: collapse;\n   }\n   '
                       'td {\n      padding: 10px;\n   }\n   th {\n'
                       '      color: white;\n      background: #6D6E70;\n   }'}
-    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
 
-    # Get the number of columns for use with the table stuff below
-    ncols = len(lmi_filt.colnames)
+    # Use the AstroPy HTML functionality to get us most of the way there
+    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
 
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
@@ -272,10 +307,10 @@ def construct_lmi_html_table(lmi_filt, section_head, filename, debug=False):
 
     # Add the `creation date` line to the body of the HTML above the table
     timestr = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    table_tag = soup.find('table')
     itdate = soup.new_tag('i')                # Italics, for the fun of it
     itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
-    table_tag.insert_before(itdate)
+    # Place the italicized date string ahead of the table
+    soup.find('table').insert_before(itdate)
     if debug:
         print(f"HTML table timestamp: {timestr}")
 

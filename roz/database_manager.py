@@ -170,6 +170,9 @@ def neatly_package(table_row, colnames, measure='Instrument_Data'):
             'ampid': row_as_dict.pop('ampid'),
             'cropborder': row_as_dict.pop('cropsize')}
 
+    # Strip off the filename, as it can be reconstructed from obserno
+    row_as_dict.pop('filename')
+
     # Create the packet for upload to the InfluxDB
     packet = lig_utils.packetizer.makeInfluxPacket(
                 meas=[measure], ts=timestamp, fields=row_as_dict,

@@ -147,6 +147,43 @@ def trim_oscan(ccd, biassec, trimsec):
     return ccdp.trim_image(ccd[:, xt.start:xt.stop])
 
 
+def two_sigfig(value):
+    """two_sigfig String representation of a float at 2 significant figures
+
+    Simple utility function to return a 2-sigfig representation of a float.
+
+    Limitation: At present, at most 2 decimal places are shown.  Therefore,
+                this function will not work as expected for values < 0.1
+
+                If I can figure out dynamic format specifiers, this limitation
+                can be removed.
+
+                Also, zero is represented as '-----' rather than numerically.
+
+    Parameters
+    ----------
+    value : `float`
+        Input value to be stringified
+
+    Returns
+    -------
+    `str`
+        String representation of `value` at two significant figures
+    """
+    # If zero, return a 'N/A' type string
+    if value == 0:
+        return '-----'
+    # Compute the number of decimal places using the log10
+    decimal = -int(np.floor(np.log10(value))) + 1
+
+    # Choose the output specification
+    if decimal <= 0:
+        return f"{np.around(value, decimals=decimal):.0f}"
+    if decimal == 1:
+        return f"{np.around(value, decimals=decimal):.1f}"
+    return f"{np.around(value, decimals=decimal):.2f}"
+
+
 # Quadric Surface Functions ==================================================#
 def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     """fit_quadric_surface Fit a quadric surface to an image array

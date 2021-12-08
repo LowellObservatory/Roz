@@ -8,9 +8,10 @@
    <FIELD ID="FITS_Header_Value" arraysize="9" datatype="unicodeChar" name="FITS Header Value"/>
    <FIELD ID="Pattern_String" arraysize="6" datatype="unicodeChar" name="Pattern String"/>
    <FIELD ID="Focus_Offset___m_" arraysize="4" datatype="unicodeChar" name="Focus Offset (µm)"/>
-   <FIELD ID="Filter_Central_Wavelength____" arraysize="6" datatype="unicodeChar" name="Filter Central Wavelength (Å)"/>
+   <FIELD ID="Central_Wavelength____" arraysize="6" datatype="unicodeChar" name="Central Wavelength (Å)"/>
    <FIELD ID="Filter_Width____" arraysize="6" datatype="unicodeChar" name="Filter Width (Å)"/>
    <FIELD ID="Flatfield_Lamps" arraysize="15" datatype="unicodeChar" name="Flatfield Lamps"/>
+   <FIELD ID="Nominal_Image" arraysize="20" datatype="unicodeChar" name="Nominal Image"/>
    <DATA>
     <TABLEDATA>
      <TR>
@@ -18,6 +19,7 @@
       <TD>OPEN</TD>
       <TD>OPEN</TD>
       <TD>0</TD>
+      <TD/>
       <TD/>
       <TD/>
       <TD/>
@@ -30,11 +32,13 @@
       <TD/>
       <TD/>
       <TD/>
+      <TD/>
      </TR>
      <TR>
       <TD>4 Hole Mask</TD>
       <TD>4HOLEMASK</TD>
       <TD>4Hole</TD>
+      <TD/>
       <TD/>
       <TD/>
       <TD/>
@@ -48,6 +52,7 @@
       <TD>3652</TD>
       <TD>524</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>B</TD>
@@ -57,6 +62,7 @@
       <TD>4448</TD>
       <TD>1008</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>V</TD>
@@ -66,6 +72,7 @@
       <TD>5505</TD>
       <TD>826</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>R</TD>
@@ -75,6 +82,7 @@
       <TD>6581</TD>
       <TD>1576</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>I</TD>
@@ -84,6 +92,7 @@
       <TD>8059</TD>
       <TD>1543</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>SDSS u'</TD>
@@ -93,6 +102,7 @@
       <TD>3557</TD>
       <TD>599</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>SDSS g'</TD>
@@ -102,6 +112,7 @@
       <TD>4825</TD>
       <TD>1379</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>SDSS r'</TD>
@@ -111,6 +122,7 @@
       <TD>6261</TD>
       <TD>1382</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>SDSS i'</TD>
@@ -120,6 +132,7 @@
       <TD>7672</TD>
       <TD>1535</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>SDSS z'</TD>
@@ -129,6 +142,7 @@
       <TD>9097</TD>
       <TD>1370</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>V+R</TD>
@@ -138,6 +152,7 @@
       <TD>6091.7</TD>
       <TD>1763.9</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Yish</TD>
@@ -147,6 +162,7 @@
       <TD/>
       <TD/>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>[OIII]</TD>
@@ -156,6 +172,7 @@
       <TD>5001.7</TD>
       <TD>25.5</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Hα-On</TD>
@@ -165,6 +182,7 @@
       <TD>6564.9</TD>
       <TD>30.1</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Hα-Off</TD>
@@ -174,6 +192,7 @@
       <TD>6459.1</TD>
       <TD>114.6</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>WC</TD>
@@ -183,6 +202,7 @@
       <TD>4660.4</TD>
       <TD>49.5</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>WN</TD>
@@ -192,6 +212,7 @@
       <TD>4690.9</TD>
       <TD>49.6</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>CT</TD>
@@ -201,6 +222,7 @@
       <TD>4756.1</TD>
       <TD>54.6</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Ultraviolet Continuum</TD>
@@ -210,6 +232,7 @@
       <TD>3449</TD>
       <TD>79</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Blue Continuum</TD>
@@ -219,6 +242,7 @@
       <TD>4453</TD>
       <TD>61</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Green Continuum</TD>
@@ -228,6 +252,7 @@
       <TD>5259</TD>
       <TD>56</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>Red Continuum</TD>
@@ -237,6 +262,7 @@
       <TD>7133</TD>
       <TD>58</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>C2</TD>
@@ -246,6 +272,7 @@
       <TD>5135</TD>
       <TD>119</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>C3</TD>
@@ -255,6 +282,7 @@
       <TD>4063</TD>
       <TD>58</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>CN</TD>
@@ -264,6 +292,7 @@
       <TD>3869</TD>
       <TD>56</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>CO+</TD>
@@ -273,6 +302,7 @@
       <TD>4266</TD>
       <TD>64</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>H2O+</TD>
@@ -282,6 +312,7 @@
       <TD>7028</TD>
       <TD>164</TD>
       <TD>Dome Lamps, 12V</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>OH</TD>
@@ -291,6 +322,7 @@
       <TD>3097</TD>
       <TD>58</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>NH</TD>
@@ -300,6 +332,7 @@
       <TD>3361</TD>
       <TD>54</TD>
       <TD>Photo Floods</TD>
+      <TD>Click Here</TD>
      </TR>
      <TR>
       <TD>W032</TD>
@@ -307,6 +340,7 @@
       <TD>W032</TD>
       <TD>+176</TD>
       <TD>5300</TD>
+      <TD/>
       <TD/>
       <TD/>
      </TR>
@@ -318,6 +352,7 @@
       <TD>5027</TD>
       <TD/>
       <TD/>
+      <TD/>
      </TR>
      <TR>
       <TD>K1593</TD>
@@ -325,6 +360,7 @@
       <TD>K1593</TD>
       <TD>+194</TD>
       <TD>5010</TD>
+      <TD/>
       <TD/>
       <TD/>
      </TR>
