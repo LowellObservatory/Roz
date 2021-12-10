@@ -1,0 +1,16 @@
+# %ECSV 1.0
+# ---
+# datatype:
+# - {name: section, datatype: string}
+# - {name: extra, datatype: string}
+# - {name: insert_after, datatype: int64}
+# schema: astropy-2.0
+section extra insert_after
+"Non-Filter Positions" "" 0
+"Johnson-Cousins Filters" "" 3
+"Sloan (SDSS) Filters" "" 8
+"Other Broad Band Filters" "" 13
+"General Narrow Band Filters" "" 15
+"Wolf-Rayet Filters" "" 18
+"Comet Filters" "(Note: These filters are 4 inches round and suffer some vignetting on LMI)" 21
+"Assorted Other Filters" "(inquire if you want to use, as they may not be readily available)" 32

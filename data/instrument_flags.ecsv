@@ -1,0 +1,12 @@
+# %ECSV 1.0
+# ---
+# datatype:
+# - {name: instrument, datatype: string}
+# - {name: prefix, datatype: string}
+# - {name: get_bias, datatype: bool}
+# - {name: get_flats, datatype: bool}
+# - {name: check_binning, datatype: bool}
+# schema: astropy-2.0
+instrument prefix get_bias get_flats check_binning
+LMI lmi True True True
+DEVENY 20 True False True

@@ -21,8 +21,8 @@ This module primarily trades in... utility?
 # Built-In Libraries
 
 # 3rd Party Libraries
-from astropy.io.votable import parse
 from astropy.modeling import models
+from astropy.table import Table
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
 from importlib_resources import files as pkg_files
@@ -34,14 +34,13 @@ import numpy as np
 ROZ_CONFIG = pkg_files('Roz.config')
 ROZ_DATA = pkg_files('Roz.data')
 XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
+ECSV_FILTERS = ROZ_DATA.joinpath('lmi_filter_table.ecsv')
+ECSV_SECHEAD = ROZ_DATA.joinpath('lmi_table_sechead.ecsv')
 HTML_TABLE_FN = 'lmi_filter_table.html'
 LMI_DYNTABLE = ROZ_DATA.joinpath('lmi_dynamic_filter.fits')
 
-# List of supported instruments
-INSTRUMENTS = ['LMI', 'DEVENY']  # Could add RC1/2 at some point?
-
 # List of LMI Filters
-LMI_FILTERS = parse(XML_TABLE).get_first_table().to_table()['FITS_Header_Value']
+LMI_FILTERS = Table.read(ECSV_FILTERS)['FITS Header Value']
 
 # Fold Mirror Names
 FMS = ['A', 'B', 'C', 'D']
@@ -52,7 +51,7 @@ class InputError(ValueError):
     """
 
 
-def set_instrument_flags(instrument='lmi'):
+def set_instrument_flags(inst='lmi'):
     """set_instrument_flags Set the global instrument flags for processing
 
     These instrument-specific flags are used throughout the code.  As more
@@ -76,27 +75,20 @@ def set_instrument_flags(instrument='lmi'):
     InputError
         If the input instrument is not in the list, raise error.
     """
-    # Check the instrument
-    if (instrument := instrument.upper()) not in INSTRUMENTS:
-        raise InputError(f"Instrument {instrument} not supported!")
+    # Read in the instrument flag table
+    instrument_table = Table.read(ROZ_DATA.joinpath('instrument_flags.ecsv'))
 
-    if instrument == 'LMI':
-        inst_flag = {'instrument': instrument,
-                     'prefix': 'lmi',
-                     'get_bias': True,
-                     'get_flats': True,
-                     'check_binning': True}
-                     # Other flags...
-    elif instrument == 'DEVENY':
-        inst_flag = {'instrument': instrument,
-                     'prefix': '20',
-                     'get_bias': True,
-                     'get_flats': False,
-                     'check_binning': True}
-                     # Other flags...
-    else:
-        raise InputError(f"Developer: Add {instrument} to utils.py")
+    # Check that the instrument is in the table
+    if (inst := inst.upper()) not in instrument_table['instrument']:
+        raise InputError(f"Instrument {inst} not yet supported;"
+                          "update instrument_flags.ecsv")
 
+    # Extract the row , and convert it to a dictionary
+    for row in instrument_table:
+        if row['instrument'] == inst:
+            inst_flag = dict(zip(row.colnames, row))
+
+    print(inst_flag)
     return inst_flag
 
 

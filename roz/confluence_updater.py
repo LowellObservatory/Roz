@@ -33,6 +33,7 @@ from astropy.table import hstack, Column, Table
 from atlassian import Confluence
 from bs4 import BeautifulSoup
 import numpy as np
+from numpy.ma.core import MaskedConstant
 
 # Lowell Libraries
 from ligmos import utils as lig_utils, workers as lig_workers
@@ -42,6 +43,8 @@ from .send_alerts import send_alert, ConfluenceAlert
 from .utils import (
     two_sigfig,
     HTML_TABLE_FN,
+    ECSV_FILTERS,
+    ECSV_SECHEAD,
     LMI_FILTERS,
     LMI_DYNTABLE,
     ROZ_CONFIG,
@@ -236,20 +239,21 @@ def setup_confluence():
            setup.space, setup.lmi_filter_title
 
 
-def read_lmi_static_table(xml_table=XML_TABLE):
+def read_lmi_static_table(table_type='ecsv'):
     """read_lmi_static_table Create the static portions of the LMI Filter Table
 
-    This function reads in the XML information for the static portion of the
+    This function reads in the information for the static portion of the
     LMI Filter Table, including the section headers (and locations).
 
-    The previous version of this function had the information hard-coded,
-    which would have been a pain to add new filters to.
+    At present, there are two representations of these data: XML VOTABLE format
+    and YAML-based ECSV (Astropy Table).
 
     Parameters
     ----------
-    xml_table : `str`, optional
-        Path + filename of the XML file containing the LMI Filter Information
-        [Default: utils.XML_TABLE]
+    table_type : `str`, optional
+        Type of table containing the data to be read in.  Choices are `ecsv`
+        for the ECSV YAML-based AstroPy Table version, or `xml` for the
+        XML-based VOTABLE protocol.  [Default: ecsv]
 
     Returns
     -------
@@ -257,13 +261,27 @@ def read_lmi_static_table(xml_table=XML_TABLE):
         The basic portions of the AstroPy table for LMI Filter Information
     section_head : `astropy.table.Table`
         The section headings for the HTML table
-    """
-    # Read in the XML table.
-    votable = vo_parse(xml_table)
 
-    # The VOTable has both the LMI Filter Info and the section heads for the HTML
-    filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
-    section_head = votable.get_table_by_index(1).to_table()
+    Raises
+    ------
+    ValueError
+        Raised if improper `table_type` passed to the function.
+    """
+    if table_type == 'xml':
+        # Read in the XML table.
+        votable = vo_parse(XML_TABLE)
+
+        # The VOTable has both the LMI Filter Info and the section heads for the HTML
+        filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
+        section_head = votable.get_table_by_index(1).to_table()
+
+    elif table_type == 'ecsv':
+        # Read in the ECSV tables (LMI Filter Info and the HTML section headings)
+        filter_table = Table.read(ECSV_FILTERS)
+        section_head = Table.read(ECSV_SECHEAD)
+
+    else:
+        raise ValueError(f"Table type {table_type} not recognized!")
 
     return filter_table, section_head
 
@@ -362,7 +380,7 @@ def add_section_header(soup, ncols, text, extra=''):
     bold.append(uline)
     newcol.append(bold)
     # Add any `extra` text in standard font after the bold/underline portion
-    newcol.append(extra)
+    newcol.append('' if isinstance(extra, MaskedConstant) else extra)
     # Put the column tag inside the row tag
     newrow.append(newcol)
     # All done
