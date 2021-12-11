@@ -32,6 +32,7 @@ from astropy.io.votable import parse as vo_parse
 from astropy.table import hstack, Column, Table
 from atlassian import Confluence
 from bs4 import BeautifulSoup
+from bs4.element import NavigableString
 import numpy as np
 from numpy.ma.core import MaskedConstant
 
@@ -39,6 +40,7 @@ from numpy.ma.core import MaskedConstant
 from ligmos import utils as lig_utils, workers as lig_workers
 
 # Internal Imports
+from .graphics_maker import make_png_thumbnail
 from .send_alerts import send_alert, ConfluenceAlert
 from .utils import (
     two_sigfig,
@@ -49,6 +51,7 @@ from .utils import (
     LMI_DYNTABLE,
     ROZ_CONFIG,
     ROZ_DATA,
+    ROZ_THUMB,
     XML_TABLE
 )
 
@@ -76,12 +79,13 @@ def update_filter_characterization(database, delete_existing=False):
         send_alert(ConfluenceAlert)
         return
 
-    # Update the HTML table attached to the Confluence page
-    local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
-    success = update_lmi_filter_table(local_filename, database)
-
     # Get the `page_id` needed for intracting with the page we want to update
     page_id = confluence.get_page_id(space, title)
+
+    # Update the HTML table attached to the Confluence page
+    local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
+    attachment_url = f"{confluence.url}download/attachments/{page_id}/"
+    png_fn = update_lmi_filter_table(local_filename, database, attachment_url)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
@@ -93,8 +97,14 @@ def update_filter_characterization(database, delete_existing=False):
                            content_type='text/html',
                            comment='LMI Filter Information Table')
 
+    # Attach any PNGs created
+    for png in png_fn:
+        confluence.attach_file(ROZ_THUMB.joinpath(png), name=png,
+                               page_id=page_id, content_type='image/png',
+                               comment='Flat Field Image')
 
-def update_lmi_filter_table(filename, database, debug=True):
+
+def update_lmi_filter_table(filename, database, attachment_url, debug=True):
     """update_lmi_filter_table Update the LMI Filter Information Table
 
     Updates the HTML table of LMI filter information for upload to Confluence.
@@ -111,30 +121,34 @@ def update_lmi_filter_table(filename, database, debug=True):
         Local filename of the HTML table to create.
     database : `roz.database_manager.CalibrationDatabase`
         The database of calibration frames
+    attachment_url : `str`
+        The URL for attachments for this page in Confluence.
     debug : `bool`, optional
         Print debugging statements? [Default: True]
 
     Returns
     -------
-    `int`
-        Success/failure bit
+    `list`
+        List of PNG filenames created for this run.
     """
     # Get the base (static) table
     lmi_filt, section_head = read_lmi_static_table()
 
     # Use the `database` to create the dynamic portions of the LMI table
-    lmi_filt = construct_lmi_dynamic_table(lmi_filt, database)
+    lmi_filt, png_fn = construct_lmi_dynamic_table(lmi_filt, database,
+                                                   attachment_url)
     if debug:
         lmi_filt.pprint()
 
     # Use the AstroPy Table `lmi_filt` to construct the HTML table
-    construct_lmi_html_table(lmi_filt, section_head, filename, debug=debug)
+    construct_lmi_html_table(lmi_filt, section_head, filename,
+                             link_text="DON'T PANIC", debug=debug)
 
-    # Return value -- 0 is success!
-    return 0
+    # Return list of PNG filenames
+    return png_fn
 
 
-def construct_lmi_dynamic_table(lmi_filt, database):
+def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
     """construct_lmi_dynamic_table Construct the dynamic portions of the table
 
     This function augments the static table (from the XML file) with dynamic
@@ -152,11 +166,15 @@ def construct_lmi_dynamic_table(lmi_filt, database):
         Filter Information table
     database : `roz.database_manager.CalibrationDatabase`
         The database of calibration frames
+    attachment_url : `str`
+        The URL for attachments for this page in Confluence.
 
     Returns
     -------
-    `astropy.table.Table`
+    lmi_filt : `astropy.table.Table`
         The dynamically augmented LMI Filter Information Table
+    png_fn : `list`
+        List of the PNG filenames created during this run
     """
     # Check if the dynamic FITS table is extant
     if os.path.isfile(LMI_DYNTABLE):
@@ -172,6 +190,7 @@ def construct_lmi_dynamic_table(lmi_filt, database):
         dyntable = Table([col1, col2, col3, col4])
 
    # Loop through the filters, updating the relevant columns of the table
+    png_fn = []
     for i,filt in enumerate(LMI_FILTERS):
         # Skip filters not used in this data set
         if database.flat[filt] is None:
@@ -185,8 +204,12 @@ def construct_lmi_dynamic_table(lmi_filt, database):
                 dt.datetime.strptime(new_date, "%Y-%m-%d"):
                 continue
 
+        # Call the PNG-maker to PNG-ify the latest image; append filename
+        png_fn.append(make_png_thumbnail(database.flat[filt]['filename'][-1],
+                                         database.flags))
+
         # Update the `dyntable` columns
-        dyntable['Latest Image'][i] = database.flat[filt]['filename'][-1]
+        dyntable['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
         dyntable['UT Date of Last Flat'][i] = new_date
         dyntable['Count Rate (ADU/s)'][i] = \
                     (count_rate := np.mean(database.flat[filt]['crop_med']))
@@ -204,39 +227,117 @@ def construct_lmi_dynamic_table(lmi_filt, database):
     lmi_filt['Exptime for 20k cts (s)'] = \
                 Column(lmi_filt['Exptime for 20k cts (s)'], format=two_sigfig)
 
-    return lmi_filt
+    return lmi_filt, png_fn
 
 
-# Utility Functions ==========================================================#
-def setup_confluence():
-    """setup_confluence Set up the Confluence class instance
+# Utility Functions (Alphabetical) ===========================================#
+def add_section_header(soup, ncols, text, extra=''):
+    """add_section_header Put together the Section Headings for the HTML Table
 
-    Reads in the confluence.conf configuration file, which contains the URL,
-    username, and password.  Also contained in the configuration file are
-    the Confluence space and page title into which the updated table will be
-    placed.
+    This is a bunch of BeautifulSoup tag stuff needed to make the section
+    headings in the HTML table.  This function is purely a DRY block.
+
+    Parameters
+    ----------
+    soup : `bs4.BeautifulSoup`
+        The BeautifulSoup parsed-HTML object
+    ncols : `int`
+        Number of columns in the HTML table, needed for spanning
+    text : `str`
+        The bold/underlined text for the header
+    extra : `str`, optional
+        Regular text to appear after the bold/underlined text [Default: '']
 
     Returns
     -------
-    confluence : `atlassian.Confluence`
-        Confluence class, initialized with credentials
-    space : `str`
-        The Confluence space containing the LMI Filter Information page
-    title : `str`
-        The page title for the LMI Filter Information
+    `bs4.element.Tag`
+        The newly tagged row for insertion into the HTML table
     """
-    # Read in and parse the configuration file
-    setup = lig_utils.confparsers.rawParser(
-                                  ROZ_CONFIG.joinpath('confluence.conf'))
-    setup = lig_workers.confUtils.assignConf(
-                                  setup['confluenceSetup'],
-                                  lig_utils.classes.baseTarget,
-                                  backfill=True)
-    # Return
-    return Confluence( url=setup.host,
-                       username=setup.user,
-                       password=setup.password ), \
-           setup.space, setup.lmi_filter_title
+    # Create the new row tag, and everything that goes inside it
+    newrow = soup.new_tag('tr')
+    # One column spanning the whole row, with Lowell-gray for background
+    newcol = soup.new_tag('td', attrs={'colspan':ncols, 'bgcolor':'#DBDCDC'})
+    # Bold/Underline the main `text` for the header; append to newcol
+    bold = soup.new_tag('b')
+    uline = soup.new_tag('u')
+    uline.string = text
+    bold.append(uline)
+    newcol.append(bold)
+    # Add any `extra` text in standard font after the bold/underline portion
+    newcol.append('' if isinstance(extra, MaskedConstant) else extra)
+    # Put the column tag inside the row tag
+    newrow.append(newcol)
+    # All done
+    return newrow
+
+
+def construct_lmi_html_table(lmi_filt, section_head, filename,
+                             link_text='Click Here', debug=False):
+    """construct_lmi_html_table Construct the HTML table
+
+    Use the AstroPy table to construct and beautify the HTML table for the
+    LMI Filter Information page.  This function takes the output of the
+    dynamically created table and does fixed operations to it to make it
+    nicely human-readable.
+
+    Parameters
+    ----------
+    lmi_filt : `astropy.table.Table`
+        The LMI Filter Information table
+    section_head : `astropy.table.Table`
+        The section headings for the HTML table
+    filename : `str`
+        The filename for the HTML table
+    link_text : `str`, optional
+        What the link text should say in the HTML document for PNG URLs.
+        [Default: 'Click Here']
+    debug : `bool`, optional
+        Print debugging statements? [Default: False]
+    """
+    # Count the number of columns for use with the HTML table stuff below
+    ncols = len(lmi_filt.colnames)
+
+    # CSS stuff to make the HTML table pretty -- yeah, keep this hard-coded
+    cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
+                      '   table {\n      width: 100%;\n'
+                      '      border-collapse: collapse;\n   }\n   '
+                      'td {\n      padding: 10px;\n   }\n   th {\n'
+                      '      color: white;\n      background: #6D6E70;\n   }'}
+
+    # Use the AstroPy HTML functionality to get us most of the way there
+    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
+
+    # Now that AstroPy has done the hard work writing this table to HTML,
+    #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
+    with open(filename) as html:
+        soup = BeautifulSoup(html, 'html.parser')
+
+    # Add the `creation date` line to the body of the HTML above the table
+    timestr = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    itdate = soup.new_tag('i')                # Italics, for the fun of it
+    itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
+    # Place the italicized date string ahead of the table
+    soup.find('table').insert_before(itdate)
+    if debug:
+        print(f"HTML table timestamp: {timestr}")
+
+    # Add the section headings for the different filter groups:
+    for i,row in enumerate(soup.find_all('tr')):
+        # At each row, search through the `section_head` table to correctly
+        #  insert the appropriate section header
+        for sechead in section_head:
+            if i == sechead['insert_after']:
+                row.insert_after(add_section_header(soup, ncols,
+                                                    sechead['section'],
+                                                    sechead['extra']))
+
+    # Convert the bare URLs of all PNG thumbnails into hyperlinks.  Use a
+    #  recursive function to navigate the HTML BeautifulSoup tree.
+    wrap_plaintext_links(soup, soup, link_text=link_text)
+
+    # Now that we've mucked with the HTML document, rewerite it to disk
+    with open(filename, "wb") as f_output:
+        f_output.write(soup.prettify("utf-8"))
 
 
 def read_lmi_static_table(table_type='ecsv'):
@@ -286,102 +387,66 @@ def read_lmi_static_table(table_type='ecsv'):
     return filter_table, section_head
 
 
-def construct_lmi_html_table(lmi_filt, section_head, filename, debug=False):
-    """construct_lmi_html_table Construct the HTML table
+def setup_confluence():
+    """setup_confluence Set up the Confluence class instance
 
-    Use the AstroPy table to construct and beautify the HTML table for the
-    LMI Filter Information page.  This function takes the output of the
-    dynamically created table and does fixed operations to it to make it
-    nicely human-readable.
-
-    Parameters
-    ----------
-    lmi_filt : `astropy.table.Table`
-        The LMI Filter Information table
-    section_head : `astropy.table.Table`
-        The section headings for the HTML table
-    filename : `str`
-        The filename for the HTML table
-    debug : `bool`, optional
-        Print debugging statements? [Default: False]
-    """
-    # Count the number of columns for use with the HTML table stuff below
-    ncols = len(lmi_filt.colnames)
-
-    # CSS stuff to make the HTML table pretty -- yeah, keep this hard-coded
-    cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
-                      '   table {\n      width: 100%;\n'
-                      '      border-collapse: collapse;\n   }\n   '
-                      'td {\n      padding: 10px;\n   }\n   th {\n'
-                      '      color: white;\n      background: #6D6E70;\n   }'}
-
-    # Use the AstroPy HTML functionality to get us most of the way there
-    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
-
-    # Now that AstroPy has done the hard work writing this table to HTML,
-    #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
-    with open(filename) as html:
-        soup = BeautifulSoup(html, 'html.parser')
-
-    # Add the `creation date` line to the body of the HTML above the table
-    timestr = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    itdate = soup.new_tag('i')                # Italics, for the fun of it
-    itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
-    # Place the italicized date string ahead of the table
-    soup.find('table').insert_before(itdate)
-    if debug:
-        print(f"HTML table timestamp: {timestr}")
-
-    # Add the section headings for the different filter groups:
-    for i,row in enumerate(soup.find_all('tr')):
-        # At each row, search through the `section_head` table to correctly
-        #  insert the appropriate section header
-        for sechead in section_head:
-            if i == sechead['insert_after']:
-                row.insert_after(add_section_header(soup, ncols,
-                                                    sechead['section'],
-                                                    sechead['extra']))
-
-    # Now that we've mucked with the HTML document, rewerite it to disk
-    with open(filename, "wb") as f_output:
-        f_output.write(soup.prettify("utf-8"))
-
-
-def add_section_header(soup, ncols, text, extra=''):
-    """add_section_header Put together the Section Headings for the HTML Table
-
-    This is a bunch of BeautifulSoup tag stuff needed to make the section
-    headings in the HTML table.  This function is purely a DRY block.
-
-    Parameters
-    ----------
-    soup : `bs4.BeautifulSoup`
-        The BeautifulSoup parsed-HTML object
-    ncols : `int`
-        Number of columns in the HTML table, needed for spanning
-    text : `str`
-        The bold/underlined text for the header
-    extra : `str`, optional
-        Regular text to appear after the bold/underlined text [Default: '']
+    Reads in the confluence.conf configuration file, which contains the URL,
+    username, and password.  Also contained in the configuration file are
+    the Confluence space and page title into which the updated table will be
+    placed.
 
     Returns
     -------
-    `bs4.element.Tag`
-        The newly tagged row for insertion into the HTML table
+    confluence : `atlassian.Confluence`
+        Confluence class, initialized with credentials
+    space : `str`
+        The Confluence space containing the LMI Filter Information page
+    title : `str`
+        The page title for the LMI Filter Information
     """
-    # Create the new row tag, and everything that goes inside it
-    newrow = soup.new_tag('tr')
-    # One column spanning the whole row, with Lowell-gray for background
-    newcol = soup.new_tag('td', attrs={'colspan':ncols, 'bgcolor':'#DBDCDC'})
-    # Bold/Underline the main `text` for the header; append to newcol
-    bold = soup.new_tag('b')
-    uline = soup.new_tag('u')
-    uline.string = text
-    bold.append(uline)
-    newcol.append(bold)
-    # Add any `extra` text in standard font after the bold/underline portion
-    newcol.append('' if isinstance(extra, MaskedConstant) else extra)
-    # Put the column tag inside the row tag
-    newrow.append(newcol)
-    # All done
-    return newrow
+    # Read in and parse the configuration file
+    setup = lig_utils.confparsers.rawParser(
+                                  ROZ_CONFIG.joinpath('confluence.conf'))
+    setup = lig_workers.confUtils.assignConf(
+                                  setup['confluenceSetup'],
+                                  lig_utils.classes.baseTarget,
+                                  backfill=True)
+    # Return
+    return Confluence( url=setup.host,
+                       username=setup.user,
+                       password=setup.password ), \
+           setup.space, setup.lmi_filter_title
+
+
+def wrap_plaintext_links(bs_tag, soup, link_text='Click Here'):
+    """wrap_plaintext_links Wrap bare URLs into hyperlinks
+
+    Finds all elements in the parsed HTML file that are bare URLs, and
+    converts them into hyperlinks with some bland link text like "Clik Here".
+
+    Shamelessly stolen from https://stackoverflow.com/questions/33364955/
+
+    Parameters
+    ----------
+    bs_tag : `bs4.BeautifulSoup` or `bs4.element.Tag`
+        A BeautifulSoup object.
+    soup : `bs4.BeautifulSoup`
+        The top-level BeautifulSoup object, needed for the recursive execution.
+    link_text : `str`, optional
+        What the link text should say in the HTML document.
+        [Default: 'Click Here']
+    """
+    # The try/except catches bs_tag items that don't have children
+    try:
+        for element in bs_tag.children:
+            if isinstance(element, NavigableString) and \
+                element.string[:4] == 'http':
+                # If this is a string that starts with 'http', linkify!
+                link = soup.new_tag('a', href=element.string)
+                link.string = link_text
+                element.replace_with(link)
+            elif element.name != "a":
+                # Recursive execution to traverse the tree
+                wrap_plaintext_links(element, soup, link_text=link_text)
+    except AttributeError:
+        pass

@@ -27,12 +27,16 @@ import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
 from importlib_resources import files as pkg_files
 import numpy as np
+from numpy.ma.core import MaskedConstant
 
 # Internal Imports
 
-# Data & config directories
+# Roz subdirectories directories
 ROZ_CONFIG = pkg_files('Roz.config')
 ROZ_DATA = pkg_files('Roz.data')
+ROZ_THUMB = pkg_files('Roz.thumbnails')
+
+# Particular filenames needed by various routines
 XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
 ECSV_FILTERS = ROZ_DATA.joinpath('lmi_filter_table.ecsv')
 ECSV_SECHEAD = ROZ_DATA.joinpath('lmi_table_sechead.ecsv')
@@ -86,10 +90,9 @@ def set_instrument_flags(inst='lmi'):
     # Extract the row , and convert it to a dictionary
     for row in instrument_table:
         if row['instrument'] == inst:
-            inst_flag = dict(zip(row.colnames, row))
+            return dict(zip(row.colnames, row))
 
-    print(inst_flag)
-    return inst_flag
+    raise InputError("Developer error... this line should never run.")
 
 
 def trim_oscan(ccd, biassec, trimsec):
@@ -163,9 +166,11 @@ def two_sigfig(value):
         String representation of `value` at two significant figures
     """
     # If zero, return a 'N/A' type string
-    if value == 0:
+    if value == 0 or isinstance(value, MaskedConstant):
         return '-----'
-    # Compute the number of decimal places using the log10
+    # Compute the number of decimal places using the log10.  The way
+    #  np.around() works is that +decimal is to the RIGHT, hence the
+    #  negative sign on log10.  The "+1" gives the second sig fig.
     decimal = -int(np.floor(np.log10(value))) + 1
 
     # Choose the output specification

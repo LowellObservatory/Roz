@@ -83,3 +83,6 @@ newPythonFileTemplate.py
 # And HTML and FITS files created as part of the running
 *.html
 *.fits
+
+# Ignore the code-produced thumbnails
+thumbnails/*.png

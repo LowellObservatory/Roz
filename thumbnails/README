@@ -1,0 +1,6 @@
+Roz/thumbnails
+==============
+
+This directory contains the code-produced thumbnail PNG images of calibration
+frames.  The directory is part of the package, but the contained PNG images
+should not be added to the repository.
