@@ -41,10 +41,10 @@ XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
 ECSV_FILTERS = ROZ_DATA.joinpath('lmi_filter_table.ecsv')
 ECSV_SECHEAD = ROZ_DATA.joinpath('lmi_table_sechead.ecsv')
 HTML_TABLE_FN = 'lmi_filter_table.html'
-LMI_DYNTABLE = ROZ_DATA.joinpath('lmi_dynamic_filter.fits')
+LMI_DYNTABLE = ROZ_DATA.joinpath('lmi_dynamic_filter.ecsv')
 
 # List of LMI Filters
-LMI_FILTERS = Table.read(ECSV_FILTERS)['FITS Header Value']
+LMI_FILTERS = list(Table.read(ECSV_FILTERS)['FITS Header Value'])
 
 # Fold Mirror Names
 FMS = ['A', 'B', 'C', 'D']
@@ -93,6 +93,59 @@ def set_instrument_flags(inst='lmi'):
             return dict(zip(row.colnames, row))
 
     raise InputError("Developer error... this line should never run.")
+
+
+def table_sort_on_list(table, colname, sort_list):
+    """table_sort_on_list Sort an AstroPy Table according to a list
+
+    The actual sorting of the table is code taken directly from Astropy v5.0
+    (astropy.table.table.py).  This function does an arbitrary sort based on
+    an input list.
+
+    Parameters
+    ----------
+    table : `astropy.table.Table`
+        The table to sort
+    colname : `str`
+        The column name to sort on
+    sort_list : `list`
+        The list of values to sort with such that table[colname] == sort_list
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The sorted table
+
+    Raises
+    ------
+    TypeError
+        If the input table is not really a table
+    """
+    # Check that the input parameters are of the proper type
+    if not isinstance(table, Table):
+        raise TypeError("table must be of type astropy.table.Table not "
+                        f"{type(table)}")
+    sort_list = list(sort_list)
+
+    # Find the indices that sort the table by sort_list
+    table.add_index(colname)
+    indices = []
+    for sort_item in sort_list:
+        # print(f"{sort_item} is in row {table.loc_indices[sort_item]}")
+        indices.append(table.loc_indices[sort_item])
+
+    # NOTE: This code paraphrased directly from astropy.table.table.py (v5.0)
+    with table.index_mode('freeze'):
+        for _, col in table.columns.items():
+            # Make a new sorted column.
+            new_col = col.take(indices, axis=0)
+            # Do the substitution
+            try:
+                col[:] = new_col
+            except Exception:
+                table[col.info.name] = new_col
+
+    return table
 
 
 def trim_oscan(ccd, biassec, trimsec):

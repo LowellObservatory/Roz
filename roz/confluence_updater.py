@@ -29,7 +29,7 @@ import os
 
 # 3rd Party Libraries
 from astropy.io.votable import parse as vo_parse
-from astropy.table import hstack, Column, Table
+from astropy.table import join, Column, Table
 from atlassian import Confluence
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
@@ -43,6 +43,7 @@ from ligmos import utils as lig_utils, workers as lig_workers
 from .graphics_maker import make_png_thumbnail
 from .send_alerts import send_alert, ConfluenceAlert
 from .utils import (
+    table_sort_on_list,
     two_sigfig,
     HTML_TABLE_FN,
     ECSV_FILTERS,
@@ -148,7 +149,7 @@ def update_lmi_filter_table(filename, database, attachment_url, debug=True):
     return png_fn
 
 
-def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
+def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
     """construct_lmi_dynamic_table Construct the dynamic portions of the table
 
     This function augments the static table (from the XML file) with dynamic
@@ -159,6 +160,10 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
     for those frames, the quoted values for these columns will be incorrect
     until closer-to-nominal flats are collected again.
 
+    The use of `join(join_type=left)` means that the HTML table produced and
+    the saved `dyntable` will always have the same rows at the current
+    lmi_filter_table.[xml,ecsv] file.
+
     Parameters
     ----------
     lmi_filt : `astropy.table.Table`
@@ -168,6 +173,8 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
         The database of calibration frames
     attachment_url : `str`
         The URL for attachments for this page in Confluence.
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
 
     Returns
     -------
@@ -181,15 +188,25 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
         # Read it in!
         dyntable = Table.read(LMI_DYNTABLE)
     else:
-        # Make a blank table
+        # Make a blank table, including the LMI_FILTERS for correspondence
         nrow = len(LMI_FILTERS)
+        col0 = Column(LMI_FILTERS, name='Filter')
         col1 = Column(name='Latest Image', length=nrow, dtype='U128')
         col2 = Column(name='UT Date of Last Flat', length=nrow, dtype='U128')
         col3 = Column(name='Count Rate (ADU/s)', length=nrow, dtype=float)
         col4 = Column(name='Exptime for 20k cts (s)', length=nrow, dtype=float)
-        dyntable = Table([col1, col2, col3, col4])
+        dyntable = Table([col0, col1, col2, col3, col4])
 
-   # Loop through the filters, updating the relevant columns of the table
+    # The astropy.table function join() combines tables based on common keys,
+    #  however, it also sorts the table...
+    lmi_filt = join(lmi_filt, dyntable, join_type='left', keys='Filter')
+    # Undo the alpha sorting done by .join()
+    lmi_filt = table_sort_on_list(lmi_filt, 'FITS Header Value', LMI_FILTERS)
+
+    if debug:
+        lmi_filt.pprint()
+
+    # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i,filt in enumerate(LMI_FILTERS):
         # Skip filters not used in this data set
@@ -199,33 +216,40 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url):
         # But, only update if the DATOBS of this flat is LATER than what's
         #  already in the table.  If OLD > NEW, skip.
         new_date = database.flat[filt]['dateobs'][-1].split('T')[0]
-        if ( existing_date := dyntable['UT Date of Last Flat'][i].strip() ):
-            if dt.datetime.strptime(existing_date, "%Y-%m-%d") > \
-                dt.datetime.strptime(new_date, "%Y-%m-%d"):
+        if not isinstance(lmi_filt['UT Date of Last Flat'][i], MaskedConstant):
+            is_date = (existing_date := lmi_filt['UT Date of Last Flat'][i].strip())
+            old_newer_than_new = dt.datetime.strptime(existing_date, "%Y-%m-%d") > \
+                                dt.datetime.strptime(new_date, "%Y-%m-%d")
+            if is_date and old_newer_than_new:
                 continue
 
         # Call the PNG-maker to PNG-ify the latest image; append filename
         png_fn.append(make_png_thumbnail(database.flat[filt]['filename'][-1],
                                          database.flags))
 
-        # Update the `dyntable` columns
-        dyntable['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-        dyntable['UT Date of Last Flat'][i] = new_date
-        dyntable['Count Rate (ADU/s)'][i] = \
+        # Update the dynamic columns
+        lmi_filt['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
+        lmi_filt['UT Date of Last Flat'][i] = new_date
+        lmi_filt['Count Rate (ADU/s)'][i] = \
                     (count_rate := np.mean(database.flat[filt]['crop_med']))
-        dyntable['Exptime for 20k cts (s)'][i] = 20000. / count_rate
+        lmi_filt['Exptime for 20k cts (s)'][i] = 20000. / count_rate
 
-    # Save the dynamic portion back to a FITS bintable for future use
+    # Split off the dyntable portion again, and write it back to disk for later
+    dyntable = Table( [ lmi_filt['Filter'], lmi_filt['Latest Image'],
+                        lmi_filt['UT Date of Last Flat'],
+                        lmi_filt['Count Rate (ADU/s)'],
+                        lmi_filt['Exptime for 20k cts (s)'] ],
+                        names=['Filter','Latest Image','UT Date of Last Flat',
+                               'Count Rate (ADU/s)', 'Exptime for 20k cts (s)'] )
     dyntable.write(LMI_DYNTABLE, overwrite=True)
-
-    # Merge the static and dynamic portions together
-    lmi_filt = hstack([lmi_filt, dyntable])
 
     # Add formatting constraints to the `lmi_filt` table columns
     lmi_filt['Count Rate (ADU/s)'] = \
-                Column(lmi_filt['Count Rate (ADU/s)'], format=two_sigfig)
+                Column(lmi_filt['Count Rate (ADU/s)'].filled(0),
+                       format=two_sigfig)
     lmi_filt['Exptime for 20k cts (s)'] = \
-                Column(lmi_filt['Exptime for 20k cts (s)'], format=two_sigfig)
+                Column(lmi_filt['Exptime for 20k cts (s)'].filled(0),
+                       format=two_sigfig)
 
     return lmi_filt, png_fn
 
