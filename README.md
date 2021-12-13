@@ -27,5 +27,8 @@ See https://jumar.lowell.edu/confluence/display/LIG/Quality+Assurance+of+Instrum
 - CCDPROC 2.1+
 - Numpy
 - Matplotlib
+- Atlassian-Python-Api
+- BeautifulSoup
+- tqdm
+- Importlib-Resources
 - LowellObservatory/ligmos
-- A bunch of other stuff, too, I'm sure
