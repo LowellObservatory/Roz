@@ -31,7 +31,7 @@ from numpy.ma.core import MaskedConstant
 
 # Internal Imports
 
-# Roz subdirectories directories
+# Roz subdirectory paths
 ROZ_CONFIG = pkg_files('Roz.config')
 ROZ_DATA = pkg_files('Roz.data')
 ROZ_THUMB = pkg_files('Roz.thumbnails')
@@ -84,7 +84,7 @@ def set_instrument_flags(inst='lmi'):
 
     # Check that the instrument is in the table
     if (inst := inst.upper()) not in instrument_table['instrument']:
-        raise InputError(f"Instrument {inst} not yet supported;"
+        raise InputError(f"Instrument {inst} not yet supported; "
                           "update instrument_flags.ecsv")
 
     # Extract the row , and convert it to a dictionary
@@ -120,6 +120,8 @@ def table_sort_on_list(table, colname, sort_list):
     ------
     TypeError
         If the input table is not really a table
+    ValueError
+        If the `sort_list` is not the same length as the table
     """
     # Check that the input parameters are of the proper type
     if not isinstance(table, Table):
@@ -127,11 +129,15 @@ def table_sort_on_list(table, colname, sort_list):
                         f"{type(table)}")
     sort_list = list(sort_list)
 
+    # Check that `sort_list` is the same length as the table
+    if len(sort_list) != len(table[colname]):
+        raise ValueError(f"Sorting list and table column {colname} "
+                         "must be the same length.")
+
     # Find the indices that sort the table by sort_list
     table.add_index(colname)
     indices = []
     for sort_item in sort_list:
-        # print(f"{sort_item} is in row {table.loc_indices[sort_item]}")
         indices.append(table.loc_indices[sort_item])
 
     # NOTE: This code paraphrased directly from astropy.table.table.py (v5.0)
@@ -520,7 +526,7 @@ def compute_flatness(human, shape, stddev):
     # The keys 'maj' and 'min' refer to the # of pixels until the quadradic
     #  changes by 1 sigma from the center of the paraboloid.  Multiply by the
     #  standard deviation to yield a value for use.
-    # NOTE: This is not strictly correct, since the quadratic will actually
+    # TODO: This is not strictly correct, since the quadratic will actually
     #       reach the value of the standard deviation much faster than this
     #       linear approximation.  Need to think about how to handle this
     #       more correctly.

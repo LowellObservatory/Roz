@@ -92,8 +92,10 @@ setup(
         'Development Status :: 3 - Alpha',
 
         # Indicate who your project is intended for
-        'Intended Audience :: Developers',
-        'Topic :: Software Development :: Build Tools',
+        'Intended Audience :: Science/Research',
+        'Topic :: Scientific/Engineering :: Astronomy',
+        'Topic :: Scientific/Engineering :: Image Processing',
+
 
         # Pick your license as you wish
         'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
@@ -102,7 +104,6 @@ setup(
         # that you indicate whether you support Python 2, Python 3 or both.
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
     ],
 
     # This field adds keywords for your project which will appear on the
@@ -120,7 +121,7 @@ setup(
     #
     #   py_modules=["my_module"],
     #
-    packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
+    packages=find_packages(exclude=['config', 'data', 'doc', 'images', 'thumbnails']),  # Required
 
     # This field lists other packages that your project depends on to run.
     # Any package you put here will be installed by pip when your project is
@@ -129,17 +130,15 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
 #### Update this as we write the code
-    install_requires=['psutil',
-                      'numpy>=1.20',
-                      'influxdb',
-                      'xxhash',
-                      'serviceping',
-                      'paramiko',
-                      'xmltodict',
-                      'stomp.py',
-                      'xmlschema',
-                      'pandas',
-                      'pyserial'],
+    install_requires=['astropy>=4.0',
+                      'importlib_resources',
+                      'matplotlib',
+                      'ccdproc',
+                      'numpy',
+                      'tqdm',
+                      'atlassian_python_api',
+                      'beautifulsoup4',
+                      'ligmos'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
@@ -150,8 +149,6 @@ setup(
     # Similar to `install_requires` above, these must be valid existing
     # projects.
     extras_require={  # Optional
-        'dev': ['check-manifest'],
-        'test': ['coverage'],
     },
 
     # If there are data files included in your packages that need to be

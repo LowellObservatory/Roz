@@ -1,0 +1,9 @@
+astropy>=4.0
+importlib_resources
+matplotlib
+ligmos.egg
+numpy
+tqdm
+atlassian_python_api
+beautifulsoup4
+ccdproc

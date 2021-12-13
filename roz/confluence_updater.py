@@ -255,8 +255,8 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
 
 
 # Utility Functions (Alphabetical) ===========================================#
-def add_section_header(soup, ncols, text, extra=''):
-    """add_section_header Put together the Section Headings for the HTML Table
+def add_html_section_header(soup, ncols, text, extra=''):
+    """add_html_section_header Construct Section Headings for the HTML Table
 
     This is a bunch of BeautifulSoup tag stuff needed to make the section
     headings in the HTML table.  This function is purely a DRY block.
@@ -351,9 +351,9 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
         #  insert the appropriate section header
         for sechead in section_head:
             if i == sechead['insert_after']:
-                row.insert_after(add_section_header(soup, ncols,
-                                                    sechead['section'],
-                                                    sechead['extra']))
+                row.insert_after(add_html_section_header(soup, ncols,
+                                                         sechead['section'],
+                                                         sechead['extra']))
 
     # Convert the bare URLs of all PNG thumbnails into hyperlinks.  Use a
     #  recursive function to navigate the HTML BeautifulSoup tree.
