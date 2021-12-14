@@ -57,20 +57,6 @@ class InputError(ValueError):
     """
 
 
-def roz_config():
-    """roz_config It has the Roz Confifguration parameters
-
-    Right now, just returns the configuration parameters in a LIGMOS class.
-
-    Returns
-    -------
-    `ligmos.utils.classes.baseTarget`
-        Object containing the Roz configuration parameters
-    """
-    # Read in and parse the configuration file
-    return read_ligmos_conffiles('rozSetup')
-
-
 def read_ligmos_conffiles(confname, conffile='roz.conf'):
     """read_ligmos_conffiles Read a configuration file using LIGMOS
 

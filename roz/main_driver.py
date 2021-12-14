@@ -25,7 +25,7 @@ import os
 
 # Internal Imports
 from .confluence_updater import update_filter_characterization
-from .gather_frames import dumbwaiter, gather_cal_frames
+from .gather_frames import gather_cal_frames, Dumbwaiter
 from .process_calibrations import (
     process_bias,
     process_flats,
@@ -187,13 +187,16 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     # Given the directory (which will be on a remote file server in
     #  production), call the dumbwaiter to determine which files need to be
     #  copied and then carry out that operation.
-    instrument, _, proc_dir = dumbwaiter(directory)
+    dumbwaiter = Dumbwaiter(directory)
+    dumbwaiter.copy_frames_to_processing()
+    # This really could happen at any time... putting it here for now.
+    dumbwaiter.cold_storage()
 
     # Giddy up!
-    if instrument == 'lmi':
-        db_list = run_lmi_cals(proc_dir, mem_limit=mem_limit)
-    elif instrument == 'deveny':
-        db_list = run_deveny_cals(proc_dir, mem_limit=mem_limit)
+    if dumbwaiter.instrument == 'lmi':
+        db_list = run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
+    elif dumbwaiter.instrument == 'deveny':
+        db_list = run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
     else:
         send_alert(BadInstrumentAlert)
         db_list = [{}]

@@ -52,12 +52,12 @@ class BadDirectoryAlert(_BaseAlert):
         self.type = 'Bad Directory'
 
 
-class BadFrametypeAlert(_BaseAlert):
-    """BadFrametypeAlert Caused by unsupported frametype
+class BadFrameclassAlert(_BaseAlert):
+    """BadFrameclassAlert Caused by unsupported frameclass
     """
     def __init__(self):
         super().__init__()
-        self.type = 'Bad Frametype'
+        self.type = 'Bad Frame Class'
 
 
 class BadInstrumentAlert(_BaseAlert):

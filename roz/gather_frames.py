@@ -8,7 +8,7 @@
 #
 #  @author: tbowers
 
-"""Module for gathering whatever frames are required by Roz.
+"""Module for gathering and movimg around whatever frames are required by Roz.
 
 This module is part of the Roz package, written at Lowell Observatory.
 
@@ -26,7 +26,9 @@ sent to or recieved by Wadsworth.
 import glob
 import os
 from pathlib import Path
+import re
 import shutil
+import tarfile
 import warnings
 
 # 3rd Party Libraries
@@ -34,13 +36,11 @@ from astropy.io.fits import getheader
 from astropy.utils.exceptions import AstropyWarning
 import ccdproc as ccdp
 import numpy as np
+from tqdm import tqdm
 
 # Internal Imports
-from .send_alerts import send_alert, BadDirectoryAlert, BadFrametypeAlert
-from .utils import roz_config, set_instrument_flags
-
-# Silence Superflous AstroPy Warnings
-warnings.simplefilter('ignore', AstropyWarning)
+from .send_alerts import send_alert, BadDirectoryAlert, BadFrameclassAlert
+from .utils import read_ligmos_conffiles, set_instrument_flags
 
 
 # Create an error class to use
@@ -49,87 +49,130 @@ class InputError(ValueError):
     """
 
 
-def butler_bell():
-    """butler_bell Ring for the data butler
+class Dumbwaiter():
+    """dumbwaiter Class for moving data between floors (servers)
 
-    This function will interact with Wadsworth (or appropriate successor) to
-    have the proper data buttled to a location suitable for processing and
-    analysis.
-
-    This function should receive from the Butler the location of the data,
-    which is returned.
-
-    Returns
-    -------
-    `str` or `pathlib.Path`
-        Directory name containing the files to be processed and analyzed.
+    It seemed easier to contain in one place all of the data and methods related to
+    identifying the appropriate frames, copying them to a processing
+    location, and packaging them for cold storage.
     """
-    directory = ''
-    return directory
+
+    def __init__(self, data_dir, frameclass='calibration'):
+        """__init__ Initialize the Dumbwaiter class
+
+        NOTE: 'calibration' is the ONLY type of frame currently supported,
+        but the `frameclass` keyword is included for future expansions of the
+        package.
+
+        Parameters
+        ----------
+        data_dir : `str` or `pathlib.Path`
+            The directory to search for appropriate files
+        frameclass : `str`, optional
+            Class of frame to collect for processing.  [Default: 'calibration']
+        """
+        # Check that the (presumably remote) directory is, in fact, a directory
+        if not os.path.isdir(data_dir):
+            send_alert(BadDirectoryAlert)
+
+        # Initialize attributes
+        self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+        self.frameclass = frameclass
+        self.locations = read_ligmos_conffiles('rozSetup')
+        self.proc_dir = Path(self.locations.processing_dir)
+        self.instrument = divine_instrument(self.data_dir)
+        self.inst_flags = set_instrument_flags(self.instrument)
+
+        # Based on the `frameclass`, call the appropriate `gather_*_frames()`
+        if self.frameclass == 'calibration':
+            self.frames = gather_cal_frames(self.data_dir,
+                                            self.inst_flags,
+                                            fnames_only=True)
+        else:
+            send_alert(BadFrameclassAlert)
+
+    def copy_frames_to_processing(self, keep_existing=False):
+        """copy_frames_to_processing Copy data frames to local processing dir
+
+        This method copies the identified frames from the original data
+        directory to a local processing directory.
+
+        First, unless `keep_existing = True`, clear out any existing files in
+        the processing directory (to keep from builing up cruft).  Then, copy
+        over all of the data files in self.frames.
+
+        Parameters
+        ----------
+        keep_existing : `bool`, optional
+            Keep the existing files in the processing directory?
+            [Default: False]
+        """
+        if not keep_existing:
+            print("Cleaning out previous cruft in processing directory "
+                  f"{self.proc_dir}")
+            for entry in os.scandir(self.proc_dir):
+                if entry.is_file():
+                    os.remove(self.proc_dir.joinpath(entry))
+
+        print(f"Copying data from {self.data_dir} to {self.proc_dir} "
+              "for processing...")
+        for frame in self.frames:
+            shutil.copy(self.data_dir.joinpath(frame), self.proc_dir)
+
+    def cold_storage(self, testing=True):
+        """cold_storage Put the dumbwaited frames into cold strage
+
+        This method takes the frames contained internally and packages them up
+        for long-term cold storage.  The location of the cold storage (and any)
+        associated login credentials) are contained in the self.locations
+        attribute.
+
+        The storage (compressed) tarball filename will consist of the
+        instrument, UT date, and frameclass.
+
+        Parameters
+        ----------
+        testing : `bool`, optional
+            If testing, don't commit to cold storage  [Default: True]
+        """
+        # First, check to see if the UT Date is encoded in the source `data_dir`
+        #  (8 consecutive digits) using regex negative lookbehind / lookahead
+        if result := re.search(r'(?<!\d)\d{8}(?!\d)', str(self.data_dir)):
+            utdate = result.group(0)
+
+        # Otherwise, grab the header of the LAST file in self.frames (as this
+        #  is most likely to be taken AFTER 00:00UT) and extract from DATE-OBS
+        else:
+            utdate = getheader(self.proc_dir.joinpath(
+                self.frames[-1]))['DATE-OBS'].split('T')[0].replace('-','')
+
+        # Build the tar filename
+        tarbase = f"{self.instrument}_{utdate}_{self.frameclass}.tar.bz2"
+        tarname = self.proc_dir.joinpath(tarbase)
+
+        # Tar up the files!
+        print("Creating the compressed tar file for cold storage...")
+        with tarfile.open(tarname, "w:bz2") as tar:
+            # Show progress bar for processing the tarball
+            progress_bar = tqdm(total=len(self.frames), unit='file',
+                                unit_scale=False, colour='green')
+            for name in self.frames:
+                tar.add(self.proc_dir.joinpath(name))
+                progress_bar.update(1)
+            progress_bar.close()
+
+        # Just return now
+        if testing:
+            return
+
+        # Next, set up for copying the tarball over to cold storage
+        # TODO: Need to confer with Ryan about how this step will be done.
+        #       For instance, will the storage directories be mounted on the
+        #       processing machine, or will the files be copied over via scp
+        #       or similar protocol?
 
 
-def dumbwaiter(data_dir, frametype='calibration'):
-    """dumbwaiter Carry the data to a processable location
-
-    This function scans the (presumably remote) directory for suitable
-    files, and copies them to the local processing directory.
-
-    NOTE: 'calibration' is the ONLY type of frame currently supported,
-    but the `frametype` keyword is included for future expansions of the
-    package.
-
-    Parameters
-    ----------
-    data_dir : `str` or `pathlib.Path`
-        The directory to search for appropriate files
-    frametype : `str`, optional
-        Type of frame to collect for processing.  [Default: 'calibration']
-
-    Returns
-    -------
-    instrument : `str`
-        The name of the instrument, as returned by divine_instrument()
-    frames : `list`
-        List of pathless filenames copied into the processing directory
-    proc_dir : `pathlib.Path`
-        The Path of the processing directory, as extracted from the
-        configuration file
-    """
-    # Check that the (presumably remote) directory is, in fact, a directory
-    if not os.path.isdir(data_dir):
-        send_alert(BadDirectoryAlert)
-
-    # Path-ify `directory`, if necessary
-    if isinstance(data_dir, str):
-        data_dir = Path(data_dir)
-
-    # Determine the instrument in question and set the flags
-    instrument = divine_instrument(data_dir)
-    inst_flags = set_instrument_flags(instrument)
-
-    # Based on the `frametype`, call the appropriate `gather_*_frames()`
-    if frametype == 'calibration':
-        frames = gather_cal_frames(data_dir, inst_flags, fnames_only=True)
-    else:
-        send_alert(BadFrametypeAlert)
-
-    # Copy the calibration frames to a local processing directory -- but first
-    #  clear out the processing directory to have a fresh start
-    proc_dir = Path(roz_config().processing_dir)
-    print(f"Cleaning out previous cruft in processing directory {proc_dir}")
-    for entry in os.scandir(proc_dir):
-        if entry.is_file():
-            os.remove(proc_dir.joinpath(entry))
-
-    # Then copy
-    print(f"Copying data from {data_dir} to {proc_dir} for processing...")
-    for frame in frames:
-        shutil.copy(data_dir.joinpath(frame), proc_dir)
-
-    # Return the instrument name and the list of frames (sans path)
-    return instrument, frames, proc_dir
-
-
+# Non-Class Functions ========================================================#
 def divine_instrument(directory):
     """divine_instrument Divine the instrument whose data is in this directory
 
@@ -181,13 +224,19 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     Returns
     -------
-    `ccdproc.ImageFileCollection`
+    bias_cl : `ccdproc.ImageFileCollection`
         ImageFileColleciton containing the BIAS frames from the directory
-    `ccdproc.ImageFileCollection`, optional (LMI only)
+    domeflat_cl : `ccdproc.ImageFileCollection`, optional (LMI only)
         ImageFileCollection containing the FLAT frames from the directory
-    `list`, optional (LMI only)
+    bin_list : `list`, optional (LMI only)
         List of binning setups found in this directory
+    -- OR --
+    fnames, `list`
+        List of calibration filenames (returned when `fnames_only = True`)
     """
+    # Silence Superflous AstroPy Warnings from CCDPROC routines
+    warnings.simplefilter('ignore', AstropyWarning)
+
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
         directory, glob_include=f"{inst_flag['prefix']}*.fits")
@@ -200,7 +249,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bias_fns = icl.files_filtered(obstype='bias')
         zero_fns = icl.files_filtered(exptime=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
-        bias_cl = ccdp.ImageFileCollection(filenames=biases)
+        bias_cl = ccdp.ImageFileCollection(directory, filenames=biases)
         return_object.append(biases if fnames_only else bias_cl)
 
     if inst_flag['get_flats']:
@@ -215,6 +264,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bin_list = sorted(list(filter(None, bin_list)))
         return_object.append(bin_list)
 
+    #===============================================================#
     # If we only want the filenames, flatten out the list and return
     if fnames_only:
         return list(np.concatenate(return_object).flat)
