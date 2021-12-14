@@ -99,8 +99,9 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     if debug:
         print('Processing bias frames...')
 
-    # Double-check that we're combining bias frames of identical binning
-    bias_cl = bias_cl.filter(ccdsum=binning)
+    # Double-check that we're combining FULL FRAME bias frames of identical
+    #  binning only
+    bias_cl = bias_cl.filter(ccdsum=binning, subarrno=0)
 
     # Show progress bar for processing bias frames
     progress_bar = tqdm(total=len(bias_cl.files), unit='frame',
@@ -165,6 +166,10 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     InputError
         Raised if the binning is not set.
     """
+    # If there are no flats, return an empty Table()
+    if not flat_cl.files:
+        return Table()
+
     # Error checking for binning
     if binning is None:
         raise InputError('Binning not set.')
@@ -353,6 +358,10 @@ def validate_flat_table(flat_meta, lmi_filt):
         If the `lmi_filt` was used in this set, return the subtable of
         `flat_meta` containing that filter.  Otherwise, return `None`.
     """
+    # If there were no flats at all (blank Table), return None
+    if not flat_meta:
+        return None
+
     # Find the rows of the table corresponding to this filter, return if 0
     idx = np.where(flat_meta['filter'] == lmi_filt)
     if len(idx[0]) == 0:
@@ -368,7 +377,7 @@ def validate_flat_table(flat_meta, lmi_filt):
     # Do something...
     print("\nIn validate_flat_table():")
     print(lmi_filt)
-    subtable.pprint()
+    #subtable.pprint()
     print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
 
     # Find the mean quadric surface for this set of flats

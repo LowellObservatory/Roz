@@ -21,6 +21,8 @@ This module primarily trades in... hope?
 """
 
 # Built-In Libraries
+import os
+from pathlib import Path
 
 # 3rd Party Libraries
 from astropy.nddata import CCDData
@@ -65,6 +67,12 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     except Exception as e:
         print(f"Could not open {img_fn} because of {e}.")
         return None
+
+    # Since we use the filename (sans path) in the graphic title...
+    if isinstance(img_fn, str):
+        img_fn = img_fn.split(os.path.sep)[-1]
+    elif isinstance(img_fn, Path):
+        img_fn = img_fn.name
 
     # Construct the output filename from the image header
     hdr = ccd.header

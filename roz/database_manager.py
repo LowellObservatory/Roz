@@ -53,6 +53,7 @@ class CalibrationDatabase():
         """
         # Set internal variables
         self.flags = inst_flags
+        self.proc_dir = None
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
@@ -69,16 +70,16 @@ class CalibrationDatabase():
 
     @property
     def bias_temp(self):
-        """bias_temp Bias level and Temperature
+        """bias_temp Bias Level and Temperature
 
-        [extended_summary]
+        Return the bias levels and temperatures as a @property of the instance
 
         Returns
         -------
-        `numpy.ndarray`, `numpy.ndarray`
-            A tuple of an array of the mean bias level in the
-            [100:-100,100:-100] region of the CCD along with an array of the
-            corresponding mount temperature.
+        bias_crop_avg : `numpy.ndarray`
+           Array of the mean bias levels in the CROP region of the CCD
+        mnttemp : `numpy.ndarray`
+            Array of the corresponding mount temperatures
         """
         return np.asarray(self.bias['crop_avg']), \
                np.asarray(self.bias['mnttemp'])
@@ -113,7 +114,7 @@ class CalibrationDatabase():
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
             # Skip filters not used in this data set
-            print(f"Committing LMI filter {filt}...")
+            #print(f"Committing LMI filter {filt}...")
             if self.flat[filt] is None:
                 continue
 

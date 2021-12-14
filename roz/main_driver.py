@@ -31,7 +31,7 @@ from .process_calibrations import (
     process_flats,
     produce_database_object
 )
-from .send_alerts import send_alert, BadInstrumentAlert
+from .send_alerts import send_alert
 from .utils import set_instrument_flags
 
 
@@ -80,13 +80,15 @@ def run_lmi_cals(directory, mem_limit=None):
 
         # Take the metadata from the BAIS and FLAT frames and produce DATABASE
         database = produce_database_object(bias_meta, flat_meta, inst_flags)
+        # TODO: Find a better way to do this
+        database.proc_dir = directory
 
         # Write the contents of the database to InfluxDB
         database.write_to_influxdb()
 
-        # Update the LMI Filter Information page on Confluence for 2x2 binning
-        if human_bin == '2x2':
-            update_filter_characterization(database)
+        # Update the LMI Filter Information page on Confluence
+        #  Images for all binnings, values only for 2x2 binning
+        update_filter_characterization(database, png_only=(human_bin != '2x2'))
 
         # Add the database to a dictionary containing the different binnings
         db_list[human_bin] = database
@@ -137,6 +139,8 @@ def run_deveny_cals(directory, mem_limit=None):
 
         # Take the metadata from the BAIS frames and produce DATABASE
         database = produce_database_object(bias_meta, bias_meta, inst_flags)
+        # TODO: Find a better way to do this
+        database.proc_dir = directory
 
         # Add the database to a dictionary containing the different binnings
         db_list[human_bin] = database
@@ -188,21 +192,20 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     #  production), call the dumbwaiter to determine which files need to be
     #  copied and then carry out that operation.
     dumbwaiter = Dumbwaiter(directory)
+    if dumbwaiter.empty:
+        return None
     dumbwaiter.copy_frames_to_processing()
     # This really could happen at any time... putting it here for now.
     dumbwaiter.cold_storage()
 
     # Giddy up!
     if dumbwaiter.instrument == 'lmi':
-        db_list = run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
-    elif dumbwaiter.instrument == 'deveny':
-        db_list = run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
-    else:
-        send_alert(BadInstrumentAlert)
-        db_list = [{}]
+        return run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
+    if dumbwaiter.instrument == 'deveny':
+        return run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
 
-    # Return the Database List
-    return db_list
+    send_alert('BadInstrumentAlert : main()')
+    return None
 
 
 if __name__ == "__main__":

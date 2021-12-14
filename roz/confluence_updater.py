@@ -38,7 +38,7 @@ from numpy.ma.core import MaskedConstant
 
 # Internal Imports
 from .graphics_maker import make_png_thumbnail
-from .send_alerts import send_alert, ConfluenceAlert
+from .send_alerts import send_alert
 from .utils import (
     read_ligmos_conffiles,
     table_sort_on_list,
@@ -54,7 +54,8 @@ from .utils import (
 )
 
 
-def update_filter_characterization(database, delete_existing=False):
+def update_filter_characterization(database, png_only=False,
+                                   delete_existing=False):
     """update_filter_characterization Update the Confluence Page
 
     This routine is the main function in this module, and should be the only
@@ -65,6 +66,9 @@ def update_filter_characterization(database, delete_existing=False):
     ----------
     database : `roz.database_manager.CalibrationDatabase`
         The database of calibration frames
+    png_only : `bool`, optional
+        Only update the PNG image and not the countrate/exptime columns
+        [Default: False]
     delete_existing : `bool`, optional
         Delete the existing table on Confluence before upoading the new one?
         [Defualt: True]  NOTE: Once in production, maybe turn this to False?
@@ -74,7 +78,7 @@ def update_filter_characterization(database, delete_existing=False):
 
     # If the page doesn't already exist, send alert and return
     if not confluence.page_exists(space, title):
-        send_alert(ConfluenceAlert)
+        send_alert('ConfluenceAlert : update_filter_characterization()')
         return
 
     # Get the `page_id` needed for intracting with the page we want to update
@@ -83,7 +87,8 @@ def update_filter_characterization(database, delete_existing=False):
     # Update the HTML table attached to the Confluence page
     local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
     attachment_url = f"{confluence.url}download/attachments/{page_id}/"
-    png_fn = update_lmi_filter_table(local_filename, database, attachment_url)
+    png_fn = update_lmi_filter_table(local_filename, database, attachment_url,
+                                     png_only=png_only)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
@@ -102,7 +107,8 @@ def update_filter_characterization(database, delete_existing=False):
                                comment='Flat Field Image')
 
 
-def update_lmi_filter_table(filename, database, attachment_url, debug=True):
+def update_lmi_filter_table(filename, database, attachment_url,
+                            png_only=False, debug=False):
     """update_lmi_filter_table Update the LMI Filter Information Table
 
     Updates the HTML table of LMI filter information for upload to Confluence.
@@ -121,6 +127,9 @@ def update_lmi_filter_table(filename, database, attachment_url, debug=True):
         The database of calibration frames
     attachment_url : `str`
         The URL for attachments for this page in Confluence.
+    png_only : `bool`, optional
+        Only update the PNG image and not the countrate/exptime columns
+        [Default: False]
     debug : `bool`, optional
         Print debugging statements? [Default: True]
 
@@ -132,22 +141,24 @@ def update_lmi_filter_table(filename, database, attachment_url, debug=True):
     # Get the base (static) table
     lmi_filt, section_head = read_lmi_static_table()
 
-    # Use the `database` to create the dynamic portions of the LMI table
-    lmi_filt, png_fn = construct_lmi_dynamic_table(lmi_filt, database,
-                                                   attachment_url)
+    # Use the `database` to modify the dynamic portions of the LMI table
+    lmi_filt, png_fn = modify_lmi_dynamic_table(lmi_filt, database,
+                                                attachment_url,
+                                                png_only=png_only)
     if debug:
         lmi_filt.pprint()
 
     # Use the AstroPy Table `lmi_filt` to construct the HTML table
     construct_lmi_html_table(lmi_filt, section_head, filename,
-                             link_text="DON'T PANIC", debug=debug)
+                             link_text="Image Link", debug=True)
 
     # Return list of PNG filenames
     return png_fn
 
 
-def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
-    """construct_lmi_dynamic_table Construct the dynamic portions of the table
+def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
+                             png_only=False, debug=False):
+    """modify_lmi_dynamic_table Modify the dynamic portions of the table
 
     This function augments the static table (from the XML file) with dynamic
     information contained in the `database`.
@@ -188,8 +199,8 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
         # Make a blank table, including the LMI_FILTERS for correspondence
         nrow = len(LMI_FILTERS)
         col0 = Column(LMI_FILTERS, name='Filter')
-        col1 = Column(name='Latest Image', length=nrow, dtype='U128')
-        col2 = Column(name='UT Date of Last Flat', length=nrow, dtype='U128')
+        col1 = Column(name='Latest Image', length=nrow, dtype='U256')
+        col2 = Column(name='UT Date of Latest Flat', length=nrow, dtype='U128')
         col3 = Column(name='Count Rate (ADU/s)', length=nrow, dtype=float)
         col4 = Column(name='Exptime for 20k cts (s)', length=nrow, dtype=float)
         dyntable = Table([col0, col1, col2, col3, col4])
@@ -199,6 +210,8 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
     lmi_filt = join(lmi_filt, dyntable, join_type='left', keys='Filter')
     # Undo the alpha sorting done by .join()
     lmi_filt = table_sort_on_list(lmi_filt, 'FITS Header Value', LMI_FILTERS)
+    # Make sure the `Latest Image` column has enough space for long URLs
+    lmi_filt['Latest Image'] = lmi_filt['Latest Image'].astype('U256')
 
     if debug:
         lmi_filt.pprint()
@@ -213,30 +226,34 @@ def construct_lmi_dynamic_table(lmi_filt, database, attachment_url, debug=True):
         # But, only update if the DATOBS of this flat is LATER than what's
         #  already in the table.  If OLD > NEW, skip.
         new_date = database.flat[filt]['dateobs'][-1].split('T')[0]
-        if not isinstance(lmi_filt['UT Date of Last Flat'][i], MaskedConstant):
-            is_date = (existing_date := lmi_filt['UT Date of Last Flat'][i].strip())
-            old_newer_than_new = dt.datetime.strptime(existing_date, "%Y-%m-%d") > \
-                                dt.datetime.strptime(new_date, "%Y-%m-%d")
-            if is_date and old_newer_than_new:
-                continue
+        if not isinstance(lmi_filt['UT Date of Latest Flat'][i], MaskedConstant):
+            if (existing_date := lmi_filt['UT Date of Latest Flat'][i].strip()) :
+                if dt.datetime.strptime(existing_date, "%Y-%m-%d") >= \
+                                    dt.datetime.strptime(new_date, "%Y-%m-%d") :
+                    continue
 
-        # Call the PNG-maker to PNG-ify the latest image; append filename
-        png_fn.append(make_png_thumbnail(database.flat[filt]['filename'][-1],
-                                         database.flags))
+        # TODO: Add a check here for whether the correct lamps were used.  This
+        #       can be determined by checking that the count rate is within
+        #       some nominal range.
+
+        # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
+        fname = database.proc_dir.joinpath(database.flat[filt]['filename'][-1])
+        png_fn.append( make_png_thumbnail(fname, database.flags) )
 
         # Update the dynamic columns
         lmi_filt['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-        lmi_filt['UT Date of Last Flat'][i] = new_date
-        lmi_filt['Count Rate (ADU/s)'][i] = \
-                    (count_rate := np.mean(database.flat[filt]['crop_med']))
-        lmi_filt['Exptime for 20k cts (s)'][i] = 20000. / count_rate
+        lmi_filt['UT Date of Latest Flat'][i] = new_date
+        if not png_only:
+            lmi_filt['Count Rate (ADU/s)'][i] = \
+                        (count_rate := np.mean(database.flat[filt]['crop_med']))
+            lmi_filt['Exptime for 20k cts (s)'][i] = 20000. / count_rate
 
     # Split off the dyntable portion again, and write it back to disk for later
     dyntable = Table( [ lmi_filt['Filter'], lmi_filt['Latest Image'],
-                        lmi_filt['UT Date of Last Flat'],
+                        lmi_filt['UT Date of Latest Flat'],
                         lmi_filt['Count Rate (ADU/s)'],
                         lmi_filt['Exptime for 20k cts (s)'] ],
-                        names=['Filter','Latest Image','UT Date of Last Flat',
+                        names=['Filter','Latest Image','UT Date of Latest Flat',
                                'Count Rate (ADU/s)', 'Exptime for 20k cts (s)'] )
     dyntable.write(LMI_DYNTABLE, overwrite=True)
 

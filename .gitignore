@@ -73,6 +73,7 @@ config/*.conf
 # Ignore rando code dirs
 .vscode
 *.code-workspace
+.VSCodeCounter
 
 # Stupid OS X stuff
 *.DS_Store

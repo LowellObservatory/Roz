@@ -8,7 +8,7 @@
 #
 #  @author: tbowers
 
-"""Module for gathering and movimg around whatever frames are required by Roz.
+"""Module for gathering and moving around whatever frames are required by Roz.
 
 This module is part of the Roz package, written at Lowell Observatory.
 
@@ -39,7 +39,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from .send_alerts import send_alert, BadDirectoryAlert, BadFrameclassAlert
+from .send_alerts import send_alert
 from .utils import read_ligmos_conffiles, set_instrument_flags
 
 
@@ -73,7 +73,8 @@ class Dumbwaiter():
         """
         # Check that the (presumably remote) directory is, in fact, a directory
         if not os.path.isdir(data_dir):
-            send_alert(BadDirectoryAlert)
+            send_alert('BadDirectoryAlert : Dumbwaiter.__init__()')
+            return
 
         # Initialize attributes
         self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
@@ -81,6 +82,13 @@ class Dumbwaiter():
         self.locations = read_ligmos_conffiles('rozSetup')
         self.proc_dir = Path(self.locations.processing_dir)
         self.instrument = divine_instrument(self.data_dir)
+
+        # If the directory is completely empty: send alert, set empty, return
+        if not self.instrument:
+            send_alert('EmptyDirectoryAlert : Dumbwaiter.__init__()')
+            self.empty = True
+            return
+
         self.inst_flags = set_instrument_flags(self.instrument)
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
@@ -89,7 +97,10 @@ class Dumbwaiter():
                                             self.inst_flags,
                                             fnames_only=True)
         else:
-            send_alert(BadFrameclassAlert)
+            send_alert('BadFrameclassAlert : Dumbwaiter.__init__()')
+
+        # Make an attribute specifying whether the dumbwaiter is empty
+        self.empty = not self.frames
 
     def copy_frames_to_processing(self, keep_existing=False):
         """copy_frames_to_processing Copy data frames to local processing dir
@@ -107,6 +118,10 @@ class Dumbwaiter():
             Keep the existing files in the processing directory?
             [Default: False]
         """
+        # If empty, dont' do anything
+        if self.empty:
+            return
+
         if not keep_existing:
             print("Cleaning out previous cruft in processing directory "
                   f"{self.proc_dir}")
@@ -116,8 +131,13 @@ class Dumbwaiter():
 
         print(f"Copying data from {self.data_dir} to {self.proc_dir} "
               "for processing...")
+        # Show progress bar for copying files
+        progress_bar = tqdm(total=len(self.frames), unit='file',
+                            unit_scale=False, colour='cyan')
         for frame in self.frames:
             shutil.copy(self.data_dir.joinpath(frame), self.proc_dir)
+            progress_bar.update(1)
+        progress_bar.close()
 
     def cold_storage(self, testing=True):
         """cold_storage Put the dumbwaited frames into cold strage
@@ -135,6 +155,10 @@ class Dumbwaiter():
         testing : `bool`, optional
             If testing, don't commit to cold storage  [Default: True]
         """
+        # If empty, dont' do anything
+        if self.empty:
+            return
+
         # First, check to see if the UT Date is encoded in the source `data_dir`
         #  (8 consecutive digits) using regex negative lookbehind / lookahead
         if result := re.search(r'(?<!\d)\d{8}(?!\d)', str(self.data_dir)):
@@ -203,7 +227,7 @@ def divine_instrument(directory):
         except KeyError:
             continue
     # Otherwise...
-    send_alert(BadDirectoryAlert)
+    send_alert('BadDirectoryAlert : divine_instrument()')
     return None
 
 
@@ -237,25 +261,34 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     # Silence Superflous AstroPy Warnings from CCDPROC routines
     warnings.simplefilter('ignore', AstropyWarning)
 
+    # Because over-the-network reads can take a while, say something!
+    print(f"Reading the files in {directory}...")
+
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
-        directory, glob_include=f"{inst_flag['prefix']}*.fits")
+            directory, glob_include=f"{inst_flag['prefix']}*.fits")
+
+    if not icl.files:
+        print("There ain't nothin' here that meets my needs!")
+        send_alert('EmptyDirectoryAlert : gather_cal_frames()')
+        return None
+
     return_object = []
 
     # Keep these items separate for now, in case future instruments need one
     #  but not the others
     if inst_flag['get_bias']:
-        # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
-        bias_fns = icl.files_filtered(obstype='bias')
-        zero_fns = icl.files_filtered(exptime=0)
+        # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0) FULL FRAME ONLY
+        bias_fns = icl.files_filtered(obstype='bias', subarrno=0)
+        zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
         bias_cl = ccdp.ImageFileCollection(directory, filenames=biases)
         return_object.append(biases if fnames_only else bias_cl)
 
     if inst_flag['get_flats']:
-        # Gather DOME FLAT frames -- SKY FLAT not supported at this time
-        # TODO: Figure out how to add support for SKY FLAT
-        domeflat_cl = icl.filter(obstype='dome flat')
+        # Gather DOME FLAT frames; FULL FRAME ONLY
+        # TODO: SKY FLAT not supported at this time -- Add support
+        domeflat_cl = icl.filter(obstype='dome flat', subarrno=0)
         return_object.append(domeflat_cl.files if fnames_only else domeflat_cl)
 
     if inst_flag['check_binning'] and not fnames_only:

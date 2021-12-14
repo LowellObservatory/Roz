@@ -36,47 +36,7 @@ class InputError(ValueError):
     """
 
 
-# Create various alert classes to use
-class _BaseAlert():
-    """_Baselert Base alert class, to contain useful common things
-    """
-    def __init__(self):
-        pass
-
-
-class BadDirectoryAlert(_BaseAlert):
-    """BadDirectoryAlert Caused by a bad directory used in the call
-    """
-    def __init__(self):
-        super().__init__()
-        self.type = 'Bad Directory'
-
-
-class BadFrameclassAlert(_BaseAlert):
-    """BadFrameclassAlert Caused by unsupported frameclass
-    """
-    def __init__(self):
-        super().__init__()
-        self.type = 'Bad Frame Class'
-
-
-class BadInstrumentAlert(_BaseAlert):
-    """BadInstrumentAlert Caused by instrument not in instrument_flags.ecsv
-    """
-    def __init__(self):
-        super().__init__()
-        self.type = 'Cannot Run on Anything'
-
-
-class ConfluenceAlert(_BaseAlert):
-    """ConfluenceAlert Caused by an issue connecting with Confluence
-    """
-    def __init__(self):
-        super().__init__()
-        self.type = 'Confluence Issue'
-
-
-def send_alert(alertclass):
+def send_alert(alert_type):
     """send_alert Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
@@ -85,4 +45,4 @@ def send_alert(alertclass):
     There are various types of alerts that can be send... maybe choose the
     medium based on the input `alertclass`?
     """
-    print(f"Alert Alert Alert: {alertclass.type}")
+    print(f"***** Alert Alert Alert: {alert_type}")

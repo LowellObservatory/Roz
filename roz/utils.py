@@ -325,8 +325,10 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     n_terms = 6 if fit_quad else 3
     matrix = np.empty((n_terms, n_terms))
 
-    # Produce the coordinate arrays, if not fed an existing dict
-    c_arr = produce_coordinate_arrays(data.shape) if c_arr is None else c_arr
+    # Produce the coordinate arrays, if not fed an existing dict OR if the
+    #  array size is different (occasional edge case)
+    reproduce = (c_arr is None) or (data.shape != c_arr['x_coord_arr'].shape)
+    c_arr = produce_coordinate_arrays(data.shape) if reproduce else c_arr
 
     # Fill in the matrix elements
     #  Upper left quadrant (or only quadrant, if fitting linear):

@@ -5,12 +5,12 @@
 # - {name: "FITS Header Value", datatype: string}
 # - {name: "Pattern String", datatype: string}
 # - {name: "Focus Offset (\xB5m)", datatype: string}
-# - {name: "Central Wavelength (\xC5)", datatype: string}
+# - {name: "Central Wavel. (\xC5)", datatype: string}
 # - {name: "Filter Width (\xC5)", datatype: string}
 # - {name: Flatfield Lamps, datatype: string}
 # - {name: Nominal Image, datatype: string}
 # schema: astropy-2.0
-Filter "FITS Header Value" "Pattern String" "Focus Offset (µm)" "Central Wavelength (Å)" "Filter Width (Å)" "Flatfield Lamps" "Nominal Image"
+Filter "FITS Header Value" "Pattern String" "Focus Offset (µm)" "Central Wavel. (Å)" "Filter Width (Å)" "Flatfield Lamps" "Nominal Image"
 OPEN OPEN OPEN 0 "" "" "" ""
 DARK DARK DARK N/A "" "" "" ""
 "4 Hole Mask" 4HOLEMASK 4Hole "" "" "" "" ""
