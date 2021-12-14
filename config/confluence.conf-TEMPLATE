@@ -1,6 +1,0 @@
-[confluenceSetup]
-host = confluence
-user = None
-password = None
-space = 'LDTOI'
-title = 'LMI Filter Characterization 2'

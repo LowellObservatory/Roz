@@ -1,8 +1,0 @@
-[databaseSetup]
-type = influxdb
-host = influxdb
-port = 8086
-user = None
-password = None
-tablename = YourTableName
-enabled = True

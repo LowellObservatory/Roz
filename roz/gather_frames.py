@@ -25,6 +25,8 @@ sent to or recieved by Wadsworth.
 # Built-In Libraries
 import glob
 import os
+from pathlib import Path
+import shutil
 import warnings
 
 # 3rd Party Libraries
@@ -34,7 +36,8 @@ import ccdproc as ccdp
 import numpy as np
 
 # Internal Imports
-from .send_alerts import send_alert, BadDirectoryAlert
+from .send_alerts import send_alert, BadDirectoryAlert, BadFrametypeAlert
+from .utils import roz_config, set_instrument_flags
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
@@ -65,24 +68,66 @@ def butler_bell():
     return directory
 
 
-def dumbwaiter():
+def dumbwaiter(data_dir, frametype='calibration'):
     """dumbwaiter Carry the data to a processable location
 
-    This function will interact with Wadsworth (or appropriate successor) to
-    have the proper data buttled to a location suitable for processing and
-    analysis.
+    This function scans the (presumably remote) directory for suitable
+    files, and copies them to the local processing directory.
 
-    This function should do something related to getting the data where
-    we need it, whether it is physically moving the data (or should Wadsworth
-    do that?) or ensuring an external mount point is properly loaded.
+    NOTE: 'calibration' is the ONLY type of frame currently supported,
+    but the `frametype` keyword is included for future expansions of the
+    package.
+
+    Parameters
+    ----------
+    data_dir : `str` or `pathlib.Path`
+        The directory to search for appropriate files
+    frametype : `str`, optional
+        Type of frame to collect for processing.  [Default: 'calibration']
 
     Returns
     -------
-    `str` or `pathlib.Path`
-        Directory name containing the files to be processed and analyzed.
+    instrument : `str`
+        The name of the instrument, as returned by divine_instrument()
+    frames : `list`
+        List of pathless filenames copied into the processing directory
+    proc_dir : `pathlib.Path`
+        The Path of the processing directory, as extracted from the
+        configuration file
     """
-    directory = ''
-    return directory
+    # Check that the (presumably remote) directory is, in fact, a directory
+    if not os.path.isdir(data_dir):
+        send_alert(BadDirectoryAlert)
+
+    # Path-ify `directory`, if necessary
+    if isinstance(data_dir, str):
+        data_dir = Path(data_dir)
+
+    # Determine the instrument in question and set the flags
+    instrument = divine_instrument(data_dir)
+    inst_flags = set_instrument_flags(instrument)
+
+    # Based on the `frametype`, call the appropriate `gather_*_frames()`
+    if frametype == 'calibration':
+        frames = gather_cal_frames(data_dir, inst_flags, fnames_only=True)
+    else:
+        send_alert(BadFrametypeAlert)
+
+    # Copy the calibration frames to a local processing directory -- but first
+    #  clear out the processing directory to have a fresh start
+    proc_dir = Path(roz_config().processing_dir)
+    print(f"Cleaning out previous cruft in processing directory {proc_dir}")
+    for entry in os.scandir(proc_dir):
+        if entry.is_file():
+            os.remove(proc_dir.joinpath(entry))
+
+    # Then copy
+    print(f"Copying data from {data_dir} to {proc_dir} for processing...")
+    for frame in frames:
+        shutil.copy(data_dir.joinpath(frame), proc_dir)
+
+    # Return the instrument name and the list of frames (sans path)
+    return instrument, frames, proc_dir
 
 
 def divine_instrument(directory):
@@ -119,7 +164,7 @@ def divine_instrument(directory):
     return None
 
 
-def gather_cal_frames(directory, inst_flag):
+def gather_cal_frames(directory, inst_flag, fnames_only=False):
     """gather_cal_frames Gather calibration frames from specified directory
 
     [extended_summary]
@@ -130,6 +175,9 @@ def gather_cal_frames(directory, inst_flag):
         Directory name to search for calibration files
     instrument : `str`, optional
         Name of the instrument to gather calibration frames for [Default: LMI]
+    fnames_only : `bool`, optional
+        Only return a concatenated list of filenames instead of the IFCs
+        [Default: False]
 
     Returns
     -------
@@ -151,23 +199,27 @@ def gather_cal_frames(directory, inst_flag):
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0)
         bias_fns = icl.files_filtered(obstype='bias')
         zero_fns = icl.files_filtered(exptime=0)
-        biases = np.unique(np.concatenate([bias_fns, zero_fns]))
-        bias_cl = ccdp.ImageFileCollection(filenames=biases.tolist())
-        return_object.append(bias_cl)
+        biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
+        bias_cl = ccdp.ImageFileCollection(filenames=biases)
+        return_object.append(biases if fnames_only else bias_cl)
 
     if inst_flag['get_flats']:
         # Gather DOME FLAT frames -- SKY FLAT not supported at this time
         # TODO: Figure out how to add support for SKY FLAT
         domeflat_cl = icl.filter(obstype='dome flat')
-        return_object.append(domeflat_cl)
+        return_object.append(domeflat_cl.files if fnames_only else domeflat_cl)
 
-    if inst_flag['check_binning']:
+    if inst_flag['check_binning'] and not fnames_only:
         # Get the complete list of binnings used -- but clear out `None` entries
         bin_list = icl.values('ccdsum', unique=True)
         bin_list = sorted(list(filter(None, bin_list)))
         return_object.append(bin_list)
 
-    # Return the accumulated objects as a tuple
+    # If we only want the filenames, flatten out the list and return
+    if fnames_only:
+        return list(np.concatenate(return_object).flat)
+
+    # Otherwise, return the accumulated objects as a tuple
     return tuple(return_object)
 
 

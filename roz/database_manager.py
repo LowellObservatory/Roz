@@ -26,10 +26,10 @@ import datetime as dt
 import numpy as np
 
 # Lowell Libraries
-from ligmos import utils as lig_utils, workers as lig_workers
+from ligmos import utils as lig_utils
 
 # Internal Imports
-from .utils import LMI_FILTERS, ROZ_CONFIG
+from .utils import read_ligmos_conffiles, LMI_FILTERS
 
 
 class CalibrationDatabase():
@@ -59,17 +59,9 @@ class CalibrationDatabase():
         self.flat = {} if self.flags['get_flats'] else None
 
         # Read in the InfluxDB config file
-        conf_file = ROZ_CONFIG.joinpath('dbconfig.conf')
+        self.db_set = read_ligmos_conffiles('databaseSetup')
 
-        # By doing it this way we ignore the 'enabled' key
-        #    but we avoid contortions needed if using
-        #    utils.confparsers.parseConfig, so it's worth it
-        self.db_set = lig_utils.confparsers.rawParser(conf_file)
-        self.db_set = lig_workers.confUtils.assignConf(
-                       self.db_set['databaseSetup'],
-                       lig_utils.classes.baseTarget,
-                       backfill=True)
-
+        # The InfluxDB object is thuswise constructed:
         self.idb = lig_utils.database.influxobj(
                     tablename=self.db_set.tablename, host=self.db_set.host,
                     port=self.db_set.port, user=self.db_set.user,
@@ -97,7 +89,7 @@ class CalibrationDatabase():
         Following the example of Ryan's Docker_Pi/MesaTools/onewireTemps/,
         this method packetizes the bias and flat metadata dictionaries and
         commits them to the InfluxDB database, whose location and credentials
-        are in ROZ_CONFIG/dbconfig.conf
+        are in config/roz.conf
 
         Parameters
         ----------
@@ -118,7 +110,6 @@ class CalibrationDatabase():
         if self.flags['instrument'] != 'LMI':
             return
 
-        # print(f"Key names in self.flat: {self.flat.keys()}")
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
             # Skip filters not used in this data set
@@ -130,7 +121,8 @@ class CalibrationDatabase():
             for entry in self.flat[filt]:
                 packet = neatly_package(entry, self.flat[filt].colnames)
                 # Commit
-                #self.idb.singleCommit(packet, table=self.db_set.tablename)
+                if not testing:
+                    self.idb.singleCommit(packet, table=self.db_set.tablename)
 
 
 # Non-Class Functions ========================================================#

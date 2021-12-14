@@ -36,13 +36,11 @@ from bs4.element import NavigableString
 import numpy as np
 from numpy.ma.core import MaskedConstant
 
-# Lowell Libraries
-from ligmos import utils as lig_utils, workers as lig_workers
-
 # Internal Imports
 from .graphics_maker import make_png_thumbnail
 from .send_alerts import send_alert, ConfluenceAlert
 from .utils import (
+    read_ligmos_conffiles,
     table_sort_on_list,
     two_sigfig,
     HTML_TABLE_FN,
@@ -50,7 +48,6 @@ from .utils import (
     ECSV_SECHEAD,
     LMI_FILTERS,
     LMI_DYNTABLE,
-    ROZ_CONFIG,
     ROZ_DATA,
     ROZ_THUMB,
     XML_TABLE
@@ -429,12 +426,8 @@ def setup_confluence():
         The page title for the LMI Filter Information
     """
     # Read in and parse the configuration file
-    setup = lig_utils.confparsers.rawParser(
-                                  ROZ_CONFIG.joinpath('confluence.conf'))
-    setup = lig_workers.confUtils.assignConf(
-                                  setup['confluenceSetup'],
-                                  lig_utils.classes.baseTarget,
-                                  backfill=True)
+    setup = read_ligmos_conffiles('confluenceSetup')
+
     # Return
     return Confluence( url=setup.host,
                        username=setup.user,

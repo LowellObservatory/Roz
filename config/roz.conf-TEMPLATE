@@ -1,0 +1,22 @@
+[rozSetup]
+processing_dir = None
+host = None
+user = None
+password = None
+storage_dir = None
+
+[confluenceSetup]
+host = confluence
+user = None
+password = None
+space = LDTOI
+lmi_filter_title = LMI Filter Characterization 2
+
+[databaseSetup]
+type = influxdb
+host = influxdb
+port = 8086
+user = None
+password = None
+tablename = YourTableName
+enabled = True

@@ -45,15 +45,23 @@ class _BaseAlert():
 
 
 class BadDirectoryAlert(_BaseAlert):
-    """ConfluenceAlert Caused by a bad directory used in the call
+    """BadDirectoryAlert Caused by a bad directory used in the call
     """
     def __init__(self):
         super().__init__()
         self.type = 'Bad Directory'
 
 
-class CantRunAlert(_BaseAlert):
-    """ConfluenceAlert Caused by the code not being able to run
+class BadFrametypeAlert(_BaseAlert):
+    """BadFrametypeAlert Caused by unsupported frametype
+    """
+    def __init__(self):
+        super().__init__()
+        self.type = 'Bad Frametype'
+
+
+class BadInstrumentAlert(_BaseAlert):
+    """BadInstrumentAlert Caused by instrument not in instrument_flags.ecsv
     """
     def __init__(self):
         super().__init__()

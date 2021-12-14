@@ -25,13 +25,13 @@ import os
 
 # Internal Imports
 from .confluence_updater import update_filter_characterization
-from .gather_frames import divine_instrument, gather_cal_frames
+from .gather_frames import dumbwaiter, gather_cal_frames
 from .process_calibrations import (
     process_bias,
     process_flats,
     produce_database_object
 )
-from .send_alerts import send_alert, CantRunAlert
+from .send_alerts import send_alert, BadInstrumentAlert
 from .utils import set_instrument_flags
 
 
@@ -183,16 +183,19 @@ def main(args=None, directory=None, mem_limit=8.192e9):
             return None
         directory = args[1]
 
-    # Determine which instrument these data are for, based on FITS headers
-    instrument = divine_instrument(directory)
+    #=================================#
+    # Given the directory (which will be on a remote file server in
+    #  production), call the dumbwaiter to determine which files need to be
+    #  copied and then carry out that operation.
+    instrument, _, proc_dir = dumbwaiter(directory)
 
     # Giddy up!
     if instrument == 'lmi':
-        db_list = run_lmi_cals(directory, mem_limit=mem_limit)
+        db_list = run_lmi_cals(proc_dir, mem_limit=mem_limit)
     elif instrument == 'deveny':
-        db_list = run_deveny_cals(directory, mem_limit=mem_limit)
+        db_list = run_deveny_cals(proc_dir, mem_limit=mem_limit)
     else:
-        send_alert(CantRunAlert)
+        send_alert(BadInstrumentAlert)
         db_list = [{}]
 
     # Return the Database List

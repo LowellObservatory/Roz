@@ -29,10 +29,12 @@ from importlib_resources import files as pkg_files
 import numpy as np
 from numpy.ma.core import MaskedConstant
 
+# Lowell Libraries
+from ligmos import utils as lig_utils, workers as lig_workers
+
 # Internal Imports
 
 # Roz subdirectory paths
-ROZ_CONFIG = pkg_files('Roz.config')
 ROZ_DATA = pkg_files('Roz.data')
 ROZ_THUMB = pkg_files('Roz.thumbnails')
 
@@ -53,6 +55,49 @@ FMS = ['A', 'B', 'C', 'D']
 class InputError(ValueError):
     """InputError Locally defined error that inherits ValueError
     """
+
+
+def roz_config():
+    """roz_config It has the Roz Confifguration parameters
+
+    Right now, just returns the configuration parameters in a LIGMOS class.
+
+    Returns
+    -------
+    `ligmos.utils.classes.baseTarget`
+        Object containing the Roz configuration parameters
+    """
+    # Read in and parse the configuration file
+    return read_ligmos_conffiles('rozSetup')
+
+
+def read_ligmos_conffiles(confname, conffile='roz.conf'):
+    """read_ligmos_conffiles Read a configuration file using LIGMOS
+
+    Having this as a separate function may be a bit of an overkill, but it
+    makes it easier to keep the ligmos imports only in one place, and
+    simplifies the code elsewhere.
+
+    Parameters
+    ----------
+    confname : `str`
+        Name of the table within the configuration file to parse
+    conffile : `str`, optional
+        Name of the configuration file to parse  [Default: 'roz.conf']
+
+    Returns
+    -------
+    `ligmos.utils.classes.baseTarget`
+        An object with arrtibutes matching the keys in the associated
+        configuration file.
+    """
+    ligconf = lig_utils.confparsers.rawParser(
+                            pkg_files('Roz.config').joinpath(conffile))
+    ligconf = lig_workers.confUtils.assignConf(
+                            ligconf[confname],
+                            lig_utils.classes.baseTarget,
+                            backfill=True)
+    return ligconf
 
 
 def set_instrument_flags(inst='lmi'):
