@@ -26,6 +26,7 @@ This module primarily trades in internal databse objects
 # Built-In Libraries
 import datetime as dt
 import os
+from time import sleep
 
 # 3rd Party Libraries
 from astropy.io.votable import parse as vo_parse
@@ -54,6 +55,7 @@ from .utils import (
 )
 
 
+# Outward-facing function ====================================================#
 def update_filter_characterization(database, png_only=False,
                                    delete_existing=False):
     """update_filter_characterization Update the Confluence Page
@@ -73,16 +75,17 @@ def update_filter_characterization(database, png_only=False,
         Delete the existing table on Confluence before upoading the new one?
         [Defualt: True]  NOTE: Once in production, maybe turn this to False?
     """
-    # Instantiate the Confluence communication class and read in SPACE and TITLE
+    # Instantiate the Confluence communication class; read in SPACE and TITLE
     confluence, space, title = setup_confluence()
 
     # If the page doesn't already exist, send alert and return
-    if not confluence.page_exists(space, title):
+    if not safe_confluence_connect(confluence.page_exists, space, title):
         send_alert('ConfluenceAlert : update_filter_characterization()')
         return
 
     # Get the `page_id` needed for intracting with the page we want to update
-    page_id = confluence.get_page_id(space, title)
+    page_id = safe_confluence_connect(confluence.get_page_id, space, title)
+    print(f"This is the page_id: {page_id}")
 
     # Update the HTML table attached to the Confluence page
     local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
@@ -93,20 +96,24 @@ def update_filter_characterization(database, png_only=False,
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
-        confluence.delete_attachment(page_id, HTML_TABLE_FN)
+        safe_confluence_connect(confluence.delete_attachment,
+                                page_id, HTML_TABLE_FN)
 
     # Attach the HTML file to the Confluence page
-    confluence.attach_file(local_filename, name=HTML_TABLE_FN, page_id=page_id,
-                           content_type='text/html',
-                           comment='LMI Filter Information Table')
+    safe_confluence_connect(confluence.attach_file, local_filename,
+                            name=HTML_TABLE_FN, page_id=page_id,
+                            content_type='text/html',
+                            comment='LMI Filter Information Table')
 
     # Attach any PNGs created
     for png in png_fn:
-        confluence.attach_file(ROZ_THUMB.joinpath(png), name=png,
-                               page_id=page_id, content_type='image/png',
-                               comment='Flat Field Image')
+        safe_confluence_connect(confluence.attach_file,
+                                ROZ_THUMB.joinpath(png), name=png,
+                                page_id=page_id, content_type='image/png',
+                                comment='Flat Field Image')
 
 
+# Descriptive, high-level functions ==========================================#
 def update_lmi_filter_table(filename, database, attachment_url,
                             png_only=False, debug=False):
     """update_lmi_filter_table Update the LMI Filter Information Table
@@ -423,6 +430,45 @@ def read_lmi_static_table(table_type='ecsv'):
         raise ValueError(f"Table type {table_type} not recognized!")
 
     return filter_table, section_head
+
+
+def safe_confluence_connect(func, *args, **kwargs):
+    """safe_confluence_connect Safely connect to Confluence (error-catching)
+
+    Wrapper for confluence-connection functions to catch errors that might be
+    kicked (ConnectionTimeout, for instance).
+
+    This function performs a semi-infinite loop, pausing for 5 seconds after
+    each failed function call, up to a maximum of 5 minutes.
+
+    Parameters
+    ----------
+    func : `method`
+        The Confluence class method to be wrapped
+
+    Returns
+    -------
+    `Any`
+        The return value of `func` -- or None if unable to run `func`
+    """
+    # Starting value, pause (in seconds), and total timeout (in minutes)
+    i, pause, timeout = 1, 5, 5
+
+    while True:
+        try:
+            # Nominal function return
+            return func(*args, **kwargs)
+        except Exception as exception:
+            # If any fail, notify, pause, and retry
+            # TODO: Maybe limit the scope of `Exception` to urllib3/request?
+            print(f"\nExecution of `{func.__name__}` failed because of "
+                  f"{exception.__context__}\nWaiting {pause} seconds "
+                  f"before starting attempt #{(i := i+1)}")
+            sleep(pause)
+        # Give up after `timeout` minutes...
+        if i >= int(timeout*60/pause):
+            break
+    return None
 
 
 def setup_confluence():

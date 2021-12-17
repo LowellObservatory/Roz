@@ -174,6 +174,10 @@ class Dumbwaiter():
         tarbase = f"{self.instrument}_{utdate}_{self.frameclass}.tar.bz2"
         tarname = self.proc_dir.joinpath(tarbase)
 
+        # Just return now
+        if testing:
+            return
+
         # Tar up the files!
         print("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
@@ -185,9 +189,6 @@ class Dumbwaiter():
                 progress_bar.update(1)
             progress_bar.close()
 
-        # Just return now
-        if testing:
-            return
 
         # Next, set up for copying the tarball over to cold storage
         # TODO: Need to confer with Ryan about how this step will be done.

@@ -64,8 +64,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     # Read in the image, with error checking
     try:
         ccd = CCDData.read(img_fn)
-    except Exception as e:
-        print(f"Could not open {img_fn} because of {e}.")
+    except Exception as exception:
+        print(f"Could not open {img_fn} because of {exception}.")
         return None
 
     # Since we use the filename (sans path) in the graphic title...
