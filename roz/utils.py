@@ -22,6 +22,7 @@ This module primarily trades in... utility?
 
 # 3rd Party Libraries
 from astropy.modeling import models
+from astropy.nddata import CCDData
 from astropy.table import Table
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
@@ -55,6 +56,47 @@ FMS = ['A', 'B', 'C', 'D']
 class InputError(ValueError):
     """InputError Locally defined error that inherits ValueError
     """
+
+
+def load_saved_bias(instrument, binning):
+    """load_saved_bias Load a saved (canned) bias frame
+
+    In the event that a data set does not contain a concomitant bias frame(s),
+    load in a saved (canned) frame for use with processing the flat frames.
+
+    Parameters
+    ----------
+    instrument : `str`
+        Instrument name from instrument_flags()
+    binning : `str`
+        Instrument binning from CCDSUM
+
+    Returns
+    -------
+    `astropy.nddata.CCDData`
+        The (canned) combined, overscan-subtracted bias frame
+
+    Raises
+    ------
+    FileNotFoundError
+        If the desired canned frame does not exist in ROZ_DATA, raise this
+        error with a note to the Developer to add said file.
+    """
+    # Build bias filename
+    fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+
+    print(f"Reading in saved file {fn}...")
+    try:
+        return CCDData.read(ROZ_DATA.joinpath(fn))
+    except Exception as e:
+        print(e)
+        raise FileNotFoundError(f"Developer: Add file to ROZ_DATA: {fn}")
+
+
+def write_saved_bias(ccd, instrument, binning):
+    # Build bias filename
+    fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    ccd.write(ROZ_DATA.joinpath(fn), overwrite=True)
 
 
 def read_ligmos_conffiles(confname, conffile='roz.conf'):
@@ -256,12 +298,15 @@ def two_sigfig(value):
         String representation of `value` at two significant figures
     """
     # If zero, return a 'N/A' type string
-    if value == 0 or isinstance(value, MaskedConstant):
+    if value <= 0 or isinstance(value, MaskedConstant):
         return '-----'
     # Compute the number of decimal places using the log10.  The way
     #  np.around() works is that +decimal is to the RIGHT, hence the
     #  negative sign on log10.  The "+1" gives the second sig fig.
-    decimal = -int(np.floor(np.log10(value))) + 1
+    try:
+        decimal = -int(np.floor(np.log10(value))) + 1
+    except ValueError:
+        decimal = 0
 
     # Choose the output specification
     if decimal <= 0:

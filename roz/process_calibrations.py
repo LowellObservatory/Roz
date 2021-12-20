@@ -42,7 +42,9 @@ from .utils import (
     compute_human_readable_surface,
     compute_flatness,
     fit_quadric_surface,
+    load_saved_bias,
     trim_oscan,
+    write_saved_bias,
     LMI_FILTERS,
     FMS
 )
@@ -57,6 +59,7 @@ class InputError(ValueError):
     """
 
 
+# Narrative Functions ========================================================#
 def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
                  produce_combined=True):
     """process_bias Process and combine available bias frames
@@ -83,25 +86,12 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     `astropy.nddata.CCDData`
         The combined, overscan-subtracted bias frame (if
         `produce_combined == True`)
-
-    Raises
-    ------
-    InputError
-        Raised if the binning is not set.
     """
-    # Last check to ensure there are bias frames
+    bias_cl  = check_processing_ifc(bias_cl, binning)
     if not bias_cl.files:
-        return None, None
-
-    # Error checking for binning
-    if binning is None:
-        raise InputError('Binning not set.')
+        return (Table(), None) if produce_combined else Table()
     if debug:
         print('Processing bias frames...')
-
-    # Double-check that we're combining FULL FRAME bias frames of identical
-    #  binning only
-    bias_cl = bias_cl.filter(ccdsum=binning, subarrno=0)
 
     # Show progress bar for processing bias frames
     progress_bar = tqdm(total=len(bias_cl.files), unit='frame',
@@ -140,7 +130,8 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     return Table(metadata)
 
 
-def process_flats(flat_cl, bias_frame, binning=None, debug=True):
+def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
+                  debug=True):
     """process_flats Process the flat fields and return statistics
 
     [extended_summary]
@@ -153,6 +144,9 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
         The combined, overscan-subtracted bias frame
     binning : `str`, optional
         The binning to use for this routine [Default: None]
+    instrument : `str`, optional
+        For the case of no bias frame of the proper binning, load in a saved
+        bias frame for this instrument  [Default: None]
     debug : `bool`, optional
         Print debugging statements? [Default: True]
 
@@ -160,24 +154,20 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     -------
     `astropy.table.Table`
         The table of relevant metadata and statistics for each frame
-
-    Raises
-    ------
-    InputError
-        Raised if the binning is not set.
     """
-    # If there are no flats, return an empty Table()
+    # Check for existance of flats with this binning, else retun empty Table()
+    flat_cl  = check_processing_ifc(flat_cl, binning)
     if not flat_cl.files:
         return Table()
-
-    # Error checking for binning
-    if binning is None:
-        raise InputError('Binning not set.')
     if debug:
         print('Processing flat frames...')
 
-    # Double-check that we're processing flat frames of identical binning
-    flat_cl = flat_cl.filter(ccdsum=binning)
+    # Check for actual bias frame, else make something up
+    if not bias_frame:
+        print("No appropriate bias frames...")
+        bias_frame = load_saved_bias(instrument, binning)
+    else:
+        write_saved_bias(bias_frame, instrument, binning)
 
     # Show progress bar for processing flat frames
     progress_bar = tqdm(total=len(flat_cl.files), unit='frame',
@@ -222,6 +212,84 @@ def process_flats(flat_cl, bias_frame, binning=None, debug=True):
     return Table(metadata)
 
 
+def validate_bias_table(bias_meta):
+    """validate_bias_table Analyze and validate the bias frame metadata table
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    bias_meta : `astropy.table.Table`
+        A table containing information about the bias frames for analysis
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The, um, validated table?  This may change.
+    """
+    # If there were no biases at all (blank Table), return None
+    if not bias_meta:
+        return None
+
+    # For now, just print some stats and return the table.
+    print("\nIn validate_bias_table():")
+    print(np.mean(bias_meta['crop_avg']), np.median(bias_meta['crop_med']),
+          np.mean(bias_meta['crop_std']))
+
+    # Add logic checks for header datatypes (edge cases)
+
+    return bias_meta
+
+
+def validate_flat_table(flat_meta, lmi_filt):
+    """validate_flat_table Analyze and validate the flat frame metadata table
+
+    Separates the wheat from the chaff -- returning a subtable for the
+    specified filter, or None.
+
+    Parameters
+    ----------
+    flat_meta : `astropy.table.Table`
+        Table containing the flat frame metadata
+    lmi_filt : `str`
+        LMI filter to validate
+
+    Returns
+    -------
+    `astropy.table.Table` or `None`
+        If the `lmi_filt` was used in this set, return the subtable of
+        `flat_meta` containing that filter.  Otherwise, return `None`.
+    """
+    # If there were no flats at all (blank Table), return None
+    if not flat_meta:
+        return None
+
+    # Find the rows of the table corresponding to this filter, return if 0
+    idx = np.where(flat_meta['filter'] == lmi_filt)
+    if len(idx[0]) == 0:
+        return None
+
+    # For ease, pull these rows into a subtable
+    subtable = flat_meta[idx]
+
+    # Make sure 'flats' have a reasonable flat countrate, or total counts
+    #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
+    #  exptime).
+
+    # Do something...
+    print("\nIn validate_flat_table():")
+    print(lmi_filt)
+    #subtable.pprint()
+    print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
+
+    # Find the mean quadric surface for this set of flats
+    # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
+    # print(quadsurf)
+
+    return subtable
+
+
+# Helper Functions (Alphabetical) ============================================#
 def base_metadata_dict(hdr, data, quadsurf, crop=100):
     """base_metadata_dict Create the basic metadata dictionary
 
@@ -280,6 +348,42 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     return metadict
 
 
+def check_processing_ifc(ifc, binning):
+    """check_processing_ifc Check the IFC being processed
+
+    This is a DRY block, used in both process_bias and process_flats.  It
+    does the various checks for existance of files, and making sure binning
+    is uniform and FULL FRAME.
+
+    Parameters
+    ----------
+    ifc : `ccdproc.ImageFileCollection`
+        The ImageFileCollection to check
+    binning : `str`
+        The binning to use for this routine
+
+    Returns
+    -------
+    `ccdproc.ImageFileCollection`
+        Filtered ImageFileCollection, ready for processing
+
+    Raises
+    ------
+    InputError
+        Raised if the binning is not set.
+    """
+    # Error checking for binning
+    if binning is None:
+        raise InputError('Binning not set.')
+
+    # If IFC is empty already, just return it
+    if not ifc.files:
+        return ifc
+
+    # Double-check that we're processing FULL FRAMEs of identical binning only
+    return ifc.filter(ccdsum=binning, subarrno=0)
+
+
 def produce_database_object(bias_meta, flat_meta, inst_flags):
     """produce_database_object Stuff the metadata tables into a database object
 
@@ -312,76 +416,3 @@ def produce_database_object(bias_meta, flat_meta, inst_flags):
 
     # Return the filled database
     return database
-
-
-def validate_bias_table(bias_meta):
-    """validate_bias_table Analyze and validate the bias frame metadata table
-
-    [extended_summary]
-
-    Parameters
-    ----------
-    bias_meta : `astropy.table.Table`
-        A table containing information about the bias frames for analysis
-
-    Returns
-    -------
-    `astropy.table.Table`
-        The, um, validated table?  This may change.
-    """
-    # For now, just print some stats and return the table.
-    print("\nIn validate_bias_table():")
-    print(np.mean(bias_meta['crop_avg']), np.median(bias_meta['crop_med']),
-          np.mean(bias_meta['crop_std']))
-
-    # Add logic checks for header datatypes (edge cases)
-
-    return bias_meta
-
-
-def validate_flat_table(flat_meta, lmi_filt):
-    """validate_flat_table Analyze and validate the flat frame metadata table
-
-    Separates the wheat from the chaff -- returning a subtable for the
-    specified filter, or None.
-
-    Parameters
-    ----------
-    flat_meta : `astropy.table.Table`
-        Table containing the flat frame metadata
-    lmi_filt : `str`
-        LMI filter to validate
-
-    Returns
-    -------
-    `astropy.table.Table` or `None`
-        If the `lmi_filt` was used in this set, return the subtable of
-        `flat_meta` containing that filter.  Otherwise, return `None`.
-    """
-    # If there were no flats at all (blank Table), return None
-    if not flat_meta:
-        return None
-
-    # Find the rows of the table corresponding to this filter, return if 0
-    idx = np.where(flat_meta['filter'] == lmi_filt)
-    if len(idx[0]) == 0:
-        return None
-
-    # For ease, pull these rows into a subtable
-    subtable = flat_meta[idx]
-
-    # Make sure 'flats' have a reasonable flat countrate, or total counts
-    #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
-    #  exptime).
-
-    # Do something...
-    print("\nIn validate_flat_table():")
-    print(lmi_filt)
-    #subtable.pprint()
-    print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
-
-    # Find the mean quadric surface for this set of flats
-    # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
-    # print(quadsurf)
-
-    return subtable

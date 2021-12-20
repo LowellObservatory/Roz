@@ -76,7 +76,8 @@ def run_lmi_cals(directory, mem_limit=None):
                                              mem_limit=mem_limit)
 
         # Process the FLAT frames to produce statistics
-        flat_meta = process_flats(flat_cl, bias_frame, binning=binning)
+        flat_meta = process_flats(flat_cl, bias_frame, binning=binning,
+                                  instrument=inst_flags['instrument'])
 
         # Take the metadata from the BAIS and FLAT frames and produce DATABASE
         database = produce_database_object(bias_meta, flat_meta, inst_flags)

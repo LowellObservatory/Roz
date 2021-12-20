@@ -81,6 +81,9 @@ class CalibrationDatabase():
         mnttemp : `numpy.ndarray`
             Array of the corresponding mount temperatures
         """
+        # If the bias table is empty, return zeros
+        if self.bias is None:
+            return np.asarray([0]),np.asarray([0])
         return np.asarray(self.bias['crop_avg']), \
                np.asarray(self.bias['mnttemp'])
 
@@ -97,15 +100,17 @@ class CalibrationDatabase():
         testing : `bool`, optional
             If testing, don't commit to InfluxDB  [Default: True]
         """
-        # Loop over frames in self.bias to commit each one individually
-        for entry in self.bias:
+        # If bias table is extant, loop over frames in self.bias to commit
+        #  each one individually
+        if self.bias is not None:
+            for entry in self.bias:
 
-            # TODO: `meas` should reflect the instrument (LMI) OR the entire
-            #  self.idb object should point to a `tablename` reflecing LMI
-            packet = neatly_package(entry, self.bias.colnames)
-            # Commit
-            if not testing:
-                self.idb.singleCommit(packet, table=self.db_set.tablename)
+                # TODO: `meas` should reflect the instrument (LMI) OR the entire
+                #  self.idb object should point to a `tablename` reflecing LMI
+                packet = neatly_package(entry, self.bias.colnames)
+                # Commit
+                if not testing:
+                    self.idb.singleCommit(packet, table=self.db_set.tablename)
 
         # If not LMI, then bomb out now
         if self.flags['instrument'] != 'LMI':

@@ -354,7 +354,7 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
 
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
-    with open(filename) as html:
+    with open(filename, encoding="utf8") as html:
         soup = BeautifulSoup(html, 'html.parser')
 
     # Add the `creation date` line to the body of the HTML above the table
