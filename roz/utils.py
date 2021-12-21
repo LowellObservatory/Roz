@@ -90,10 +90,24 @@ def load_saved_bias(instrument, binning):
         return CCDData.read(ROZ_DATA.joinpath(fn))
     except Exception as e:
         print(e)
-        raise FileNotFoundError(f"Developer: Add file to ROZ_DATA: {fn}")
+        raise FileNotFoundError(f"Developer: Add {fn} to ROZ_DATA") from e
 
 
 def write_saved_bias(ccd, instrument, binning):
+    """write_saved_bias Write a saved (canned) bias frame
+
+    Write a bias frame to disk for use with other nights' data that has
+    no bias.
+
+    Parameters
+    ----------
+    ccd : `astropy.nddata.CCDData`
+        The (canned) combined, overscan-subtracted bias frame to write
+    instrument : `str`
+        Instrument name from instrument_flags()
+    binning : `str`
+        Instrument binning from CCDSUM
+    """
     # Build bias filename
     fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
     ccd.write(ROZ_DATA.joinpath(fn), overwrite=True)
