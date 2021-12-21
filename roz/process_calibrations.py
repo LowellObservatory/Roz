@@ -159,8 +159,6 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
     flat_cl  = check_processing_ifc(flat_cl, binning)
     if not flat_cl.files:
         return Table()
-    if debug:
-        print('Processing flat frames...')
 
     # Check for actual bias frame, else make something up
     if not bias_frame:
@@ -168,6 +166,8 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
         bias_frame = load_saved_bias(instrument, binning)
     else:
         write_saved_bias(bias_frame, instrument, binning)
+    if debug:
+        print('Processing flat frames...')
 
     # Show progress bar for processing flat frames
     progress_bar = tqdm(total=len(flat_cl.files), unit='frame',

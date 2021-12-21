@@ -283,8 +283,8 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bias_fns = icl.files_filtered(obstype='bias', subarrno=0)
         zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
-        bias_cl = ccdp.ImageFileCollection(directory, filenames=biases)
-        return_object.append(biases if fnames_only else bias_cl)
+        bias_cl = ccdp.ImageFileCollection(filenames=biases)
+        return_object.append(bias_cl.files if fnames_only else bias_cl)
 
     if inst_flag['get_flats']:
         # Gather DOME FLAT frames; FULL FRAME ONLY
