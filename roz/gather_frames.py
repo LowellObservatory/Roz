@@ -39,8 +39,8 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from .send_alerts import send_alert
-from .utils import read_ligmos_conffiles, set_instrument_flags
+from roz import send_alerts as sa
+from roz import utils
 
 
 # Create an error class to use
@@ -73,23 +73,23 @@ class Dumbwaiter():
         """
         # Check that the (presumably remote) directory is, in fact, a directory
         if not os.path.isdir(data_dir):
-            send_alert('BadDirectoryAlert : Dumbwaiter.__init__()')
+            sa.send_alert('BadDirectoryAlert : Dumbwaiter.__init__()')
             return
 
         # Initialize attributes
         self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
         self.frameclass = frameclass
-        self.locations = read_ligmos_conffiles('rozSetup')
+        self.locations = utils.read_ligmos_conffiles('rozSetup')
         self.proc_dir = Path(self.locations.processing_dir)
         self.instrument = divine_instrument(self.data_dir)
 
         # If the directory is completely empty: send alert, set empty, return
         if not self.instrument:
-            send_alert('EmptyDirectoryAlert : Dumbwaiter.__init__()')
+            sa.send_alert('EmptyDirectoryAlert : Dumbwaiter.__init__()')
             self.empty = True
             return
 
-        self.inst_flags = set_instrument_flags(self.instrument)
+        self.inst_flags = utils.set_instrument_flags(self.instrument)
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
         if self.frameclass == 'calibration':
@@ -97,7 +97,7 @@ class Dumbwaiter():
                                             self.inst_flags,
                                             fnames_only=True)
         else:
-            send_alert('BadFrameclassAlert : Dumbwaiter.__init__()')
+            sa.send_alert('BadFrameclassAlert : Dumbwaiter.__init__()')
 
         # Make an attribute specifying whether the dumbwaiter is empty
         self.empty = not self.frames
@@ -228,7 +228,7 @@ def divine_instrument(directory):
         except KeyError:
             continue
     # Otherwise...
-    send_alert('BadDirectoryAlert : divine_instrument()')
+    sa.send_alert('BadDirectoryAlert : divine_instrument()')
     return None
 
 
@@ -271,7 +271,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
-        send_alert('EmptyDirectoryAlert : gather_cal_frames()')
+        sa.send_alert('EmptyDirectoryAlert : gather_cal_frames()')
         return None
 
     return_object = []

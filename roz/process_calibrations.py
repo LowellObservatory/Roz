@@ -37,17 +37,9 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from .database_manager import CalibrationDatabase
-from .utils import (
-    compute_human_readable_surface,
-    compute_flatness,
-    fit_quadric_surface,
-    load_saved_bias,
-    trim_oscan,
-    write_saved_bias,
-    LMI_FILTERS,
-    FMS
-)
+from roz import database_manager as dm
+from roz import utils
+from roz.utils import LMI_FILTERS, FMS
 
 # Silence Superflous AstroPy Warnings
 warnings.simplefilter('ignore', AstropyWarning)
@@ -108,12 +100,12 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
         data = ccd.data[get_slice(hdr['TRIMSEC'], fits_convention=True)]
 
         # Statistics, statistics, statistics!!!!
-        quadsurf, coord_arrays = fit_quadric_surface(data, coord_arrays)
+        quadsurf, coord_arrays = utils.fit_quadric_surface(data, coord_arrays)
         metadata.append(base_metadata_dict(hdr, data, quadsurf))
 
         # Fit the overscan section, subtract it, then trim the image
         #  Append this to a list, update the progress bar and repeat!
-        bias_ccds.append(trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC']))
+        bias_ccds.append(utils.trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC']))
         progress_bar.update(1)
 
     progress_bar.close()
@@ -163,9 +155,9 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
     # Check for actual bias frame, else make something up
     if not bias_frame:
         print("No appropriate bias frames...")
-        bias_frame = load_saved_bias(instrument, binning)
+        bias_frame = utils.load_saved_bias(instrument, binning)
     else:
-        write_saved_bias(bias_frame, instrument, binning)
+        utils.write_saved_bias(bias_frame, instrument, binning)
     if debug:
         print('Processing flat frames...')
 
@@ -180,14 +172,14 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
         hdr = ccd.header
         hdr['SHORT_FN'] = fname.split(os.sep)[-1]
         # Fit & subtract the overscan section, trim the image, subtract bias
-        ccd = trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
+        ccd = utils.trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
         ccd = ccdp.subtract_bias(ccd, bias_frame)
 
         # Work entirely in COUNT RATE -- ergo divide by exptime
         count_rate = ccd.divide(hdr['EXPTIME'])
 
         # Statistics, statistics, statistics!!!!
-        quadsurf, coord_arrays = fit_quadric_surface(count_rate, coord_arrays)
+        quadsurf, coord_arrays = utils.fit_quadric_surface(count_rate, coord_arrays)
 
         metadict = base_metadata_dict(hdr, count_rate, quadsurf)
 
@@ -197,10 +189,8 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
             for x in ['x','y']:
                 metadict[f"rc{n}pos_{x.lower()}"] = \
                     float(hdr[f"P{n}{x.upper()}"])
-        metadict['icstat'] = f"{hdr['ICSTAT'].strip()}"
         metadict['icpos'] = float(hdr['ICPOS'])
         for x in FMS:
-            metadict[f"fmstat_{x.lower()}"] = f'{hdr[f"FM{x.upper()}STAT"].strip()}'
             metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
 
         metadata.append(metadict)
@@ -313,7 +303,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     # Make things easier by creating a slice for cropping
     allslice = np.s_[:,:]
     cropslice = np.s_[crop:-crop, crop:-crop]
-    human_readable = compute_human_readable_surface(quadsurf)
+    human_readable = utils.compute_human_readable_surface(quadsurf)
     human_readable.pop('typ')
     shape = (hdr['naxis1'], hdr['naxis2'])
 
@@ -337,7 +327,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         metadict[f"{name}_std"] = np.std(data[the_slice])
     for key, val in human_readable.items():
         metadict[f"qs_{key}"] = val
-    lin_flat, quad_flat = compute_flatness(human_readable, shape,
+    lin_flat, quad_flat = utils.compute_flatness(human_readable, shape,
                                            metadict['crop_std'])
     metadict['lin_flat'] = lin_flat
     metadict['quad_flat'] = quad_flat
@@ -404,7 +394,7 @@ def produce_database_object(bias_meta, flat_meta, inst_flags):
         Database object for use with... something?
     """
     # Instantiate the database
-    database = CalibrationDatabase(inst_flags)
+    database = dm.CalibrationDatabase(inst_flags)
 
     # Analyze the bias_meta table, and insert it into the database
     database.bias = validate_bias_table(bias_meta)

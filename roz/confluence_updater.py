@@ -38,21 +38,10 @@ import numpy as np
 from numpy.ma.core import MaskedConstant
 
 # Internal Imports
-from .graphics_maker import make_png_thumbnail
-from .send_alerts import send_alert
-from .utils import (
-    read_ligmos_conffiles,
-    table_sort_on_list,
-    two_sigfig,
-    HTML_TABLE_FN,
-    ECSV_FILTERS,
-    ECSV_SECHEAD,
-    LMI_FILTERS,
-    LMI_DYNTABLE,
-    ROZ_DATA,
-    ROZ_THUMB,
-    XML_TABLE
-)
+from roz import graphics_maker as gm
+from roz import send_alerts as sa
+from roz import utils
+from roz.utils import LMI_FILTERS
 
 
 # Outward-facing function ====================================================#
@@ -80,7 +69,7 @@ def update_filter_characterization(database, png_only=False,
 
     # If the page doesn't already exist, send alert and return
     if not safe_confluence_connect(confluence.page_exists, space, title):
-        send_alert('ConfluenceAlert : update_filter_characterization()')
+        sa.send_alert('ConfluenceAlert : update_filter_characterization()')
         return
 
     # Get the `page_id` needed for intracting with the page we want to update
@@ -88,27 +77,27 @@ def update_filter_characterization(database, png_only=False,
     print(f"This is the page_id: {page_id}")
 
     # Update the HTML table attached to the Confluence page
-    local_filename = ROZ_DATA.joinpath(HTML_TABLE_FN)
     attachment_url = f"{confluence.url}download/attachments/{page_id}/"
-    png_fn = update_lmi_filter_table(local_filename, database, attachment_url,
+    png_fn = update_lmi_filter_table(utils.Paths.data.local_html_table_fn,
+                                     database, attachment_url,
                                      png_only=png_only)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
         safe_confluence_connect(confluence.delete_attachment,
-                                page_id, HTML_TABLE_FN)
+                                page_id, utils.Paths.html_table_fn)
 
     # Attach the HTML file to the Confluence page
-    safe_confluence_connect(confluence.attach_file, local_filename,
-                            name=HTML_TABLE_FN, page_id=page_id,
+    safe_confluence_connect(confluence.attach_file, utils.Paths.data.local_html_table_fn,
+                            name=utils.Paths.html_table_fn, page_id=page_id,
                             content_type='text/html',
                             comment='LMI Filter Information Table')
 
     # Attach any PNGs created
     for png in png_fn:
         safe_confluence_connect(confluence.attach_file,
-                                ROZ_THUMB.joinpath(png), name=png,
+                                utils.Paths.thumbnail.joinpath(png), name=png,
                                 page_id=page_id, content_type='image/png',
                                 comment='Flat Field Image')
 
@@ -199,9 +188,9 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
         List of the PNG filenames created during this run
     """
     # Check if the dynamic FITS table is extant
-    if os.path.isfile(LMI_DYNTABLE):
+    if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
-        dyntable = Table.read(LMI_DYNTABLE)
+        dyntable = Table.read(utils.Paths.lmi_dyntable)
     else:
         # Make a blank table, including the LMI_FILTERS for correspondence
         nrow = len(LMI_FILTERS)
@@ -216,7 +205,7 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
     #  however, it also sorts the table...
     lmi_filt = join(lmi_filt, dyntable, join_type='left', keys='Filter')
     # Undo the alpha sorting done by .join()
-    lmi_filt = table_sort_on_list(lmi_filt, 'FITS Header Value', LMI_FILTERS)
+    lmi_filt = utils.table_sort_on_list(lmi_filt, 'FITS Header Value', LMI_FILTERS)
     # Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt['Latest Image'] = lmi_filt['Latest Image'].astype('U256')
 
@@ -245,7 +234,7 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
 
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
         fname = database.proc_dir.joinpath(database.flat[filt]['filename'][-1])
-        png_fn.append( make_png_thumbnail(fname, database.flags) )
+        png_fn.append( gm.make_png_thumbnail(fname, database.flags) )
 
         # Update the dynamic columns
         lmi_filt['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
@@ -262,15 +251,15 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
                         lmi_filt['Exptime for 20k cts (s)'] ],
                         names=['Filter','Latest Image','UT Date of Latest Flat',
                                'Count Rate (ADU/s)', 'Exptime for 20k cts (s)'] )
-    dyntable.write(LMI_DYNTABLE, overwrite=True)
+    dyntable.write(utils.Paths.lmi_dyntable, overwrite=True)
 
     # Add formatting constraints to the `lmi_filt` table columns
     lmi_filt['Count Rate (ADU/s)'] = \
                 Column(lmi_filt['Count Rate (ADU/s)'].filled(0),
-                       format=two_sigfig)
+                       format=utils.two_sigfig)
     lmi_filt['Exptime for 20k cts (s)'] = \
                 Column(lmi_filt['Exptime for 20k cts (s)'].filled(0),
-                       format=two_sigfig)
+                       format=utils.two_sigfig)
 
     return lmi_filt, png_fn
 
@@ -415,7 +404,7 @@ def read_lmi_static_table(table_type='ecsv'):
     """
     if table_type == 'xml':
         # Read in the XML table.
-        votable = vo_parse(XML_TABLE)
+        votable = vo_parse(utils.Paths.xml_table)
 
         # The VOTable has both the LMI Filter Info and the section heads for the HTML
         filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
@@ -423,8 +412,8 @@ def read_lmi_static_table(table_type='ecsv'):
 
     elif table_type == 'ecsv':
         # Read in the ECSV tables (LMI Filter Info and the HTML section headings)
-        filter_table = Table.read(ECSV_FILTERS)
-        section_head = Table.read(ECSV_SECHEAD)
+        filter_table = Table.read(utils.Paths.ecsv_filters)
+        section_head = Table.read(utils.Paths.ecsv_sechead)
 
     else:
         raise ValueError(f"Table type {table_type} not recognized!")
@@ -489,7 +478,7 @@ def setup_confluence():
         The page title for the LMI Filter Information
     """
     # Read in and parse the configuration file
-    setup = read_ligmos_conffiles('confluenceSetup')
+    setup = utils.read_ligmos_conffiles('confluenceSetup')
 
     # Return
     return Confluence( url=setup.host,

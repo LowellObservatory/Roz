@@ -24,15 +24,11 @@ import os
 # 3rd Party Libraries
 
 # Internal Imports
-from .confluence_updater import update_filter_characterization
-from .gather_frames import gather_cal_frames, Dumbwaiter
-from .process_calibrations import (
-    process_bias,
-    process_flats,
-    produce_database_object
-)
-from .send_alerts import send_alert
-from .utils import set_instrument_flags
+from roz import confluence_updater as cu
+from roz import gather_frames as gf
+from roz import process_calibrations as pc
+from roz import send_alerts as sa
+from roz import utils
 
 
 def run_lmi_cals(directory, mem_limit=None):
@@ -58,10 +54,10 @@ def run_lmi_cals(directory, mem_limit=None):
     `list` of `roz.database_manager.CalibrationDatabase`
         A list of the Calibration Database objects for each binning scheme
     """
-    inst_flags = set_instrument_flags('lmi')
+    inst_flags = utils.set_instrument_flags('lmi')
 
     # Collect the BIAS & FLAT frames for this directory
-    bias_cl, flat_cl, bin_list = gather_cal_frames(directory, inst_flags)
+    bias_cl, flat_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
 
     db_list = {}
     # Loop through the binning schemes used
@@ -72,15 +68,15 @@ def run_lmi_cals(directory, mem_limit=None):
         print(f"Processing the database for {human_bin} LMI binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta, bias_frame = process_bias(bias_cl, binning=binning,
+        bias_meta, bias_frame = pc.process_bias(bias_cl, binning=binning,
                                              mem_limit=mem_limit)
 
         # Process the FLAT frames to produce statistics
-        flat_meta = process_flats(flat_cl, bias_frame, binning=binning,
+        flat_meta = pc.process_flats(flat_cl, bias_frame, binning=binning,
                                   instrument=inst_flags['instrument'])
 
         # Take the metadata from the BAIS and FLAT frames and produce DATABASE
-        database = produce_database_object(bias_meta, flat_meta, inst_flags)
+        database = pc.produce_database_object(bias_meta, flat_meta, inst_flags)
         # TODO: Find a better way to do this
         database.proc_dir = directory
 
@@ -89,7 +85,8 @@ def run_lmi_cals(directory, mem_limit=None):
 
         # Update the LMI Filter Information page on Confluence
         #  Images for all binnings, values only for 2x2 binning
-        update_filter_characterization(database, png_only=(human_bin != '2x2'))
+        cu.update_filter_characterization(database,
+                                          png_only=(human_bin != '2x2'))
 
         # Add the database to a dictionary containing the different binnings
         db_list[human_bin] = database
@@ -121,10 +118,10 @@ def run_deveny_cals(directory, mem_limit=None):
     `list` of `roz.database_manager.CalibrationDatabase`
         A list of the Calibration Database objects for each binning scheme
     """
-    inst_flags = set_instrument_flags('deveny')
+    inst_flags = utils.set_instrument_flags('deveny')
 
     # Collect the BIAS frames for this directory
-    bias_cl, bin_list = gather_cal_frames(directory, inst_flags)
+    bias_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
 
     db_list = {}
     # Loop through the binning schemes used
@@ -135,11 +132,11 @@ def run_deveny_cals(directory, mem_limit=None):
         print(f"Processing the database for {human_bin} DeVeny binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta = process_bias(bias_cl, binning=bin_list[0],
+        bias_meta = pc.process_bias(bias_cl, binning=bin_list[0],
                                  mem_limit=mem_limit, produce_combined=False)
 
         # Take the metadata from the BAIS frames and produce DATABASE
-        database = produce_database_object(bias_meta, bias_meta, inst_flags)
+        database = pc.produce_database_object(bias_meta, bias_meta, inst_flags)
         # TODO: Find a better way to do this
         database.proc_dir = directory
 
@@ -192,7 +189,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     # Given the directory (which will be on a remote file server in
     #  production), call the dumbwaiter to determine which files need to be
     #  copied and then carry out that operation.
-    dumbwaiter = Dumbwaiter(directory)
+    dumbwaiter = gf.Dumbwaiter(directory)
     if dumbwaiter.empty:
         return None
     dumbwaiter.copy_frames_to_processing()
@@ -205,7 +202,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     if dumbwaiter.instrument == 'deveny':
         return run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
 
-    send_alert('BadInstrumentAlert : main()')
+    sa.send_alert('BadInstrumentAlert : main()')
     return None
 
 

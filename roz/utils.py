@@ -35,19 +35,31 @@ from ligmos import utils as lig_utils, workers as lig_workers
 
 # Internal Imports
 
-# Roz subdirectory paths
-ROZ_DATA = pkg_files('Roz.data')
-ROZ_THUMB = pkg_files('Roz.thumbnails')
 
-# Particular filenames needed by various routines
-XML_TABLE = ROZ_DATA.joinpath('lmi_filter_table.xml')
-ECSV_FILTERS = ROZ_DATA.joinpath('lmi_filter_table.ecsv')
-ECSV_SECHEAD = ROZ_DATA.joinpath('lmi_table_sechead.ecsv')
-HTML_TABLE_FN = 'lmi_filter_table.html'
-LMI_DYNTABLE = ROZ_DATA.joinpath('lmi_dynamic_filter.ecsv')
+# Classes to hold useful information
+class Paths:
+    """ Paths
+
+    [extended_summary]
+    """
+    # Main data directories
+    data = pkg_files('Roz', 'data')
+    thumbnail = pkg_files('Roz.thumbnails')
+
+    # Particular filenames needed by various routines
+    xml_table = data.joinpath('lmi_filter_table.xml')
+    ecsv_filters = data.joinpath('lmi_filter_table.ecsv')
+    ecsv_sechead = data.joinpath('lmi_table_sechead.ecsv')
+    html_table_fn = 'lmi_filter_table.html'
+    lmi_dyntable = data.joinpath('lmi_dynamic_filter.ecsv')
+    local_html_table_fn = data.joinpath('lmi_filter_table.html')
+
+    def __init__(self):
+        pass
+
 
 # List of LMI Filters
-LMI_FILTERS = list(Table.read(ECSV_FILTERS)['FITS Header Value'])
+LMI_FILTERS = list(Table.read(Paths.ecsv_filters)['FITS Header Value'])
 
 # Fold Mirror Names
 FMS = ['A', 'B', 'C', 'D']
@@ -79,7 +91,7 @@ def load_saved_bias(instrument, binning):
     Raises
     ------
     FileNotFoundError
-        If the desired canned frame does not exist in ROZ_DATA, raise this
+        If the desired canned frame does not exist in Paths.data, raise this
         error with a note to the Developer to add said file.
     """
     # Build bias filename
@@ -87,10 +99,10 @@ def load_saved_bias(instrument, binning):
 
     print(f"Reading in saved file {fn}...")
     try:
-        return CCDData.read(ROZ_DATA.joinpath(fn))
+        return CCDData.read(Paths.data.joinpath(fn))
     except Exception as e:
         print(e)
-        raise FileNotFoundError(f"Developer: Add {fn} to ROZ_DATA") from e
+        raise FileNotFoundError(f"Developer: Add {fn} to Paths.data") from e
 
 
 def write_saved_bias(ccd, instrument, binning):
@@ -110,7 +122,7 @@ def write_saved_bias(ccd, instrument, binning):
     """
     # Build bias filename
     fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
-    ccd.write(ROZ_DATA.joinpath(fn), overwrite=True)
+    ccd.write(Paths.data.joinpath(fn), overwrite=True)
 
 
 def read_ligmos_conffiles(confname, conffile='roz.conf'):
@@ -167,7 +179,7 @@ def set_instrument_flags(inst='lmi'):
         If the input instrument is not in the list, raise error.
     """
     # Read in the instrument flag table
-    instrument_table = Table.read(ROZ_DATA.joinpath('instrument_flags.ecsv'))
+    instrument_table = Table.read(Paths.data.joinpath('instrument_flags.ecsv'))
 
     # Check that the instrument is in the table
     if (inst := inst.upper()) not in instrument_table['instrument']:

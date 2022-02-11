@@ -29,7 +29,8 @@ import numpy as np
 from ligmos import utils as lig_utils
 
 # Internal Imports
-from .utils import read_ligmos_conffiles, LMI_FILTERS
+from roz import utils
+from roz.utils import LMI_FILTERS
 
 
 class CalibrationDatabase():
@@ -60,7 +61,7 @@ class CalibrationDatabase():
         self.flat = {} if self.flags['get_flats'] else None
 
         # Read in the InfluxDB config file
-        self.db_set = read_ligmos_conffiles('databaseSetup')
+        self.db_set = utils.read_ligmos_conffiles('databaseSetup')
 
         # The InfluxDB object is thuswise constructed:
         self.idb = lig_utils.database.influxobj(

@@ -30,7 +30,7 @@ from astropy.visualization import AsymmetricPercentileInterval
 import matplotlib.pyplot as plt
 
 # Internal Imports
-from .utils import ROZ_THUMB
+from roz import utils
 
 
 def plot_lmi_bias_temp():
@@ -105,7 +105,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     # Clean up the plot and save
     plt.tight_layout()
     plt.subplots_adjust(left=0.01, right=0.99, top=0.99)
-    plt.savefig(ROZ_THUMB.joinpath(png_fn))
+    plt.savefig(utils.Paths.thumbnail.joinpath(png_fn))
 
     # Return the filename we just saved
     return png_fn
