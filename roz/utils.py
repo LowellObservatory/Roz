@@ -42,9 +42,10 @@ class Paths:
 
     [extended_summary]
     """
-    # Main data directories
-    data = pkg_files('Roz', 'data')
+    # Main data & config directories
+    data = pkg_files('Roz.data')
     thumbnail = pkg_files('Roz.thumbnails')
+    config = pkg_files('Roz.config')
 
     # Particular filenames needed by various routines
     xml_table = data.joinpath('lmi_filter_table.xml')
@@ -53,6 +54,7 @@ class Paths:
     html_table_fn = 'lmi_filter_table.html'
     lmi_dyntable = data.joinpath('lmi_dynamic_filter.ecsv')
     local_html_table_fn = data.joinpath('lmi_filter_table.html')
+    css_table = data.joinpath('lmi_filter_table.css')
 
     def __init__(self):
         pass

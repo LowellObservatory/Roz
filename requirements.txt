@@ -4,6 +4,6 @@ matplotlib
 ligmos.egg
 numpy
 tqdm
-atlassian_python_api
+atlassian-python-api
 beautifulsoup4
 ccdproc

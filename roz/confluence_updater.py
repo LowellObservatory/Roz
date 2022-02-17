@@ -16,9 +16,6 @@ This module takes the database objects produces elsewhere and prepares updated
 content tables for upload to Confluence.  The only function herein that should
 be called directly is update_filter_characterization().
 
-Confluence API Documentation:
-        https://atlassian-python-api.readthedocs.io/index.html
-
 This module primarily trades in internal databse objects
 (`roz.database_manager.CalibrationDatabase`).
 """
@@ -26,22 +23,27 @@ This module primarily trades in internal databse objects
 # Built-In Libraries
 import datetime as dt
 import os
-from time import sleep
 
 # 3rd Party Libraries
 from astropy.io.votable import parse as vo_parse
 from astropy.table import join, Column, Table
-from atlassian import Confluence
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 import numpy as np
 from numpy.ma.core import MaskedConstant
+
+# Lowell Libraries
+from johnnyfive import confluence as j5c
 
 # Internal Imports
 from roz import graphics_maker as gm
 from roz import send_alerts as sa
 from roz import utils
 from roz.utils import LMI_FILTERS
+
+
+# Set API Components
+__all__ = ['update_filter_characterization']
 
 
 # Outward-facing function ====================================================#
@@ -62,44 +64,43 @@ def update_filter_characterization(database, png_only=False,
         [Default: False]
     delete_existing : `bool`, optional
         Delete the existing table on Confluence before upoading the new one?
-        [Defualt: True]  NOTE: Once in production, maybe turn this to False?
+        [Defualt: False]  NOTE: Once in production, maybe turn this to True?
     """
-    # Instantiate the Confluence communication class; read in SPACE and TITLE
-    confluence, space, title = setup_confluence()
+    # Instantiate a ConfluencePage object for the LMI Filter Page
+    page_info = utils.read_ligmos_conffiles('lmifilertSetup')
+    lmi_filter_info = j5c.ConfluencePage(page_info.space, page_info.page_title)
 
-    # If the page doesn't already exist, send alert and return
-    if not safe_confluence_connect(confluence.page_exists, space, title):
+    # If the page doesn't already exist (or Confluence times out),
+    #   send alert and return
+    if not lmi_filter_info.exists:
         sa.send_alert('ConfluenceAlert : update_filter_characterization()')
         return
 
     # Get the `page_id` needed for intracting with the page we want to update
-    page_id = safe_confluence_connect(confluence.get_page_id, space, title)
-    print(f"This is the page_id: {page_id}")
+    print(f"This is the page_id: {lmi_filter_info.page_id}")
 
     # Update the HTML table attached to the Confluence page
-    attachment_url = f"{confluence.url}download/attachments/{page_id}/"
-    png_fn = update_lmi_filter_table(utils.Paths.data.local_html_table_fn,
-                                     database, attachment_url,
+    png_fn = update_lmi_filter_table(utils.Paths.local_html_table_fn,
+                                     database, lmi_filter_info.attach_url,
                                      png_only=png_only)
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
-        safe_confluence_connect(confluence.delete_attachment,
-                                page_id, utils.Paths.html_table_fn)
+        lmi_filter_info.delete_attachment(utils.Paths.html_table_fn)
 
     # Attach the HTML file to the Confluence page
-    safe_confluence_connect(confluence.attach_file, utils.Paths.data.local_html_table_fn,
-                            name=utils.Paths.html_table_fn, page_id=page_id,
-                            content_type='text/html',
-                            comment='LMI Filter Information Table')
+    lmi_filter_info.attach_file(utils.Paths.local_html_table_fn,
+                                name=utils.Paths.html_table_fn,
+                                content_type='text/html',
+                                comment='LMI Filter Information Table')
 
     # Attach any PNGs created
     for png in png_fn:
-        safe_confluence_connect(confluence.attach_file,
-                                utils.Paths.thumbnail.joinpath(png), name=png,
-                                page_id=page_id, content_type='image/png',
-                                comment='Flat Field Image')
+        lmi_filter_info.attach_file(utils.Paths.thumbnail.joinpath(png),
+                                    name=png,
+                                    content_type='image/png',
+                                    comment='Flat Field Image')
 
 
 # Descriptive, high-level functions ==========================================#
@@ -107,10 +108,11 @@ def update_lmi_filter_table(filename, database, attachment_url,
                             png_only=False, debug=False):
     """update_lmi_filter_table Update the LMI Filter Information Table
 
-    Updates the HTML table of LMI filter information for upload to Confluence.
-    This table is partially static (basic information about the filters, etc.),
-    and partially dynamic, listing the UT date of the last flatfield, and the
-    most recent estimation of countrate for that filter/lamp combination.
+    Updates (on disk) the HTML table of LMI filter information for upload to
+    Confluence.  This table is partially static (basic information about the
+    filters, etc.), and partially dynamic, listing the UT date of the last
+    flatfield, and the most recent estimation of countrate for that filter/lamp
+    combination.
 
     This table also holds (links to) PNG images of 1) a carefully curated
     nominal flatfield, and 2) the most recent flatfield in this filter.
@@ -118,11 +120,12 @@ def update_lmi_filter_table(filename, database, attachment_url,
     Parameters
     ----------
     filename : `string`
-        Local filename of the HTML table to create.
+        Local filename of the HTML table to create or update
     database : `roz.database_manager.CalibrationDatabase`
         The database of calibration frames
     attachment_url : `str`
-        The URL for attachments for this page in Confluence.
+        The URL for attachments for this page in Confluence.  (Needed for
+        creating the proper links within the HTML table.)
     png_only : `bool`, optional
         Only update the PNG image and not the countrate/exptime columns
         [Default: False]
@@ -133,9 +136,11 @@ def update_lmi_filter_table(filename, database, attachment_url,
     -------
     `list`
         List of PNG filenames created for this run.
+    - on disk -
+        Updates the HTML table stored in the data/ directory
     """
     # Get the base (static) table
-    lmi_filt, section_head = read_lmi_static_table()
+    lmi_filt, section_head = load_lmi_static_table()
 
     # Use the `database` to modify the dynamic portions of the LMI table
     lmi_filt, png_fn = modify_lmi_dynamic_table(lmi_filt, database,
@@ -144,7 +149,8 @@ def update_lmi_filter_table(filename, database, attachment_url,
     if debug:
         lmi_filt.pprint()
 
-    # Use the AstroPy Table `lmi_filt` to construct the HTML table
+    # Use the AstroPy Table `lmi_filt` to construct the HTML table and
+    #  write it to disk
     construct_lmi_html_table(lmi_filt, section_head, filename,
                              link_text="Image Link", debug=True)
 
@@ -187,7 +193,7 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
     png_fn : `list`
         List of the PNG filenames created during this run
     """
-    # Check if the dynamic FITS table is extant
+    # Check if the dynamic-portion FITS table is extant
     if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
         dyntable = Table.read(utils.Paths.lmi_dyntable)
@@ -201,11 +207,13 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
         col4 = Column(name='Exptime for 20k cts (s)', length=nrow, dtype=float)
         dyntable = Table([col0, col1, col2, col3, col4])
 
-    # The astropy.table function join() combines tables based on common keys,
+    # Merge the static and dynamic portions together
+    #  The astropy.table function join() combines tables based on common keys,
     #  however, it also sorts the table...
     lmi_filt = join(lmi_filt, dyntable, join_type='left', keys='Filter')
     # Undo the alpha sorting done by .join()
-    lmi_filt = utils.table_sort_on_list(lmi_filt, 'FITS Header Value', LMI_FILTERS)
+    lmi_filt = utils.table_sort_on_list(lmi_filt, 'FITS Header Value',
+                                        LMI_FILTERS)
     # Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt['Latest Image'] = lmi_filt['Latest Image'].astype('U256')
 
@@ -331,15 +339,13 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
     # Count the number of columns for use with the HTML table stuff below
     ncols = len(lmi_filt.colnames)
 
-    # CSS stuff to make the HTML table pretty -- yeah, keep this hard-coded
-    cssdict = {'css': 'table, td, th {\n      border: 1px solid black;\n   }\n'
-                      '   table {\n      width: 100%;\n'
-                      '      border-collapse: collapse;\n   }\n   '
-                      'td {\n      padding: 10px;\n   }\n   th {\n'
-                      '      color: white;\n      background: #6D6E70;\n   }'}
+    # CSS stuff to make the HTML table pretty -- read it in from file
+    with open(utils.Paths.css_table, 'r', encoding="utf8") as css_fn:
+        css_style = css_fn.readlines()
 
     # Use the AstroPy HTML functionality to get us most of the way there
-    lmi_filt.write(filename, overwrite=True, htmldict=cssdict)
+    lmi_filt.write(filename, overwrite=True,
+                   htmldict={'css': ''.join(css_style)})
 
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
@@ -374,7 +380,7 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
         f_output.write(soup.prettify("utf-8"))
 
 
-def read_lmi_static_table(table_type='ecsv'):
+def load_lmi_static_table(table_type='ecsv'):
     """read_lmi_static_table Create the static portions of the LMI Filter Table
 
     This function reads in the information for the static portion of the
@@ -419,72 +425,6 @@ def read_lmi_static_table(table_type='ecsv'):
         raise ValueError(f"Table type {table_type} not recognized!")
 
     return filter_table, section_head
-
-
-def safe_confluence_connect(func, *args, **kwargs):
-    """safe_confluence_connect Safely connect to Confluence (error-catching)
-
-    Wrapper for confluence-connection functions to catch errors that might be
-    kicked (ConnectionTimeout, for instance).
-
-    This function performs a semi-infinite loop, pausing for 5 seconds after
-    each failed function call, up to a maximum of 5 minutes.
-
-    Parameters
-    ----------
-    func : `method`
-        The Confluence class method to be wrapped
-
-    Returns
-    -------
-    `Any`
-        The return value of `func` -- or None if unable to run `func`
-    """
-    # Starting value, pause (in seconds), and total timeout (in minutes)
-    i, pause, timeout = 1, 5, 5
-
-    while True:
-        try:
-            # Nominal function return
-            return func(*args, **kwargs)
-        except Exception as exception:
-            # If any fail, notify, pause, and retry
-            # TODO: Maybe limit the scope of `Exception` to urllib3/request?
-            print(f"\nExecution of `{func.__name__}` failed because of "
-                  f"{exception.__context__}\nWaiting {pause} seconds "
-                  f"before starting attempt #{(i := i+1)}")
-            sleep(pause)
-        # Give up after `timeout` minutes...
-        if i >= int(timeout*60/pause):
-            break
-    return None
-
-
-def setup_confluence():
-    """setup_confluence Set up the Confluence class instance
-
-    Reads in the confluence.conf configuration file, which contains the URL,
-    username, and password.  Also contained in the configuration file are
-    the Confluence space and page title into which the updated table will be
-    placed.
-
-    Returns
-    -------
-    confluence : `atlassian.Confluence`
-        Confluence class, initialized with credentials
-    space : `str`
-        The Confluence space containing the LMI Filter Information page
-    title : `str`
-        The page title for the LMI Filter Information
-    """
-    # Read in and parse the configuration file
-    setup = utils.read_ligmos_conffiles('confluenceSetup')
-
-    # Return
-    return Confluence( url=setup.host,
-                       username=setup.user,
-                       password=setup.password ), \
-           setup.space, setup.lmi_filter_title
 
 
 def wrap_plaintext_links(bs_tag, soup, link_text='Click Here'):

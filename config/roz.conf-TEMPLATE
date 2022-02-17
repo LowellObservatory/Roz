@@ -5,12 +5,9 @@ user = None
 password = None
 storage_dir = None
 
-[confluenceSetup]
-host = confluence
-user = None
-password = None
+[lmifilertSetup]
 space = LDTOI
-lmi_filter_title = LMI Filter Characterization 2
+page_title = LMI Filter Characterization 2
 
 [databaseSetup]
 type = influxdb
