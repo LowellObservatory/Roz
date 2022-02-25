@@ -54,7 +54,7 @@ def run_lmi_cals(directory, mem_limit=None):
     `list` of `roz.database_manager.CalibrationDatabase`
         A list of the Calibration Database objects for each binning scheme
     """
-    inst_flags = utils.set_instrument_flags('lmi')
+    inst_flags = utils.set_instrument_flags("lmi")
 
     # Collect the BIAS & FLAT frames for this directory
     bias_cl, flat_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
@@ -64,16 +64,18 @@ def run_lmi_cals(directory, mem_limit=None):
     for binning in bin_list:
 
         # Print out a nice status message for those interested
-        human_bin = binning.replace(' ','x')
+        human_bin = binning.replace(" ", "x")
         print(f"Processing the database for {human_bin} LMI binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta, bias_frame = pc.process_bias(bias_cl, binning=binning,
-                                             mem_limit=mem_limit)
+        bias_meta, bias_frame = pc.process_bias(
+            bias_cl, binning=binning, mem_limit=mem_limit
+        )
 
         # Process the FLAT frames to produce statistics
-        flat_meta = pc.process_flats(flat_cl, bias_frame, binning=binning,
-                                  instrument=inst_flags['instrument'])
+        flat_meta = pc.process_flats(
+            flat_cl, bias_frame, binning=binning, instrument=inst_flags["instrument"]
+        )
 
         # Take the metadata from the BAIS and FLAT frames and produce DATABASE
         database = pc.produce_database_object(bias_meta, flat_meta, inst_flags)
@@ -85,8 +87,7 @@ def run_lmi_cals(directory, mem_limit=None):
 
         # Update the LMI Filter Information page on Confluence
         #  Images for all binnings, values only for 2x2 binning
-        cu.update_filter_characterization(database,
-                                          png_only=(human_bin != '2x2'))
+        cu.update_filter_characterization(database, png_only=(human_bin != "2x2"))
 
         # Add the database to a dictionary containing the different binnings
         db_list[human_bin] = database
@@ -118,7 +119,7 @@ def run_deveny_cals(directory, mem_limit=None):
     `list` of `roz.database_manager.CalibrationDatabase`
         A list of the Calibration Database objects for each binning scheme
     """
-    inst_flags = utils.set_instrument_flags('deveny')
+    inst_flags = utils.set_instrument_flags("deveny")
 
     # Collect the BIAS frames for this directory
     bias_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
@@ -128,12 +129,13 @@ def run_deveny_cals(directory, mem_limit=None):
     for binning in bin_list:
 
         # Print out a nice status message for those interested
-        human_bin = binning.replace(' ','x')
+        human_bin = binning.replace(" ", "x")
         print(f"Processing the database for {human_bin} DeVeny binning...")
 
         # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta = pc.process_bias(bias_cl, binning=bin_list[0],
-                                 mem_limit=mem_limit, produce_combined=False)
+        bias_meta = pc.process_bias(
+            bias_cl, binning=bin_list[0], mem_limit=mem_limit, produce_combined=False
+        )
 
         # Take the metadata from the BAIS frames and produce DATABASE
         database = pc.produce_database_object(bias_meta, bias_meta, inst_flags)
@@ -147,7 +149,7 @@ def run_deveny_cals(directory, mem_limit=None):
     return db_list
 
 
-#=============================================================================#
+# =============================================================================#
 def main(args=None, directory=None, mem_limit=8.192e9):
     """main This is the main function.
 
@@ -185,7 +187,7 @@ def main(args=None, directory=None, mem_limit=8.192e9):
             return None
         directory = args[1]
 
-    #=================================#
+    # =================================#
     # Given the directory (which will be on a remote file server in
     #  production), call the dumbwaiter to determine which files need to be
     #  copied and then carry out that operation.
@@ -197,15 +199,16 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     dumbwaiter.cold_storage()
 
     # Giddy up!
-    if dumbwaiter.instrument == 'lmi':
+    if dumbwaiter.instrument == "lmi":
         return run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
-    if dumbwaiter.instrument == 'deveny':
+    if dumbwaiter.instrument == "deveny":
         return run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
 
-    sa.send_alert('BadInstrumentAlert : main()')
+    sa.send_alert("BadInstrumentAlert : main()")
     return None
 
 
 if __name__ == "__main__":
     import sys
+
     main(sys.argv)

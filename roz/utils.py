@@ -42,29 +42,30 @@ class Paths:
 
     [extended_summary]
     """
+
     # Main data & config directories
-    data = pkg_files('Roz.data')
-    thumbnail = pkg_files('Roz.thumbnails')
-    config = pkg_files('Roz.config')
+    data = pkg_files("Roz.data")
+    thumbnail = pkg_files("Roz.thumbnails")
+    config = pkg_files("Roz.config")
 
     # Particular filenames needed by various routines
-    xml_table = data.joinpath('lmi_filter_table.xml')
-    ecsv_filters = data.joinpath('lmi_filter_table.ecsv')
-    ecsv_sechead = data.joinpath('lmi_table_sechead.ecsv')
-    html_table_fn = 'lmi_filter_table.html'
-    lmi_dyntable = data.joinpath('lmi_dynamic_filter.ecsv')
-    local_html_table_fn = data.joinpath('lmi_filter_table.html')
-    css_table = data.joinpath('lmi_filter_table.css')
+    xml_table = data.joinpath("lmi_filter_table.xml")
+    ecsv_filters = data.joinpath("lmi_filter_table.ecsv")
+    ecsv_sechead = data.joinpath("lmi_table_sechead.ecsv")
+    html_table_fn = "lmi_filter_table.html"
+    lmi_dyntable = data.joinpath("lmi_dynamic_filter.ecsv")
+    local_html_table_fn = data.joinpath("lmi_filter_table.html")
+    css_table = data.joinpath("lmi_filter_table.css")
 
     def __init__(self):
         pass
 
 
 # List of LMI Filters
-LMI_FILTERS = list(Table.read(Paths.ecsv_filters)['FITS Header Value'])
+LMI_FILTERS = list(Table.read(Paths.ecsv_filters)["FITS Header Value"])
 
 # Fold Mirror Names
-FMS = ['A', 'B', 'C', 'D']
+FMS = ["A", "B", "C", "D"]
 
 # Create an error class to use
 class InputError(ValueError):
@@ -127,7 +128,7 @@ def write_saved_bias(ccd, instrument, binning):
     ccd.write(Paths.data.joinpath(fn), overwrite=True)
 
 
-def read_ligmos_conffiles(confname, conffile='roz.conf'):
+def read_ligmos_conffiles(confname, conffile="roz.conf"):
     """read_ligmos_conffiles Read a configuration file using LIGMOS
 
     Having this as a separate function may be a bit of an overkill, but it
@@ -147,16 +148,14 @@ def read_ligmos_conffiles(confname, conffile='roz.conf'):
         An object with arrtibutes matching the keys in the associated
         configuration file.
     """
-    ligconf = lig_utils.confparsers.rawParser(
-                            pkg_files('Roz.config').joinpath(conffile))
+    ligconf = lig_utils.confparsers.rawParser(Paths.config.joinpath(conffile))
     ligconf = lig_workers.confUtils.assignConf(
-                            ligconf[confname],
-                            lig_utils.classes.baseTarget,
-                            backfill=True)
+        ligconf[confname], lig_utils.classes.baseTarget, backfill=True
+    )
     return ligconf
 
 
-def set_instrument_flags(inst='lmi'):
+def set_instrument_flags(inst="lmi"):
     """set_instrument_flags Set the global instrument flags for processing
 
     These instrument-specific flags are used throughout the code.  As more
@@ -181,16 +180,17 @@ def set_instrument_flags(inst='lmi'):
         If the input instrument is not in the list, raise error.
     """
     # Read in the instrument flag table
-    instrument_table = Table.read(Paths.data.joinpath('instrument_flags.ecsv'))
+    instrument_table = Table.read(Paths.data.joinpath("instrument_flags.ecsv"))
 
     # Check that the instrument is in the table
-    if (inst := inst.upper()) not in instrument_table['instrument']:
-        raise InputError(f"Instrument {inst} not yet supported; "
-                          "update instrument_flags.ecsv")
+    if (inst := inst.upper()) not in instrument_table["instrument"]:
+        raise InputError(
+            f"Instrument {inst} not yet supported; " "update instrument_flags.ecsv"
+        )
 
     # Extract the row , and convert it to a dictionary
     for row in instrument_table:
-        if row['instrument'] == inst:
+        if row["instrument"] == inst:
             return dict(zip(row.colnames, row))
 
     raise InputError("Developer error... this line should never run.")
@@ -226,14 +226,16 @@ def table_sort_on_list(table, colname, sort_list):
     """
     # Check that the input parameters are of the proper type
     if not isinstance(table, Table):
-        raise TypeError("table must be of type astropy.table.Table not "
-                        f"{type(table)}")
+        raise TypeError(
+            "table must be of type astropy.table.Table not " f"{type(table)}"
+        )
     sort_list = list(sort_list)
 
     # Check that `sort_list` is the same length as the table
     if len(sort_list) != len(table[colname]):
-        raise ValueError(f"Sorting list and table column {colname} "
-                         "must be the same length.")
+        raise ValueError(
+            f"Sorting list and table column {colname} " "must be the same length."
+        )
 
     # Find the indices that sort the table by sort_list
     table.add_index(colname)
@@ -242,7 +244,7 @@ def table_sort_on_list(table, colname, sort_list):
         indices.append(table.loc_indices[sort_item])
 
     # NOTE: This code paraphrased directly from astropy.table.table.py (v5.0)
-    with table.index_mode('freeze'):
+    with table.index_mode("freeze"):
         for _, col in table.columns.items():
             # Make a new sorted column.
             new_col = col.take(indices, axis=0)
@@ -295,11 +297,15 @@ def trim_oscan(ccd, biassec, trimsec):
     ccd = ccdp.trim_image(ccd[yt.start : yt.stop, :])
 
     # Model & Subtract the overscan
-    ccd = ccdp.subtract_overscan(ccd, overscan=ccd[: , xb.start : xb.stop],
-                                 median=True, model=models.Chebyshev1D(1))
+    ccd = ccdp.subtract_overscan(
+        ccd,
+        overscan=ccd[:, xb.start : xb.stop],
+        median=True,
+        model=models.Chebyshev1D(1),
+    )
 
     # Trim the overscan & return
-    return ccdp.trim_image(ccd[:, xt.start:xt.stop])
+    return ccdp.trim_image(ccd[:, xt.start : xt.stop])
 
 
 def two_sigfig(value):
@@ -327,7 +333,7 @@ def two_sigfig(value):
     """
     # If zero, return a 'N/A' type string
     if value <= 0 or isinstance(value, MaskedConstant):
-        return '-----'
+        return "-----"
     # Compute the number of decimal places using the log10.  The way
     #  np.around() works is that +decimal is to the RIGHT, hence the
     #  negative sign on log10.  The "+1" gives the second sig fig.
@@ -400,42 +406,52 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
 
     # Produce the coordinate arrays, if not fed an existing dict OR if the
     #  array size is different (occasional edge case)
-    reproduce = (c_arr is None) or (data.shape != c_arr['x_coord_arr'].shape)
+    reproduce = (c_arr is None) or (data.shape != c_arr["x_coord_arr"].shape)
     c_arr = produce_coordinate_arrays(data.shape) if reproduce else c_arr
 
     # Fill in the matrix elements
     #  Upper left quadrant (or only quadrant, if fitting linear):
-    matrix[:3,:3] = [[c_arr['n_pixels'], c_arr['sum_x'], c_arr['sum_y']],
-                     [c_arr['sum_x'], c_arr['sum_x2'], c_arr['sum_xy']],
-                     [c_arr['sum_y'], c_arr['sum_xy'], c_arr['sum_y2']]]
+    matrix[:3, :3] = [
+        [c_arr["n_pixels"], c_arr["sum_x"], c_arr["sum_y"]],
+        [c_arr["sum_x"], c_arr["sum_x2"], c_arr["sum_xy"]],
+        [c_arr["sum_y"], c_arr["sum_xy"], c_arr["sum_y2"]],
+    ]
 
     # And the other 3 quadrants, if fitting a quadric surface
     if fit_quad:
         # Lower left quadrant:
-        matrix[3:,:3] = [[c_arr['sum_x2'], c_arr['sum_x3'], c_arr['sum_x2y']],
-                         [c_arr['sum_y2'], c_arr['sum_xy2'], c_arr['sum_y3']],
-                         [c_arr['sum_xy'], c_arr['sum_x2y'], c_arr['sum_xy2']]]
+        matrix[3:, :3] = [
+            [c_arr["sum_x2"], c_arr["sum_x3"], c_arr["sum_x2y"]],
+            [c_arr["sum_y2"], c_arr["sum_xy2"], c_arr["sum_y3"]],
+            [c_arr["sum_xy"], c_arr["sum_x2y"], c_arr["sum_xy2"]],
+        ]
         # Right half:
-        matrix[:,3:] = [[c_arr['sum_x2'], c_arr['sum_y2'], c_arr['sum_xy']],
-                        [c_arr['sum_x3'], c_arr['sum_xy2'], c_arr['sum_x2y']],
-                        [c_arr['sum_x2y'], c_arr['sum_y3'], c_arr['sum_xy2']],
-                        [c_arr['sum_x4'], c_arr['sum_x2y2'], c_arr['sum_x3y']],
-                        [c_arr['sum_x2y2'], c_arr['sum_y4'], c_arr['sum_xy3']],
-                        [c_arr['sum_x3y'], c_arr['sum_xy3'], c_arr['sum_x2y2']]]
+        matrix[:, 3:] = [
+            [c_arr["sum_x2"], c_arr["sum_y2"], c_arr["sum_xy"]],
+            [c_arr["sum_x3"], c_arr["sum_xy2"], c_arr["sum_x2y"]],
+            [c_arr["sum_x2y"], c_arr["sum_y3"], c_arr["sum_xy2"]],
+            [c_arr["sum_x4"], c_arr["sum_x2y2"], c_arr["sum_x3y"]],
+            [c_arr["sum_x2y2"], c_arr["sum_y4"], c_arr["sum_xy3"]],
+            [c_arr["sum_x3y"], c_arr["sum_xy3"], c_arr["sum_x2y2"]],
+        ]
 
     # The right-hand side of the matrix equation:
     right_hand_side = np.empty(n_terms)
 
     # Top half:
-    right_hand_side[:3] = [np.sum(data),
-                           np.sum(xd := np.multiply(c_arr['x_coord_arr'], data)),
-                           np.sum(yd := np.multiply(c_arr['y_coord_arr'], data))]
+    right_hand_side[:3] = [
+        np.sum(data),
+        np.sum(xd := np.multiply(c_arr["x_coord_arr"], data)),
+        np.sum(yd := np.multiply(c_arr["y_coord_arr"], data)),
+    ]
 
     if fit_quad:
         # Bottom half:
-        right_hand_side[3:] = [np.sum(np.multiply(c_arr['x_coord_arr'], xd)),
-                               np.sum(np.multiply(c_arr['y_coord_arr'], yd)),
-                               np.sum(np.multiply(c_arr['x_coord_arr'], yd))]
+        right_hand_side[3:] = [
+            np.sum(np.multiply(c_arr["x_coord_arr"], xd)),
+            np.sum(np.multiply(c_arr["y_coord_arr"], yd)),
+            np.sum(np.multiply(c_arr["x_coord_arr"], yd)),
+        ]
 
     # Here's where the magic of matrix multiplication happens!
     fit_coefficients = np.dot(np.linalg.inv(matrix), right_hand_side)
@@ -445,14 +461,18 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
         return fit_coefficients, c_arr
 
     # Build the model fit from the coefficients
-    model_fit = fit_coefficients[0] + \
-                fit_coefficients[1] * c_arr['x_coord_arr'] + \
-                fit_coefficients[2] * c_arr['y_coord_arr']
+    model_fit = (
+        fit_coefficients[0]
+        + fit_coefficients[1] * c_arr["x_coord_arr"]
+        + fit_coefficients[2] * c_arr["y_coord_arr"]
+    )
 
     if fit_quad:
-        model_fit += fit_coefficients[3] * c_arr['x2'] + \
-                     fit_coefficients[4] * c_arr['y2'] + \
-                     fit_coefficients[5] * c_arr['xy']
+        model_fit += (
+            fit_coefficients[3] * c_arr["x2"]
+            + fit_coefficients[4] * c_arr["y2"]
+            + fit_coefficients[5] * c_arr["xy"]
+        )
 
     return fit_coefficients, c_arr, model_fit
 
@@ -476,31 +496,34 @@ def produce_coordinate_arrays(shape):
     """
     # Construct the arrays for doing the matrix magic -- origin in center
     n_y, n_x = shape
-    x_arr = np.tile(np.arange(n_x), (n_y,1)) - (n_x / 2.)
-    y_arr = np.transpose(np.tile(np.arange(n_y), (n_x,1))) - (n_y / 2.)
+    x_arr = np.tile(np.arange(n_x), (n_y, 1)) - (n_x / 2.0)
+    y_arr = np.transpose(np.tile(np.arange(n_y), (n_x, 1))) - (n_y / 2.0)
 
     # Compute the terms needed for the matrix
-    return {'n_x': n_x, 'n_y': n_y,
-            'x_coord_arr': x_arr,
-            'y_coord_arr': y_arr,
-            'n_pixels': x_arr.size,
-            'sum_x': np.sum(x_arr),
-            'sum_y': np.sum(y_arr),
-            'sum_x2': np.sum(x2 := np.multiply(x_arr, x_arr)),
-            'sum_xy': np.sum(xy := np.multiply(x_arr, y_arr)),
-            'sum_y2': np.sum(y2 := np.multiply(y_arr, y_arr)),
-            'sum_x3': np.sum(np.multiply(x2, x_arr)),
-            'sum_x2y': np.sum(np.multiply(x2, y_arr)),
-            'sum_xy2': np.sum(np.multiply(x_arr, y2)),
-            'sum_y3': np.sum(np.multiply(y2, y_arr)),
-            'sum_x4': np.sum(np.multiply(x2, x2)),
-            'sum_x3y': np.sum(np.multiply(x2, xy)),
-            'sum_x2y2': np.sum(np.multiply(x2, y2)),
-            'sum_xy3': np.sum(np.multiply(xy, y2)),
-            'sum_y4': np.sum(np.multiply(y2, y2)),
-            'x2': x2,
-            'xy': xy,
-            'y2': y2}
+    return {
+        "n_x": n_x,
+        "n_y": n_y,
+        "x_coord_arr": x_arr,
+        "y_coord_arr": y_arr,
+        "n_pixels": x_arr.size,
+        "sum_x": np.sum(x_arr),
+        "sum_y": np.sum(y_arr),
+        "sum_x2": np.sum(x2 := np.multiply(x_arr, x_arr)),
+        "sum_xy": np.sum(xy := np.multiply(x_arr, y_arr)),
+        "sum_y2": np.sum(y2 := np.multiply(y_arr, y_arr)),
+        "sum_x3": np.sum(np.multiply(x2, x_arr)),
+        "sum_x2y": np.sum(np.multiply(x2, y_arr)),
+        "sum_xy2": np.sum(np.multiply(x_arr, y2)),
+        "sum_y3": np.sum(np.multiply(y2, y_arr)),
+        "sum_x4": np.sum(np.multiply(x2, x2)),
+        "sum_x3y": np.sum(np.multiply(x2, xy)),
+        "sum_x2y2": np.sum(np.multiply(x2, y2)),
+        "sum_xy3": np.sum(np.multiply(xy, y2)),
+        "sum_y4": np.sum(np.multiply(y2, y2)),
+        "x2": x2,
+        "xy": xy,
+        "y2": y2,
+    }
 
 
 def compute_human_readable_surface(coefficients):
@@ -538,7 +561,7 @@ def compute_human_readable_surface(coefficients):
     F, D, E, A, C, B = tuple(coefficients)
 
     # Compute the rotation of the axes of the surface away from x-y
-    theta = 0.5 * np.arctan2(B, A-C)
+    theta = 0.5 * np.arctan2(B, A - C)
 
     # Use a WHILE loop to check for orientation issues
     good_orient = False
@@ -555,34 +578,37 @@ def compute_human_readable_surface(coefficients):
         # Compute the rotated coefficients
         #  xpxp == coefficient on x'^2 in Standard Form
         #  ypyp == coefficient on y'^2 in Standard Form
-        xpxp = A*costh**2 + B*sinth*costh + C*sinth**2
-        ypyp = A*sinth**2 - B*sinth*costh + C*costh**2
+        xpxp = A * costh ** 2 + B * sinth * costh + C * sinth ** 2
+        ypyp = A * sinth ** 2 - B * sinth * costh + C * costh ** 2
 
         # Convert to "semimajor" and "semiminor" axes from Standard Form
-        semimaj = 1/np.sqrt(np.absolute(xpxp))
-        semimin = 1/np.sqrt(np.absolute(ypyp))
+        semimaj = 1 / np.sqrt(np.absolute(xpxp))
+        semimin = 1 / np.sqrt(np.absolute(ypyp))
 
         # Check orientation (s.t. semimajor axis is larger than semiminor)
         if semimaj > semimin:
             good_orient = True
         else:
-            theta += np.pi/2.
+            theta += np.pi / 2.0
 
     # Along the native axes, the coefficient on x'y' == 0
     #  Compute as a check
-    #xpyp = 2*(C-A)*sinth*costh + B*(costh**2 - sinth**2)
+    # xpyp = 2*(C-A)*sinth*costh + B*(costh**2 - sinth**2)
 
     # Convert values into human-readable things
-    return {'rot': np.rad2deg(theta),
-            'maj': semimaj,
-            'min': semimin,
-            'bma': 1./(D*costh + E*sinth),
-            'bmi': 1./(-D*sinth + E*costh),
-            'zpt': F,
-            'oma': int(np.sign(xpxp)),
-            'omi': int(np.sign(ypyp)),
-            'typ': f"Elliptic Paraboloid {'Up' if np.sign(xpxp) == 1 else 'Down'}" \
-                if np.sign(xpxp) == np.sign(ypyp) else "Hyperbolic Paraboloid"}
+    return {
+        "rot": np.rad2deg(theta),
+        "maj": semimaj,
+        "min": semimin,
+        "bma": 1.0 / (D * costh + E * sinth),
+        "bmi": 1.0 / (-D * sinth + E * costh),
+        "zpt": F,
+        "oma": int(np.sign(xpxp)),
+        "omi": int(np.sign(ypyp)),
+        "typ": f"Elliptic Paraboloid {'Up' if np.sign(xpxp) == 1 else 'Down'}"
+        if np.sign(xpxp) == np.sign(ypyp)
+        else "Hyperbolic Paraboloid",
+    }
 
 
 def compute_flatness(human, shape, stddev):
@@ -636,10 +662,9 @@ def compute_flatness(human, shape, stddev):
     #       reach the value of the standard deviation much faster than this
     #       linear approximation.  Need to think about how to handle this
     #       more correctly.
-    pix_quad = human['min'] * stddev
+    pix_quad = human["min"] * stddev
 
     # Get the lower pixel count of the two linear axes (distance to 1 sigma)
-    pix_lin = np.minimum(np.absolute(human['bma']),
-                         np.absolute(human['bmi'])) * stddev
+    pix_lin = np.minimum(np.absolute(human["bma"]), np.absolute(human["bmi"])) * stddev
 
-    return dim_min/pix_lin, dim_min/pix_quad
+    return dim_min / pix_lin, dim_min / pix_quad

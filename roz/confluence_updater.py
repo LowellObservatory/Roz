@@ -43,12 +43,11 @@ from roz.utils import LMI_FILTERS
 
 
 # Set API Components
-__all__ = ['update_filter_characterization']
+__all__ = ["update_filter_characterization"]
 
 
 # Outward-facing function ====================================================#
-def update_filter_characterization(database, png_only=False,
-                                   delete_existing=False):
+def update_filter_characterization(database, png_only=False, delete_existing=False):
     """update_filter_characterization Update the Confluence Page
 
     This routine is the main function in this module, and should be the only
@@ -67,22 +66,25 @@ def update_filter_characterization(database, png_only=False,
         [Defualt: False]  NOTE: Once in production, maybe turn this to True?
     """
     # Instantiate a ConfluencePage object for the LMI Filter Page
-    page_info = utils.read_ligmos_conffiles('lmifilertSetup')
+    page_info = utils.read_ligmos_conffiles("lmifilertSetup")
     lmi_filter_info = j5c.ConfluencePage(page_info.space, page_info.page_title)
 
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
     if not lmi_filter_info.exists:
-        sa.send_alert('ConfluenceAlert : update_filter_characterization()')
+        sa.send_alert("ConfluenceAlert : update_filter_characterization()")
         return
 
     # Get the `page_id` needed for intracting with the page we want to update
     print(f"This is the page_id: {lmi_filter_info.page_id}")
 
     # Update the HTML table attached to the Confluence page
-    png_fn = update_lmi_filter_table(utils.Paths.local_html_table_fn,
-                                     database, lmi_filter_info.attach_url,
-                                     png_only=png_only)
+    png_fn = update_lmi_filter_table(
+        utils.Paths.local_html_table_fn,
+        database,
+        lmi_filter_info.attachment_url,
+        png_only=png_only,
+    )
 
     # Remove the attachment on the Confluence page before uploading the new one
     # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
@@ -90,22 +92,27 @@ def update_filter_characterization(database, png_only=False,
         lmi_filter_info.delete_attachment(utils.Paths.html_table_fn)
 
     # Attach the HTML file to the Confluence page
-    lmi_filter_info.attach_file(utils.Paths.local_html_table_fn,
-                                name=utils.Paths.html_table_fn,
-                                content_type='text/html',
-                                comment='LMI Filter Information Table')
+    lmi_filter_info.attach_file(
+        utils.Paths.local_html_table_fn,
+        name=utils.Paths.html_table_fn,
+        content_type="text/html",
+        comment="LMI Filter Information Table",
+    )
 
     # Attach any PNGs created
     for png in png_fn:
-        lmi_filter_info.attach_file(utils.Paths.thumbnail.joinpath(png),
-                                    name=png,
-                                    content_type='image/png',
-                                    comment='Flat Field Image')
+        lmi_filter_info.attach_file(
+            utils.Paths.thumbnail.joinpath(png),
+            name=png,
+            content_type="image/png",
+            comment="Flat Field Image",
+        )
 
 
 # Descriptive, high-level functions ==========================================#
-def update_lmi_filter_table(filename, database, attachment_url,
-                            png_only=False, debug=False):
+def update_lmi_filter_table(
+    filename, database, attachment_url, png_only=False, debug=False
+):
     """update_lmi_filter_table Update the LMI Filter Information Table
 
     Updates (on disk) the HTML table of LMI filter information for upload to
@@ -143,23 +150,25 @@ def update_lmi_filter_table(filename, database, attachment_url,
     lmi_filt, section_head = load_lmi_static_table()
 
     # Use the `database` to modify the dynamic portions of the LMI table
-    lmi_filt, png_fn = modify_lmi_dynamic_table(lmi_filt, database,
-                                                attachment_url,
-                                                png_only=png_only)
+    lmi_filt, png_fn = modify_lmi_dynamic_table(
+        lmi_filt, database, attachment_url, png_only=png_only
+    )
     if debug:
         lmi_filt.pprint()
 
     # Use the AstroPy Table `lmi_filt` to construct the HTML table and
     #  write it to disk
-    construct_lmi_html_table(lmi_filt, section_head, filename,
-                             link_text="Image Link", debug=True)
+    construct_lmi_html_table(
+        lmi_filt, section_head, filename, link_text="Image Link", debug=True
+    )
 
     # Return list of PNG filenames
     return png_fn
 
 
-def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
-                             png_only=False, debug=False):
+def modify_lmi_dynamic_table(
+    lmi_filt, database, attachment_url, png_only=False, debug=False
+):
     """modify_lmi_dynamic_table Modify the dynamic portions of the table
 
     This function augments the static table (from the XML file) with dynamic
@@ -200,40 +209,40 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
     else:
         # Make a blank table, including the LMI_FILTERS for correspondence
         nrow = len(LMI_FILTERS)
-        col0 = Column(LMI_FILTERS, name='Filter')
-        col1 = Column(name='Latest Image', length=nrow, dtype='U256')
-        col2 = Column(name='UT Date of Latest Flat', length=nrow, dtype='U128')
-        col3 = Column(name='Count Rate (ADU/s)', length=nrow, dtype=float)
-        col4 = Column(name='Exptime for 20k cts (s)', length=nrow, dtype=float)
+        col0 = Column(LMI_FILTERS, name="Filter")
+        col1 = Column(name="Latest Image", length=nrow, dtype="U256")
+        col2 = Column(name="UT Date of Latest Flat", length=nrow, dtype="U128")
+        col3 = Column(name="Count Rate (ADU/s)", length=nrow, dtype=float)
+        col4 = Column(name="Exptime for 20k cts (s)", length=nrow, dtype=float)
         dyntable = Table([col0, col1, col2, col3, col4])
 
     # Merge the static and dynamic portions together
     #  The astropy.table function join() combines tables based on common keys,
     #  however, it also sorts the table...
-    lmi_filt = join(lmi_filt, dyntable, join_type='left', keys='Filter')
+    lmi_filt = join(lmi_filt, dyntable, join_type="left", keys="Filter")
     # Undo the alpha sorting done by .join()
-    lmi_filt = utils.table_sort_on_list(lmi_filt, 'FITS Header Value',
-                                        LMI_FILTERS)
+    lmi_filt = utils.table_sort_on_list(lmi_filt, "FITS Header Value", LMI_FILTERS)
     # Make sure the `Latest Image` column has enough space for long URLs
-    lmi_filt['Latest Image'] = lmi_filt['Latest Image'].astype('U256')
+    lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
 
     if debug:
         lmi_filt.pprint()
 
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
-    for i,filt in enumerate(LMI_FILTERS):
+    for i, filt in enumerate(LMI_FILTERS):
         # Skip filters not used in this data set
         if database.flat[filt] is None:
             continue
 
         # But, only update if the DATOBS of this flat is LATER than what's
         #  already in the table.  If OLD > NEW, skip.
-        new_date = database.flat[filt]['dateobs'][-1].split('T')[0]
-        if not isinstance(lmi_filt['UT Date of Latest Flat'][i], MaskedConstant):
-            if (existing_date := lmi_filt['UT Date of Latest Flat'][i].strip()) :
-                if dt.datetime.strptime(existing_date, "%Y-%m-%d") >= \
-                                    dt.datetime.strptime(new_date, "%Y-%m-%d") :
+        new_date = database.flat[filt]["dateobs"][-1].split("T")[0]
+        if not isinstance(lmi_filt["UT Date of Latest Flat"][i], MaskedConstant):
+            if (existing_date := lmi_filt["UT Date of Latest Flat"][i].strip()) :
+                if dt.datetime.strptime(
+                    existing_date, "%Y-%m-%d"
+                ) >= dt.datetime.strptime(new_date, "%Y-%m-%d"):
                     continue
 
         # TODO: Add a check here for whether the correct lamps were used.  This
@@ -241,39 +250,50 @@ def modify_lmi_dynamic_table(lmi_filt, database, attachment_url,
         #       some nominal range.
 
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
-        fname = database.proc_dir.joinpath(database.flat[filt]['filename'][-1])
-        png_fn.append( gm.make_png_thumbnail(fname, database.flags) )
+        fname = database.proc_dir.joinpath(database.flat[filt]["filename"][-1])
+        png_fn.append(gm.make_png_thumbnail(fname, database.flags))
 
         # Update the dynamic columns
-        lmi_filt['Latest Image'][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-        lmi_filt['UT Date of Latest Flat'][i] = new_date
+        lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
+        lmi_filt["UT Date of Latest Flat"][i] = new_date
         if not png_only:
-            lmi_filt['Count Rate (ADU/s)'][i] = \
-                        (count_rate := np.mean(database.flat[filt]['crop_med']))
-            lmi_filt['Exptime for 20k cts (s)'][i] = 20000. / count_rate
+            lmi_filt["Count Rate (ADU/s)"][i] = (
+                count_rate := np.mean(database.flat[filt]["crop_med"])
+            )
+            lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
 
     # Split off the dyntable portion again, and write it back to disk for later
-    dyntable = Table( [ lmi_filt['Filter'], lmi_filt['Latest Image'],
-                        lmi_filt['UT Date of Latest Flat'],
-                        lmi_filt['Count Rate (ADU/s)'],
-                        lmi_filt['Exptime for 20k cts (s)'] ],
-                        names=['Filter','Latest Image','UT Date of Latest Flat',
-                               'Count Rate (ADU/s)', 'Exptime for 20k cts (s)'] )
+    dyntable = Table(
+        [
+            lmi_filt["Filter"],
+            lmi_filt["Latest Image"],
+            lmi_filt["UT Date of Latest Flat"],
+            lmi_filt["Count Rate (ADU/s)"],
+            lmi_filt["Exptime for 20k cts (s)"],
+        ],
+        names=[
+            "Filter",
+            "Latest Image",
+            "UT Date of Latest Flat",
+            "Count Rate (ADU/s)",
+            "Exptime for 20k cts (s)",
+        ],
+    )
     dyntable.write(utils.Paths.lmi_dyntable, overwrite=True)
 
     # Add formatting constraints to the `lmi_filt` table columns
-    lmi_filt['Count Rate (ADU/s)'] = \
-                Column(lmi_filt['Count Rate (ADU/s)'].filled(0),
-                       format=utils.two_sigfig)
-    lmi_filt['Exptime for 20k cts (s)'] = \
-                Column(lmi_filt['Exptime for 20k cts (s)'].filled(0),
-                       format=utils.two_sigfig)
+    lmi_filt["Count Rate (ADU/s)"] = Column(
+        lmi_filt["Count Rate (ADU/s)"].filled(0), format=utils.two_sigfig
+    )
+    lmi_filt["Exptime for 20k cts (s)"] = Column(
+        lmi_filt["Exptime for 20k cts (s)"].filled(0), format=utils.two_sigfig
+    )
 
     return lmi_filt, png_fn
 
 
 # Utility Functions (Alphabetical) ===========================================#
-def add_html_section_header(soup, ncols, text, extra=''):
+def add_html_section_header(soup, ncols, text, extra=""):
     """add_html_section_header Construct Section Headings for the HTML Table
 
     This is a bunch of BeautifulSoup tag stuff needed to make the section
@@ -296,25 +316,26 @@ def add_html_section_header(soup, ncols, text, extra=''):
         The newly tagged row for insertion into the HTML table
     """
     # Create the new row tag, and everything that goes inside it
-    newrow = soup.new_tag('tr')
+    newrow = soup.new_tag("tr")
     # One column spanning the whole row, with Lowell-gray for background
-    newcol = soup.new_tag('td', attrs={'colspan':ncols, 'bgcolor':'#DBDCDC'})
+    newcol = soup.new_tag("td", attrs={"colspan": ncols, "bgcolor": "#DBDCDC"})
     # Bold/Underline the main `text` for the header; append to newcol
-    bold = soup.new_tag('b')
-    uline = soup.new_tag('u')
+    bold = soup.new_tag("b")
+    uline = soup.new_tag("u")
     uline.string = text
     bold.append(uline)
     newcol.append(bold)
     # Add any `extra` text in standard font after the bold/underline portion
-    newcol.append('' if isinstance(extra, MaskedConstant) else extra)
+    newcol.append("" if isinstance(extra, MaskedConstant) else extra)
     # Put the column tag inside the row tag
     newrow.append(newcol)
     # All done
     return newrow
 
 
-def construct_lmi_html_table(lmi_filt, section_head, filename,
-                             link_text='Click Here', debug=False):
+def construct_lmi_html_table(
+    lmi_filt, section_head, filename, link_text="Click Here", debug=False
+):
     """construct_lmi_html_table Construct the HTML table
 
     Use the AstroPy table to construct and beautify the HTML table for the
@@ -340,36 +361,37 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
     ncols = len(lmi_filt.colnames)
 
     # CSS stuff to make the HTML table pretty -- read it in from file
-    with open(utils.Paths.css_table, 'r', encoding="utf8") as css_fn:
+    with open(utils.Paths.css_table, "r", encoding="utf8") as css_fn:
         css_style = css_fn.readlines()
 
     # Use the AstroPy HTML functionality to get us most of the way there
-    lmi_filt.write(filename, overwrite=True,
-                   htmldict={'css': ''.join(css_style)})
+    lmi_filt.write(filename, overwrite=True, htmldict={"css": "".join(css_style)})
 
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
     with open(filename, encoding="utf8") as html:
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
 
     # Add the `creation date` line to the body of the HTML above the table
-    timestr = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    itdate = soup.new_tag('i')                # Italics, for the fun of it
+    timestr = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    itdate = soup.new_tag("i")  # Italics, for the fun of it
     itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
     # Place the italicized date string ahead of the table
-    soup.find('table').insert_before(itdate)
+    soup.find("table").insert_before(itdate)
     if debug:
         print(f"HTML table timestamp: {timestr}")
 
     # Add the section headings for the different filter groups:
-    for i,row in enumerate(soup.find_all('tr')):
+    for i, row in enumerate(soup.find_all("tr")):
         # At each row, search through the `section_head` table to correctly
         #  insert the appropriate section header
         for sechead in section_head:
-            if i == sechead['insert_after']:
-                row.insert_after(add_html_section_header(soup, ncols,
-                                                         sechead['section'],
-                                                         sechead['extra']))
+            if i == sechead["insert_after"]:
+                row.insert_after(
+                    add_html_section_header(
+                        soup, ncols, sechead["section"], sechead["extra"]
+                    )
+                )
 
     # Convert the bare URLs of all PNG thumbnails into hyperlinks.  Use a
     #  recursive function to navigate the HTML BeautifulSoup tree.
@@ -380,7 +402,7 @@ def construct_lmi_html_table(lmi_filt, section_head, filename,
         f_output.write(soup.prettify("utf-8"))
 
 
-def load_lmi_static_table(table_type='ecsv'):
+def load_lmi_static_table(table_type="ecsv"):
     """read_lmi_static_table Create the static portions of the LMI Filter Table
 
     This function reads in the information for the static portion of the
@@ -408,7 +430,7 @@ def load_lmi_static_table(table_type='ecsv'):
     ValueError
         Raised if improper `table_type` passed to the function.
     """
-    if table_type == 'xml':
+    if table_type == "xml":
         # Read in the XML table.
         votable = vo_parse(utils.Paths.xml_table)
 
@@ -416,7 +438,7 @@ def load_lmi_static_table(table_type='ecsv'):
         filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
         section_head = votable.get_table_by_index(1).to_table()
 
-    elif table_type == 'ecsv':
+    elif table_type == "ecsv":
         # Read in the ECSV tables (LMI Filter Info and the HTML section headings)
         filter_table = Table.read(utils.Paths.ecsv_filters)
         section_head = Table.read(utils.Paths.ecsv_sechead)
@@ -427,7 +449,7 @@ def load_lmi_static_table(table_type='ecsv'):
     return filter_table, section_head
 
 
-def wrap_plaintext_links(bs_tag, soup, link_text='Click Here'):
+def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
     """wrap_plaintext_links Wrap bare URLs into hyperlinks
 
     Finds all elements in the parsed HTML file that are bare URLs, and
@@ -448,10 +470,9 @@ def wrap_plaintext_links(bs_tag, soup, link_text='Click Here'):
     # The try/except catches bs_tag items that don't have children
     try:
         for element in bs_tag.children:
-            if isinstance(element, NavigableString) and \
-                element.string[:4] == 'http':
+            if isinstance(element, NavigableString) and element.string[:4] == "http":
                 # If this is a string that starts with 'http', linkify!
-                link = soup.new_tag('a', href=element.string)
+                link = soup.new_tag("a", href=element.string)
                 link.string = link_text
                 element.replace_with(link)
             elif element.name != "a":

@@ -76,31 +76,37 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
 
     # Construct the output filename from the image header
     hdr = ccd.header
-    png_fn = [hdr['INSTRUME'].lower()]
+    png_fn = [hdr["INSTRUME"].lower()]
     # TODO: Not strictly correct, if we want this routine to also make
     #       thumbnails of bais frames... needs thought.  For now, though...
-    png_fn.append(filt := hdr['FILTERS'] if inst_flags['get_flats'] else '')
-    png_fn.append(hdr['DATE-OBS'].split('T')[0].replace('-',''))
+    png_fn.append(filt := hdr["FILTERS"] if inst_flags["get_flats"] else "")
+    png_fn.append(hdr["DATE-OBS"].split("T")[0].replace("-", ""))
     png_fn.append(f"{hdr['OBSERNO']:04d}")
-    png_fn.append('png')
-    png_fn = '.'.join(png_fn)
+    png_fn.append("png")
+    png_fn = ".".join(png_fn)
     print(f"This is the PNG filename!  {png_fn}")
 
     # Set up the plot environment
-    _, ax = plt.subplots(figsize=(5,5.2))
-    tsz=10
+    _, ax = plt.subplots(figsize=(5, 5.2))
+    tsz = 10
 
     # Plotting percentile limits -- convert to image intensity limits
     vmin, vmax = get_image_intensity_limits(ccd)
 
     # Show the data on the plot, using the limits computed above
-    ax.imshow(ccd.data, vmin=vmin, vmax=vmax, origin='lower', cmap='gist_gray')
+    ax.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower", cmap="gist_gray")
 
     # Set the title and don't draw any axes
-    title = ['*Latest*' if latest else '*Nominal*', hdr['INSTRUME'].upper(),
-             hdr['OBSTYPE'], filt, hdr['DATE-OBS'].split('T')[0], img_fn]
-    ax.set_title('   '.join(title), y=-0.00, pad=-14, fontsize=tsz)
-    ax.axis('off')
+    title = [
+        "*Latest*" if latest else "*Nominal*",
+        hdr["INSTRUME"].upper(),
+        hdr["OBSTYPE"],
+        filt,
+        hdr["DATE-OBS"].split("T")[0],
+        img_fn,
+    ]
+    ax.set_title("   ".join(title), y=-0.00, pad=-14, fontsize=tsz)
+    ax.axis("off")
 
     # Clean up the plot and save
     plt.tight_layout()
@@ -129,11 +135,11 @@ def get_image_intensity_limits(ccd):
         the percentiles assigned by `OBSTYPE`.
     """
     # Get the image type from the FITS header, and select the percentile range
-    if ccd.header['OBSTYPE'] == 'OBJECT':
+    if ccd.header["OBSTYPE"] == "OBJECT":
         pmin, pmax = 25, 99.75
-    elif ccd.header['OBSTYPE'] in ['DOME FLAT', 'SKY FLAT']:
+    elif ccd.header["OBSTYPE"] in ["DOME FLAT", "SKY FLAT"]:
         pmin, pmax = 3, 99
-    elif ccd.header['OBSTYPE'] == 'BIAS':
+    elif ccd.header["OBSTYPE"] == "BIAS":
         pmin, pmax = 5, 95
     else:
         pmin, pmax = 0, 100

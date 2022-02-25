@@ -39,21 +39,16 @@ from tqdm import tqdm
 # Internal Imports
 from roz import database_manager as dm
 from roz import utils
-from roz.utils import LMI_FILTERS, FMS
+from roz.utils import LMI_FILTERS, FMS, InputError
 
 # Silence Superflous AstroPy Warnings
-warnings.simplefilter('ignore', AstropyWarning)
-
-
-# Create an error class to use
-class InputError(ValueError):
-    """InputError Locally defined error that inherits ValueError
-    """
+warnings.simplefilter("ignore", AstropyWarning)
 
 
 # Narrative Functions ========================================================#
-def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
-                 produce_combined=True):
+def process_bias(
+    bias_cl, binning=None, debug=True, mem_limit=8.192e9, produce_combined=True
+):
     """process_bias Process and combine available bias frames
 
     [extended_summary]
@@ -79,15 +74,16 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
         The combined, overscan-subtracted bias frame (if
         `produce_combined == True`)
     """
-    bias_cl  = check_processing_ifc(bias_cl, binning)
+    bias_cl = check_processing_ifc(bias_cl, binning)
     if not bias_cl.files:
         return (Table(), None) if produce_combined else Table()
     if debug:
-        print('Processing bias frames...')
+        print("Processing bias frames...")
 
     # Show progress bar for processing bias frames
-    progress_bar = tqdm(total=len(bias_cl.files), unit='frame',
-                        unit_scale=False, colour='yellow')
+    progress_bar = tqdm(
+        total=len(bias_cl.files), unit="frame", unit_scale=False, colour="yellow"
+    )
 
     # Loop through files
     bias_ccds, metadata, coord_arrays = [], [], None
@@ -95,9 +91,9 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
 
         hdr = ccd.header
         # For BIAS set header FILTERS keyword to "DARK"
-        hdr['FILTERS'] = 'DARK'
-        hdr['SHORT_FN'] = fname.split(os.sep)[-1]
-        data = ccd.data[get_slice(hdr['TRIMSEC'], fits_convention=True)]
+        hdr["FILTERS"] = "DARK"
+        hdr["SHORT_FN"] = fname.split(os.sep)[-1]
+        data = ccd.data[get_slice(hdr["TRIMSEC"], fits_convention=True)]
 
         # Statistics, statistics, statistics!!!!
         quadsurf, coord_arrays = utils.fit_quadric_surface(data, coord_arrays)
@@ -105,7 +101,7 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
 
         # Fit the overscan section, subtract it, then trim the image
         #  Append this to a list, update the progress bar and repeat!
-        bias_ccds.append(utils.trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC']))
+        bias_ccds.append(utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"]))
         progress_bar.update(1)
 
     progress_bar.close()
@@ -114,16 +110,23 @@ def process_bias(bias_cl, binning=None, debug=True, mem_limit=8.192e9,
     if produce_combined:
         if debug:
             print("Doing median combine of biases now...")
-        return Table(metadata), \
-            ccdp.combine(bias_ccds, method='median', sigma_clip=True,
-                        sigma_clip_low_thresh=5, sigma_clip_high_thresh=5,
-                        sigma_clip_func=np.ma.median, mem_limit=mem_limit,
-                        sigma_clip_dev_func=mad_std)
+        return (
+            Table(metadata),
+            ccdp.combine(
+                bias_ccds,
+                method="median",
+                sigma_clip=True,
+                sigma_clip_low_thresh=5,
+                sigma_clip_high_thresh=5,
+                sigma_clip_func=np.ma.median,
+                mem_limit=mem_limit,
+                sigma_clip_dev_func=mad_std,
+            ),
+        )
     return Table(metadata)
 
 
-def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
-                  debug=True):
+def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True):
     """process_flats Process the flat fields and return statistics
 
     [extended_summary]
@@ -148,7 +151,7 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
         The table of relevant metadata and statistics for each frame
     """
     # Check for existance of flats with this binning, else retun empty Table()
-    flat_cl  = check_processing_ifc(flat_cl, binning)
+    flat_cl = check_processing_ifc(flat_cl, binning)
     if not flat_cl.files:
         return Table()
 
@@ -159,24 +162,25 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
     else:
         utils.write_saved_bias(bias_frame, instrument, binning)
     if debug:
-        print('Processing flat frames...')
+        print("Processing flat frames...")
 
     # Show progress bar for processing flat frames
-    progress_bar = tqdm(total=len(flat_cl.files), unit='frame',
-                        unit_scale=False, colour='yellow')
+    progress_bar = tqdm(
+        total=len(flat_cl.files), unit="frame", unit_scale=False, colour="yellow"
+    )
 
     # Loop through flat frames, subtracting bias and gathering statistics
     metadata, coord_arrays = [], None
     for ccd, fname in flat_cl.ccds(bitpix=16, return_fname=True):
 
         hdr = ccd.header
-        hdr['SHORT_FN'] = fname.split(os.sep)[-1]
+        hdr["SHORT_FN"] = fname.split(os.sep)[-1]
         # Fit & subtract the overscan section, trim the image, subtract bias
-        ccd = utils.trim_oscan(ccd, hdr['BIASSEC'], hdr['TRIMSEC'])
+        ccd = utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
         ccd = ccdp.subtract_bias(ccd, bias_frame)
 
         # Work entirely in COUNT RATE -- ergo divide by exptime
-        count_rate = ccd.divide(hdr['EXPTIME'])
+        count_rate = ccd.divide(hdr["EXPTIME"])
 
         # Statistics, statistics, statistics!!!!
         quadsurf, coord_arrays = utils.fit_quadric_surface(count_rate, coord_arrays)
@@ -185,11 +189,10 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None,
 
         # Additional fields for flats: Stuff that can block the light path
         #  Do type-forcing to make InfluxDB happy
-        for n in [1,2]:
-            for x in ['x','y']:
-                metadict[f"rc{n}pos_{x.lower()}"] = \
-                    float(hdr[f"P{n}{x.upper()}"])
-        metadict['icpos'] = float(hdr['ICPOS'])
+        for n in [1, 2]:
+            for x in ["x", "y"]:
+                metadict[f"rc{n}pos_{x.lower()}"] = float(hdr[f"P{n}{x.upper()}"])
+        metadict["icpos"] = float(hdr["ICPOS"])
         for x in FMS:
             metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
 
@@ -223,8 +226,11 @@ def validate_bias_table(bias_meta):
 
     # For now, just print some stats and return the table.
     print("\nIn validate_bias_table():")
-    print(np.mean(bias_meta['crop_avg']), np.median(bias_meta['crop_med']),
-          np.mean(bias_meta['crop_std']))
+    print(
+        np.mean(bias_meta["crop_avg"]),
+        np.median(bias_meta["crop_med"]),
+        np.mean(bias_meta["crop_std"]),
+    )
 
     # Add logic checks for header datatypes (edge cases)
 
@@ -255,7 +261,7 @@ def validate_flat_table(flat_meta, lmi_filt):
         return None
 
     # Find the rows of the table corresponding to this filter, return if 0
-    idx = np.where(flat_meta['filter'] == lmi_filt)
+    idx = np.where(flat_meta["filter"] == lmi_filt)
     if len(idx[0]) == 0:
         return None
 
@@ -269,8 +275,8 @@ def validate_flat_table(flat_meta, lmi_filt):
     # Do something...
     print("\nIn validate_flat_table():")
     print(lmi_filt)
-    #subtable.pprint()
-    print(np.mean(subtable['frame_avg']), np.median(subtable['frame_med']))
+    # subtable.pprint()
+    print(np.mean(subtable["frame_avg"]), np.median(subtable["frame_med"]))
 
     # Find the mean quadric surface for this set of flats
     # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
@@ -301,36 +307,39 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         The base metadata dictionary
     """
     # Make things easier by creating a slice for cropping
-    allslice = np.s_[:,:]
+    allslice = np.s_[:, :]
     cropslice = np.s_[crop:-crop, crop:-crop]
     human_readable = utils.compute_human_readable_surface(quadsurf)
-    human_readable.pop('typ')
-    shape = (hdr['naxis1'], hdr['naxis2'])
+    human_readable.pop("typ")
+    shape = (hdr["naxis1"], hdr["naxis2"])
 
     # TODO: Add error checking or type-forcing here to keep InfluxDB happy
-    metadict = {'dateobs': hdr['DATE-OBS'],
-                'instrument': f"{hdr['INSTRUME'].strip()}",
-                'frametyp': f"{hdr['OBSTYPE'].strip()}",
-                'obserno': int(hdr['OBSERNO']),
-                'filename': f"{hdr['SHORT_FN'].strip()}",
-                'binning': 'x'.join(hdr['CCDSUM'].split()),
-                'filter': f"{hdr['FILTERS'].strip()}",
-                'numamp': int(hdr['NUMAMP']),
-                'ampid': f"{hdr['AMPID'].strip()}",
-                'exptime': float(hdr['EXPTIME']),
-                'mnttemp': float(hdr['MNTTEMP']),
-                'tempamb': float(hdr['TEMPAMB']),
-                'cropsize': int(crop)}
-    for name, the_slice in zip(['frame','crop'], [allslice, cropslice]):
+    metadict = {
+        "dateobs": hdr["DATE-OBS"],
+        "instrument": f"{hdr['INSTRUME'].strip()}",
+        "frametyp": f"{hdr['OBSTYPE'].strip()}",
+        "obserno": int(hdr["OBSERNO"]),
+        "filename": f"{hdr['SHORT_FN'].strip()}",
+        "binning": "x".join(hdr["CCDSUM"].split()),
+        "filter": f"{hdr['FILTERS'].strip()}",
+        "numamp": int(hdr["NUMAMP"]),
+        "ampid": f"{hdr['AMPID'].strip()}",
+        "exptime": float(hdr["EXPTIME"]),
+        "mnttemp": float(hdr["MNTTEMP"]),
+        "tempamb": float(hdr["TEMPAMB"]),
+        "cropsize": int(crop),
+    }
+    for name, the_slice in zip(["frame", "crop"], [allslice, cropslice]):
         metadict[f"{name}_avg"] = np.mean(data[the_slice])
         metadict[f"{name}_med"] = np.ma.median(data[the_slice])
         metadict[f"{name}_std"] = np.std(data[the_slice])
     for key, val in human_readable.items():
         metadict[f"qs_{key}"] = val
-    lin_flat, quad_flat = utils.compute_flatness(human_readable, shape,
-                                           metadict['crop_std'])
-    metadict['lin_flat'] = lin_flat
-    metadict['quad_flat'] = quad_flat
+    lin_flat, quad_flat = utils.compute_flatness(
+        human_readable, shape, metadict["crop_std"]
+    )
+    metadict["lin_flat"] = lin_flat
+    metadict["quad_flat"] = quad_flat
 
     # for i, m in enumerate(['b','x','y','xx','yy','xy']):
     #     metadict[f"qs_{m}"] = quadsurf[i]
@@ -364,7 +373,7 @@ def check_processing_ifc(ifc, binning):
     """
     # Error checking for binning
     if binning is None:
-        raise InputError('Binning not set.')
+        raise InputError("Binning not set.")
 
     # If IFC is empty already, just return it
     if not ifc.files:
@@ -399,7 +408,7 @@ def produce_database_object(bias_meta, flat_meta, inst_flags):
     # Analyze the bias_meta table, and insert it into the database
     database.bias = validate_bias_table(bias_meta)
 
-    if inst_flags['get_flats']:
+    if inst_flags["get_flats"]:
         # Analyze the flat_meta table, sorted by LMI_FILTERS, and insert
         for lmi_filt in LMI_FILTERS:
             database.flat[lmi_filt] = validate_flat_table(flat_meta, lmi_filt)

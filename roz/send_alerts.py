@@ -25,15 +25,10 @@ import warnings
 from astropy.utils.exceptions import AstropyWarning
 
 # Internal Imports
+from roz.utils import InputError
 
 # Silence Superflous AstroPy Warnings
-warnings.simplefilter('ignore', AstropyWarning)
-
-
-# Create various error classes to use
-class InputError(ValueError):
-    """InputError Locally defined error that inherits ValueError
-    """
+warnings.simplefilter("ignore", AstropyWarning)
 
 
 def send_alert(alert_type):

@@ -33,7 +33,7 @@ from roz import utils
 from roz.utils import LMI_FILTERS
 
 
-class CalibrationDatabase():
+class CalibrationDatabase:
     """CalibrationDatabase
 
     Database class for calibration frames
@@ -58,16 +58,20 @@ class CalibrationDatabase():
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
-        self.flat = {} if self.flags['get_flats'] else None
+        self.flat = {} if self.flags["get_flats"] else None
 
         # Read in the InfluxDB config file
-        self.db_set = utils.read_ligmos_conffiles('databaseSetup')
+        self.db_set = utils.read_ligmos_conffiles("databaseSetup")
 
         # The InfluxDB object is thuswise constructed:
         self.idb = lig_utils.database.influxobj(
-                    tablename=self.db_set.tablename, host=self.db_set.host,
-                    port=self.db_set.port, user=self.db_set.user,
-                    pw=self.db_set.password, connect=True)
+            tablename=self.db_set.tablename,
+            host=self.db_set.host,
+            port=self.db_set.port,
+            user=self.db_set.user,
+            pw=self.db_set.password,
+            connect=True,
+        )
 
     @property
     def bias_temp(self):
@@ -84,9 +88,8 @@ class CalibrationDatabase():
         """
         # If the bias table is empty, return zeros
         if self.bias is None:
-            return np.asarray([0]),np.asarray([0])
-        return np.asarray(self.bias['crop_avg']), \
-               np.asarray(self.bias['mnttemp'])
+            return np.asarray([0]), np.asarray([0])
+        return np.asarray(self.bias["crop_avg"]), np.asarray(self.bias["mnttemp"])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -114,13 +117,13 @@ class CalibrationDatabase():
                     self.idb.singleCommit(packet, table=self.db_set.tablename)
 
         # If not LMI, then bomb out now
-        if self.flags['instrument'] != 'LMI':
+        if self.flags["instrument"] != "LMI":
             return
 
         # Loop through the filters, making FLAT packets and commit them
         for filt in LMI_FILTERS:
             # Skip filters not used in this data set
-            #print(f"Committing LMI filter {filt}...")
+            # print(f"Committing LMI filter {filt}...")
             if self.flat[filt] is None:
                 continue
 
@@ -133,7 +136,7 @@ class CalibrationDatabase():
 
 
 # Non-Class Functions ========================================================#
-def neatly_package(table_row, colnames, measure='Instrument_Data'):
+def neatly_package(table_row, colnames, measure="Instrument_Data"):
     """neatly_package Carefully curate and package the InfluxDB packet
 
     This function translates the internal database into an InfluxDB object.
@@ -157,24 +160,27 @@ def neatly_package(table_row, colnames, measure='Instrument_Data'):
     # We want the database timestamp to be that of the image DATEOBS,
     #  not the current time.  Therefore, we need to create a datetime()
     #  object from the field `dateobs`.
-    timestamp = dt.datetime.strptime(f"{row_as_dict.pop('dateobs')}",
-                                        '%Y-%m-%dT%H:%M:%S.%f')
+    timestamp = dt.datetime.strptime(
+        f"{row_as_dict.pop('dateobs')}", "%Y-%m-%dT%H:%M:%S.%f"
+    )
 
     # Build the tags from information in the table Row
-    tags = {'instrument': row_as_dict.pop('instrument').lower(),
-            'frametype': row_as_dict.pop('frametyp').lower(),
-            'filter': row_as_dict.pop('filter'),
-            'binning': row_as_dict.pop('binning'),
-            'numamp': row_as_dict.pop('numamp'),
-            'ampid': row_as_dict.pop('ampid'),
-            'cropborder': row_as_dict.pop('cropsize')}
+    tags = {
+        "instrument": row_as_dict.pop("instrument").lower(),
+        "frametype": row_as_dict.pop("frametyp").lower(),
+        "filter": row_as_dict.pop("filter"),
+        "binning": row_as_dict.pop("binning"),
+        "numamp": row_as_dict.pop("numamp"),
+        "ampid": row_as_dict.pop("ampid"),
+        "cropborder": row_as_dict.pop("cropsize"),
+    }
 
     # Strip off the filename, as it can be reconstructed from obserno
-    row_as_dict.pop('filename')
+    row_as_dict.pop("filename")
 
     # Create the packet for upload to the InfluxDB
     packet = lig_utils.packetizer.makeInfluxPacket(
-                meas=[measure], ts=timestamp, fields=row_as_dict,
-                tags=tags, debug=False)
+        meas=[measure], ts=timestamp, fields=row_as_dict, tags=tags, debug=False
+    )
 
     return packet

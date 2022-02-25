@@ -41,15 +41,10 @@ from tqdm import tqdm
 # Internal Imports
 from roz import send_alerts as sa
 from roz import utils
+from roz.utils import InputError
 
 
-# Create an error class to use
-class InputError(ValueError):
-    """InputError Locally defined error that inherits ValueError
-    """
-
-
-class Dumbwaiter():
+class Dumbwaiter:
     """dumbwaiter Class for moving data between floors (servers)
 
     It seemed easier to contain in one place all of the data and methods related to
@@ -57,7 +52,7 @@ class Dumbwaiter():
     location, and packaging them for cold storage.
     """
 
-    def __init__(self, data_dir, frameclass='calibration'):
+    def __init__(self, data_dir, frameclass="calibration"):
         """__init__ Initialize the Dumbwaiter class
 
         NOTE: 'calibration' is the ONLY type of frame currently supported,
@@ -73,31 +68,31 @@ class Dumbwaiter():
         """
         # Check that the (presumably remote) directory is, in fact, a directory
         if not os.path.isdir(data_dir):
-            sa.send_alert('BadDirectoryAlert : Dumbwaiter.__init__()')
+            sa.send_alert("BadDirectoryAlert : Dumbwaiter.__init__()")
             return
 
         # Initialize attributes
         self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
         self.frameclass = frameclass
-        self.locations = utils.read_ligmos_conffiles('rozSetup')
+        self.locations = utils.read_ligmos_conffiles("rozSetup")
         self.proc_dir = Path(self.locations.processing_dir)
         self.instrument = divine_instrument(self.data_dir)
 
         # If the directory is completely empty: send alert, set empty, return
         if not self.instrument:
-            sa.send_alert('EmptyDirectoryAlert : Dumbwaiter.__init__()')
+            sa.send_alert("EmptyDirectoryAlert : Dumbwaiter.__init__()")
             self.empty = True
             return
 
         self.inst_flags = utils.set_instrument_flags(self.instrument)
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
-        if self.frameclass == 'calibration':
-            self.frames = gather_cal_frames(self.data_dir,
-                                            self.inst_flags,
-                                            fnames_only=True)
+        if self.frameclass == "calibration":
+            self.frames = gather_cal_frames(
+                self.data_dir, self.inst_flags, fnames_only=True
+            )
         else:
-            sa.send_alert('BadFrameclassAlert : Dumbwaiter.__init__()')
+            sa.send_alert("BadFrameclassAlert : Dumbwaiter.__init__()")
 
         # Make an attribute specifying whether the dumbwaiter is empty
         self.empty = not self.frames
@@ -123,17 +118,19 @@ class Dumbwaiter():
             return
 
         if not keep_existing:
-            print("Cleaning out previous cruft in processing directory "
-                  f"{self.proc_dir}")
+            print(
+                "Cleaning out previous cruft in processing directory "
+                f"{self.proc_dir}"
+            )
             for entry in os.scandir(self.proc_dir):
                 if entry.is_file():
                     os.remove(self.proc_dir.joinpath(entry))
 
-        print(f"Copying data from {self.data_dir} to {self.proc_dir} "
-              "for processing...")
+        print(f"Copying data from {self.data_dir} to {self.proc_dir} for processing...")
         # Show progress bar for copying files
-        progress_bar = tqdm(total=len(self.frames), unit='file',
-                            unit_scale=False, colour='cyan')
+        progress_bar = tqdm(
+            total=len(self.frames), unit="file", unit_scale=False, colour="cyan"
+        )
         for frame in self.frames:
             shutil.copy(self.data_dir.joinpath(frame), self.proc_dir)
             progress_bar.update(1)
@@ -161,14 +158,17 @@ class Dumbwaiter():
 
         # First, check to see if the UT Date is encoded in the source `data_dir`
         #  (8 consecutive digits) using regex negative lookbehind / lookahead
-        if result := re.search(r'(?<!\d)\d{8}(?!\d)', str(self.data_dir)):
+        if result := re.search(r"(?<!\d)\d{8}(?!\d)", str(self.data_dir)):
             utdate = result.group(0)
 
         # Otherwise, grab the header of the LAST file in self.frames (as this
         #  is most likely to be taken AFTER 00:00UT) and extract from DATE-OBS
         else:
-            utdate = getheader(self.proc_dir.joinpath(
-                self.frames[-1]))['DATE-OBS'].split('T')[0].replace('-','')
+            utdate = (
+                getheader(self.proc_dir.joinpath(self.frames[-1]))["DATE-OBS"]
+                .split("T")[0]
+                .replace("-", "")
+            )
 
         # Build the tar filename
         tarbase = f"{self.instrument}_{utdate}_{self.frameclass}.tar.bz2"
@@ -182,13 +182,13 @@ class Dumbwaiter():
         print("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
             # Show progress bar for processing the tarball
-            progress_bar = tqdm(total=len(self.frames), unit='file',
-                                unit_scale=False, colour='green')
+            progress_bar = tqdm(
+                total=len(self.frames), unit="file", unit_scale=False, colour="green"
+            )
             for name in self.frames:
                 tar.add(self.proc_dir.joinpath(name))
                 progress_bar.update(1)
             progress_bar.close()
-
 
         # Next, set up for copying the tarball over to cold storage
         # TODO: Need to confer with Ryan about how this step will be done.
@@ -224,11 +224,11 @@ def divine_instrument(directory):
             # If we're good to go...
             if os.path.isfile(fitsfile):
                 header = getheader(fitsfile)
-                return header['instrume'].lower()
+                return header["instrume"].lower()
         except KeyError:
             continue
     # Otherwise...
-    sa.send_alert('BadDirectoryAlert : divine_instrument()')
+    sa.send_alert("BadDirectoryAlert : divine_instrument()")
     return None
 
 
@@ -260,45 +260,46 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         List of calibration filenames (returned when `fnames_only = True`)
     """
     # Silence Superflous AstroPy Warnings from CCDPROC routines
-    warnings.simplefilter('ignore', AstropyWarning)
+    warnings.simplefilter("ignore", AstropyWarning)
 
     # Because over-the-network reads can take a while, say something!
     print(f"Reading the files in {directory}...")
 
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
-            directory, glob_include=f"{inst_flag['prefix']}*.fits")
+        directory, glob_include=f"{inst_flag['prefix']}*.fits"
+    )
 
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
-        sa.send_alert('EmptyDirectoryAlert : gather_cal_frames()')
+        sa.send_alert("EmptyDirectoryAlert : gather_cal_frames()")
         return None
 
     return_object = []
 
     # Keep these items separate for now, in case future instruments need one
     #  but not the others
-    if inst_flag['get_bias']:
+    if inst_flag["get_bias"]:
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0) FULL FRAME ONLY
-        bias_fns = icl.files_filtered(obstype='bias', subarrno=0)
+        bias_fns = icl.files_filtered(obstype="bias", subarrno=0)
         zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
         bias_cl = ccdp.ImageFileCollection(filenames=biases)
         return_object.append(bias_cl.files if fnames_only else bias_cl)
 
-    if inst_flag['get_flats']:
+    if inst_flag["get_flats"]:
         # Gather DOME FLAT frames; FULL FRAME ONLY
         # TODO: SKY FLAT not supported at this time -- Add support
-        domeflat_cl = icl.filter(obstype='dome flat', subarrno=0)
+        domeflat_cl = icl.filter(obstype="dome flat", subarrno=0)
         return_object.append(domeflat_cl.files if fnames_only else domeflat_cl)
 
-    if inst_flag['check_binning'] and not fnames_only:
+    if inst_flag["check_binning"] and not fnames_only:
         # Get the complete list of binnings used -- but clear out `None` entries
-        bin_list = icl.values('ccdsum', unique=True)
+        bin_list = icl.values("ccdsum", unique=True)
         bin_list = sorted(list(filter(None, bin_list)))
         return_object.append(bin_list)
 
-    #===============================================================#
+    # ===============================================================#
     # If we only want the filenames, flatten out the list and return
     if fnames_only:
         return list(np.concatenate(return_object).flat)
