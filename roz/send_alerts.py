@@ -24,6 +24,10 @@ import warnings
 # 3rd Party Libraries
 from astropy.utils.exceptions import AstropyWarning
 
+# Lowell Libraries
+from johnnyfive import gmail as j5g
+from johnnyfive import slack as j5s
+
 # Internal Imports
 from roz.utils import InputError
 
@@ -37,7 +41,7 @@ def send_alert(alert_type):
     The medium for alerts needs to be decided -- should it be via email from
     lig.nanni@lowell.edu, or over Slack, or both, or something different?
 
-    There are various types of alerts that can be send... maybe choose the
+    There are various types of alerts that can be sent... maybe choose the
     medium based on the input `alertclass`?
     """
     print(f"***** Alert Alert Alert: {alert_type}")

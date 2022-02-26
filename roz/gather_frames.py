@@ -191,10 +191,15 @@ class Dumbwaiter:
             progress_bar.close()
 
         # Next, set up for copying the tarball over to cold storage
-        # TODO: Need to confer with Ryan about how this step will be done.
-        #       For instance, will the storage directories be mounted on the
-        #       processing machine, or will the files be copied over via scp
-        #       or similar protocol?
+        # The requisite cold storage directories will be mounted locally and
+        #  be of form ".../dataquality/{site}/{instrument}"
+        cold_dir = Path(self.locations.coldstorage_dir).joinpath(
+            self.inst_flags["site"], self.instrument
+        )
+        if not os.path.isdir(cold_dir):
+            sa.send_alert("Woah, nellie.  No cold storage directory!")
+        print(f"Copying {tarbase} to {cold_dir}...")
+        shutil.copy2(tarname, cold_dir)
 
 
 # Non-Class Functions ========================================================#
@@ -203,6 +208,9 @@ def divine_instrument(directory):
 
     Opens one of the FITS files and reads in the INSTRUME header keyword,
     returns as a lowercase string.
+
+    TODO: As we bring the Anderson Mesa instruments into Roz, this function
+          may need significant overhaul.
 
     Parameters
     ----------

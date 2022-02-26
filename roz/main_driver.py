@@ -19,6 +19,7 @@ This module primarily trades in... driving?
 """
 
 # Built-In Libraries
+import glob
 import os
 
 # 3rd Party Libraries
@@ -150,7 +151,7 @@ def run_deveny_cals(directory, mem_limit=None):
 
 
 # =============================================================================#
-def main(args=None, directory=None, mem_limit=8.192e9):
+def main(directories=None, mem_limit=8.192e9):
     """main This is the main function.
 
     This function takes the directory input, determines which instrument is
@@ -175,40 +176,51 @@ def main(args=None, directory=None, mem_limit=8.192e9):
     `list` of `roz.database_manager.CalibrationDatabase`
         A list of the Calibration Database objects for each binning scheme
     """
-    # Parse command-line arguments, if called that way
-    if args:
-        if len(args) == 1:
-            print("ERROR: Must specify a directory to process.")
-            return None
+    if isinstance(directories, str):
+        directories = [directories]
 
-        # If not passed a directory, exit
-        if not os.path.isdir(args[1]):
-            print("ERROR: Must specify a directory to process.")
-            return None
-        directory = args[1]
+    for directory in directories:
+        # Check that directory is, indeed, a directory and contains FITS files
+        if not os.path.isdir(directory):
+            raise ValueError(f"{directory} is not a valid directory")
+        if not glob.glob(os.path.join(directory, "*.fits")):
+            raise ValueError(f"{directory} does not contain any FITS files")
 
-    # =================================#
-    # Given the directory (which will be on a remote file server in
-    #  production), call the dumbwaiter to determine which files need to be
-    #  copied and then carry out that operation.
-    dumbwaiter = gf.Dumbwaiter(directory)
-    if dumbwaiter.empty:
+        # =================================#
+        # Given the directory (which will be on a remote file server in
+        #  production), call the dumbwaiter to determine which files need to be
+        #  copied and then carry out that operation.
+        dumbwaiter = gf.Dumbwaiter(directory)
+        if dumbwaiter.empty:
+            return None
+        dumbwaiter.copy_frames_to_processing()
+        # This really could happen at any time... putting it here for now.
+        dumbwaiter.cold_storage(testing=False)
+
+        # Giddy up!
+        if dumbwaiter.instrument == "lmi":
+            return run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
+        if dumbwaiter.instrument == "deveny":
+            return run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
+
+        sa.send_alert("BadInstrumentAlert : main()")
         return None
-    dumbwaiter.copy_frames_to_processing()
-    # This really could happen at any time... putting it here for now.
-    dumbwaiter.cold_storage()
-
-    # Giddy up!
-    if dumbwaiter.instrument == "lmi":
-        return run_lmi_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
-    if dumbwaiter.instrument == "deveny":
-        return run_deveny_cals(dumbwaiter.proc_dir, mem_limit=mem_limit)
-
-    sa.send_alert("BadInstrumentAlert : main()")
-    return None
 
 
 if __name__ == "__main__":
-    import sys
+    # Set up the environment to import the program
+    import argparse
 
-    main(sys.argv)
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(prog="main_driver", description="Roz main driver")
+    parser.add_argument(
+        "directory",
+        metavar="dir",
+        type=str,
+        nargs="+",
+        help="The directory on which to run Roz",
+    )
+    args = parser.parse_args()
+
+    # Giddy Up!
+    main(args.directory)

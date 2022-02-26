@@ -2,11 +2,21 @@
 # ---
 # datatype:
 # - {name: instrument, datatype: string}
+# - {name: site, datatype: string}
 # - {name: prefix, datatype: string}
 # - {name: get_bias, datatype: bool}
 # - {name: get_flats, datatype: bool}
 # - {name: check_binning, datatype: bool}
 # schema: astropy-2.0
-instrument prefix get_bias get_flats check_binning
-LMI lmi True True True
-DEVENY 20 True False True
+instrument site prefix get_bias get_flats check_binning
+LMI ldt lmi True True True
+DEVENY ldt 20 True False True
+NIHTS ldt xx False False False
+RC1 ldt xx False False False
+RC2 ldt xx False False False
+LDT_ALLSKY ldt xx False False False
+AM_ALLSKY andersonmesa xx False False False
+NASA42 andersonmesa xx False False False
+NPOIET1 andersonmesa xx False False False
+NPOIET2 andersonmesa xx False False False
+NPOIET3 andersonmesa xx False False False

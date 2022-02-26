@@ -1,8 +1,5 @@
 [rozSetup]
 processing_dir = None
-host = None
-user = None
-password = None
 storage_dir = None
 
 [lmifilertSetup]
