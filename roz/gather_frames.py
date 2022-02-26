@@ -12,14 +12,13 @@
 
 This module is part of the Roz package, written at Lowell Observatory.
 
-This module will need to interface at some level with Wadsworth (the LIG Data
-Butler) to either buttle data to whatever machine is running Roz, or to let Roz
-know that data has been buttled to the proper location (laforge?) and provide
-the proper directory information.
+This module buttles its own data from the site NAS (which will be mounted in
+the container running this package) and to the MH storage location (also
+mounted as a local directory).  The paths for these local mount points are
+specified in `roz.conf`.
 
 This module primarily trades in CCDPROC Image File Collections
-(`ccdproc.ImageFileCollection`), along with whatever data structures are
-sent to or recieved by Wadsworth.
+(`ccdproc.ImageFileCollection`).
 """
 
 # Built-In Libraries
@@ -47,25 +46,26 @@ from roz.utils import InputError
 class Dumbwaiter:
     """dumbwaiter Class for moving data between floors (servers)
 
-    It seemed easier to contain in one place all of the data and methods related to
-    identifying the appropriate frames, copying them to a processing
+    It seemed easier to contain in one place all of the data and methods
+    related to identifying the appropriate frames, copying them to a processing
     location, and packaging them for cold storage.
+
+    Roz moves its own data around, without the help of other LIG workers, so
+    the concept of a dumbwaiter seemed appropriate.
+
+    NOTE: 'calibration' is the ONLY type of frame currently supported,
+    but the `frameclass` keyword is included for future expansions of the
+    package.
+
+    Parameters
+    ----------
+    data_dir : `str` or `pathlib.Path`
+        The directory to search for appropriate files
+    frameclass : `str`, optional
+        Class of frame to collect for processing.  [Default: 'calibration']
     """
 
     def __init__(self, data_dir, frameclass="calibration"):
-        """__init__ Initialize the Dumbwaiter class
-
-        NOTE: 'calibration' is the ONLY type of frame currently supported,
-        but the `frameclass` keyword is included for future expansions of the
-        package.
-
-        Parameters
-        ----------
-        data_dir : `str` or `pathlib.Path`
-            The directory to search for appropriate files
-        frameclass : `str`, optional
-            Class of frame to collect for processing.  [Default: 'calibration']
-        """
         # Check that the (presumably remote) directory is, in fact, a directory
         if not os.path.isdir(data_dir):
             sa.send_alert("BadDirectoryAlert : Dumbwaiter.__init__()")
@@ -206,8 +206,13 @@ class Dumbwaiter:
 def divine_instrument(directory):
     """divine_instrument Divine the instrument whose data is in this directory
 
-    Opens one of the FITS files and reads in the INSTRUME header keyword,
-    returns as a lowercase string.
+    This function emulates Carnac the Magnificent, where it holds a sealed
+    envelope (FITS header) to its forehead and divines the answer to the
+    question contained inside (what is the instrument?).  Finally, it rips
+    open the envelope, and reads the index card (INSTRUME keyword) inside.
+
+    NOTE: For proper functioning, the FITS headers must be kept in a
+          mayonnaise jar on Funk and Wagnalls' porch since noon UT.
 
     TODO: As we bring the Anderson Mesa instruments into Roz, this function
           may need significant overhaul.

@@ -206,15 +206,19 @@ def modify_lmi_dynamic_table(
     if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
         dyntable = Table.read(utils.Paths.lmi_dyntable)
+
     else:
         # Make a blank table, including the LMI_FILTERS for correspondence
         nrow = len(LMI_FILTERS)
-        col0 = Column(LMI_FILTERS, name="Filter")
-        col1 = Column(name="Latest Image", length=nrow, dtype="U256")
-        col2 = Column(name="UT Date of Latest Flat", length=nrow, dtype="U128")
-        col3 = Column(name="Count Rate (ADU/s)", length=nrow, dtype=float)
-        col4 = Column(name="Exptime for 20k cts (s)", length=nrow, dtype=float)
-        dyntable = Table([col0, col1, col2, col3, col4])
+        dyntable = Table(
+            [
+                Column(LMI_FILTERS, name="Filter"),
+                Column(name="Latest Image", length=nrow, dtype="U256"),
+                Column(name="UT Date of Latest Flat", length=nrow, dtype="U128"),
+                Column(name="Count Rate (ADU/s)", length=nrow, dtype=float),
+                Column(name="Exptime for 20k cts (s)", length=nrow, dtype=float),
+            ]
+        )
 
     # Merge the static and dynamic portions together
     #  The astropy.table function join() combines tables based on common keys,
@@ -361,16 +365,16 @@ def construct_lmi_html_table(
     ncols = len(lmi_filt.colnames)
 
     # CSS stuff to make the HTML table pretty -- read it in from file
-    with open(utils.Paths.css_table, "r", encoding="utf8") as css_fn:
-        css_style = css_fn.readlines()
+    with open(utils.Paths.css_table, "r", encoding="utf8") as fileobj:
+        css_style = fileobj.readlines()
 
     # Use the AstroPy HTML functionality to get us most of the way there
     lmi_filt.write(filename, overwrite=True, htmldict={"css": "".join(css_style)})
 
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
-    with open(filename, encoding="utf8") as html:
-        soup = BeautifulSoup(html, "html.parser")
+    with open(filename, encoding="utf8") as fileobj:
+        soup = BeautifulSoup(fileobj, "html.parser")
 
     # Add the `creation date` line to the body of the HTML above the table
     timestr = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -398,8 +402,8 @@ def construct_lmi_html_table(
     wrap_plaintext_links(soup, soup, link_text=link_text)
 
     # Now that we've mucked with the HTML document, rewerite it to disk
-    with open(filename, "wb") as f_output:
-        f_output.write(soup.prettify("utf-8"))
+    with open(filename, "wb") as fileobj:
+        fileobj.write(soup.prettify("utf-8"))
 
 
 def load_lmi_static_table(table_type="ecsv"):
