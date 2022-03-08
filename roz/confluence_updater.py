@@ -243,7 +243,7 @@ def modify_lmi_dynamic_table(
         #  already in the table.  If OLD > NEW, skip.
         new_date = database.flat[filt]["dateobs"][-1].split("T")[0]
         if not isinstance(lmi_filt["UT Date of Latest Flat"][i], MaskedConstant):
-            if (existing_date := lmi_filt["UT Date of Latest Flat"][i].strip()) :
+            if existing_date := lmi_filt["UT Date of Latest Flat"][i].strip():
                 if dt.datetime.strptime(
                     existing_date, "%Y-%m-%d"
                 ) >= dt.datetime.strptime(new_date, "%Y-%m-%d"):

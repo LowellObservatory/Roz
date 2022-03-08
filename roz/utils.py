@@ -19,6 +19,8 @@ This module primarily trades in... utility?
 """
 
 # Built-In Libraries
+import os
+import pathlib
 
 # 3rd Party Libraries
 from astropy.modeling import models
@@ -26,9 +28,9 @@ from astropy.nddata import CCDData
 from astropy.table import Table
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
-from importlib_resources import files as pkg_files
 import numpy as np
 from numpy.ma.core import MaskedConstant
+from pkg_resources import resource_filename
 
 # Lowell Libraries
 from ligmos import utils as lig_utils, workers as lig_workers
@@ -38,15 +40,15 @@ from ligmos import utils as lig_utils, workers as lig_workers
 
 # Classes to hold useful information
 class Paths:
-    """ Paths
+    """Paths
 
     [extended_summary]
     """
 
     # Main data & config directories
-    data = pkg_files("Roz.data")
-    thumbnail = pkg_files("Roz.thumbnails")
-    config = pkg_files("Roz.config")
+    config = pathlib.Path(resource_filename("roz", "config"))
+    data = pathlib.Path(resource_filename("roz", "data"))
+    thumbnail = pathlib.Path(resource_filename("roz", "thumbnails"))
 
     # Particular filenames needed by various routines
     xml_table = data.joinpath("lmi_filter_table.xml")
@@ -69,8 +71,7 @@ FMS = ["A", "B", "C", "D"]
 
 # Create an error class to use
 class InputError(ValueError):
-    """InputError Locally defined error that inherits ValueError
-    """
+    """InputError Locally defined error that inherits ValueError"""
 
 
 def load_saved_bias(instrument, binning):
@@ -578,8 +579,8 @@ def compute_human_readable_surface(coefficients):
         # Compute the rotated coefficients
         #  xpxp == coefficient on x'^2 in Standard Form
         #  ypyp == coefficient on y'^2 in Standard Form
-        xpxp = A * costh ** 2 + B * sinth * costh + C * sinth ** 2
-        ypyp = A * sinth ** 2 - B * sinth * costh + C * costh ** 2
+        xpxp = A * costh**2 + B * sinth * costh + C * sinth**2
+        ypyp = A * sinth**2 - B * sinth * costh + C * costh**2
 
         # Convert to "semimajor" and "semiminor" axes from Standard Form
         semimaj = 1 / np.sqrt(np.absolute(xpxp))
