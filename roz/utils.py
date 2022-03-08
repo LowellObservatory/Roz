@@ -19,7 +19,6 @@ This module primarily trades in... utility?
 """
 
 # Built-In Libraries
-import os
 import pathlib
 
 # 3rd Party Libraries

@@ -24,15 +24,13 @@ This module primarily trades in CCDPROC Image File Collections
 # Built-In Libraries
 import glob
 import os
-from pathlib import Path
+import pathlib
 import re
 import shutil
 import tarfile
-import warnings
 
 # 3rd Party Libraries
 from astropy.io.fits import getheader
-from astropy.utils.exceptions import AstropyWarning
 import ccdproc as ccdp
 import numpy as np
 from tqdm import tqdm
@@ -40,7 +38,6 @@ from tqdm import tqdm
 # Internal Imports
 from roz import send_alerts as sa
 from roz import utils
-from roz.utils import InputError
 
 
 class Dumbwaiter:
@@ -72,10 +69,12 @@ class Dumbwaiter:
             return
 
         # Initialize attributes
-        self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
+        self.data_dir = (
+            pathlib.Path(data_dir) if isinstance(data_dir, str) else data_dir
+        )
         self.frameclass = frameclass
         self.locations = utils.read_ligmos_conffiles("rozSetup")
-        self.proc_dir = Path(self.locations.processing_dir)
+        self.proc_dir = pathlib.Path(self.locations.processing_dir)
         self.instrument = divine_instrument(self.data_dir)
 
         # If the directory is completely empty: send alert, set empty, return
@@ -193,7 +192,7 @@ class Dumbwaiter:
         # Next, set up for copying the tarball over to cold storage
         # The requisite cold storage directories will be mounted locally and
         #  be of form ".../dataquality/{site}/{instrument}"
-        cold_dir = Path(self.locations.coldstorage_dir).joinpath(
+        cold_dir = pathlib.Path(self.locations.coldstorage_dir).joinpath(
             self.inst_flags["site"], self.instrument
         )
         if not os.path.isdir(cold_dir):
@@ -272,9 +271,6 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     fnames, `list`
         List of calibration filenames (returned when `fnames_only = True`)
     """
-    # Silence Superflous AstroPy Warnings from CCDPROC routines
-    warnings.simplefilter("ignore", AstropyWarning)
-
     # Because over-the-network reads can take a while, say something!
     print(f"Reading the files in {directory}...")
 

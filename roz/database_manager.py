@@ -33,6 +33,10 @@ from roz import utils
 from roz.utils import LMI_FILTERS
 
 
+# Set API Components
+__all__ = ["CalibrationDatabase", "HistoricalData"]
+
+
 class CalibrationDatabase:
     """CalibrationDatabase
 
@@ -133,6 +137,17 @@ class CalibrationDatabase:
                 # Commit
                 if not testing:
                     self.idb.singleCommit(packet, table=self.db_set.tablename)
+
+
+class HistoricalData:
+    """HistoricalData _summary_
+
+    This class pulls historical data from the InfluxDB for comparison with the
+    present frames to alert for changes.
+    """
+
+    def __init__(self):
+        pass
 
 
 # Non-Class Functions ========================================================#

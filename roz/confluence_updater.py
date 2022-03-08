@@ -30,7 +30,6 @@ from astropy.table import join, Column, Table
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 import numpy as np
-from numpy.ma.core import MaskedConstant
 
 # Lowell Libraries
 from johnnyfive import confluence as j5c
@@ -242,7 +241,9 @@ def modify_lmi_dynamic_table(
         # But, only update if the DATOBS of this flat is LATER than what's
         #  already in the table.  If OLD > NEW, skip.
         new_date = database.flat[filt]["dateobs"][-1].split("T")[0]
-        if not isinstance(lmi_filt["UT Date of Latest Flat"][i], MaskedConstant):
+        if not isinstance(
+            lmi_filt["UT Date of Latest Flat"][i], np.ma.core.MaskedConstant
+        ):
             if existing_date := lmi_filt["UT Date of Latest Flat"][i].strip():
                 if dt.datetime.strptime(
                     existing_date, "%Y-%m-%d"
@@ -330,7 +331,7 @@ def add_html_section_header(soup, ncols, text, extra=""):
     bold.append(uline)
     newcol.append(bold)
     # Add any `extra` text in standard font after the bold/underline portion
-    newcol.append("" if isinstance(extra, MaskedConstant) else extra)
+    newcol.append("" if isinstance(extra, np.ma.core.MaskedConstant) else extra)
     # Put the column tag inside the row tag
     newrow.append(newcol)
     # All done

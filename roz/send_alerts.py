@@ -22,7 +22,6 @@ This module primarily trades in Exception-like `Alert` objects.
 import warnings
 
 # 3rd Party Libraries
-from astropy.utils.exceptions import AstropyWarning
 
 # Lowell Libraries
 from johnnyfive import gmail as j5g
@@ -30,9 +29,6 @@ from johnnyfive import slack as j5s
 
 # Internal Imports
 from roz.utils import InputError
-
-# Silence Superflous AstroPy Warnings
-warnings.simplefilter("ignore", AstropyWarning)
 
 
 def send_alert(alert_type):
@@ -45,3 +41,5 @@ def send_alert(alert_type):
     medium based on the input `alertclass`?
     """
     print(f"***** Alert Alert Alert: {alert_type}")
+    slack_alert = j5s.SlackChannel('bot_test')
+    slack_alert.send_message(f"This is a message from Roz: {alert_type}")

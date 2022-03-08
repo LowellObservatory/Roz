@@ -30,7 +30,7 @@ import warnings
 # 3rd Party Libraries
 from astropy.stats import mad_std
 from astropy.table import Table
-from astropy.utils.exceptions import AstropyWarning
+from astropy.wcs import FITSFixedWarning
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string as get_slice
 import numpy as np
@@ -41,8 +41,8 @@ from roz import database_manager as dm
 from roz import utils
 from roz.utils import LMI_FILTERS, FMS, InputError
 
-# Silence Superflous AstroPy Warnings
-warnings.simplefilter("ignore", AstropyWarning)
+# Silence Superflous AstroPy FITS Header Warnings
+warnings.simplefilter("ignore", FITSFixedWarning)
 
 
 # Narrative Functions ========================================================#

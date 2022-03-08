@@ -1,9 +1,10 @@
 astropy>=4.0
 importlib_resources
 matplotlib
-ligmos.egg
 numpy
 tqdm
 atlassian-python-api
 beautifulsoup4
 ccdproc
+ligmos @ git+https://github.com/LowellObservatory/ligmos
+JohnnyFive @ git+https://github.com/LowellObservatory/JohnnyFive
