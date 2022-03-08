@@ -29,8 +29,8 @@ import numpy as np
 from ligmos import utils as lig_utils
 
 # Internal Imports
+from roz import process_calibrations as pc
 from roz import utils
-from roz.utils import LMI_FILTERS
 
 
 # Set API Components
@@ -46,7 +46,7 @@ class CalibrationDatabase:
     to insert them into the InfluxDB database
     """
 
-    def __init__(self, inst_flags):
+    def __init__(self, inst_flags, proc_dir):
         """__init__ Class initialization
 
         [extended_summary]
@@ -55,10 +55,12 @@ class CalibrationDatabase:
         ----------
         inst_flags : `dict`
             Dictionary of instrument flags.
+        proc_dir : `str` or `pathlib.Path`
+            Path to the processing directory
         """
         # Set internal variables
         self.flags = inst_flags
-        self.proc_dir = None
+        self.proc_dir = proc_dir
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
@@ -125,7 +127,7 @@ class CalibrationDatabase:
             return
 
         # Loop through the filters, making FLAT packets and commit them
-        for filt in LMI_FILTERS:
+        for filt in utils.LMI_FILTERS:
             # Skip filters not used in this data set
             # print(f"Committing LMI filter {filt}...")
             if self.flat[filt] is None:
@@ -150,7 +152,49 @@ class HistoricalData:
         pass
 
 
+class ScienceDatabase:
+    def __init__(self):
+        pass
+
+
 # Non-Class Functions ========================================================#
+def build_calibration_database(bias_meta, flat_meta, inst_flags, proc_dir):
+    """produce_database_object Stuff the metadata tables into a database object
+
+    [extended_summary]
+
+    Parameters
+    ----------
+    bias_meta : `astropy.table.Table`
+        Table containing the metadata and statistics for BIAS frames
+    flat_meta : `astropy.table.Table`
+        Table containing the metadata and statistics for FLAT frames
+    inst_flags : `dict`
+        Dictionary of instrument flags from .utils.set_instrument_flags()
+    proc_dir : `str` or `pathlib.Path`
+        Path to the processing directory
+
+    Returns
+    -------
+    `roz.database_manager.CalibrationDatabase`
+        Database object for use with... something?
+    """
+    # Instantiate the database
+    database = CalibrationDatabase(inst_flags, proc_dir)
+
+    if inst_flags["get_bias"]:
+        # Analyze the bias_meta table, and insert it into the database
+        database.bias = pc.validate_bias_table(bias_meta)
+
+    if inst_flags["get_flats"]:
+        # Analyze the flat_meta table, sorted by LMI_FILTERS, and insert
+        for lmi_filt in utils.LMI_FILTERS:
+            database.flat[lmi_filt] = pc.validate_flat_table(flat_meta, lmi_filt)
+
+    # Return the filled database
+    return database
+
+
 def neatly_package(table_row, colnames, measure="Instrument_Data"):
     """neatly_package Carefully curate and package the InfluxDB packet
 

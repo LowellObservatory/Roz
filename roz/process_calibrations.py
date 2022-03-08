@@ -39,7 +39,6 @@ from tqdm import tqdm
 # Internal Imports
 from roz import database_manager as dm
 from roz import utils
-from roz.utils import LMI_FILTERS, FMS, InputError
 
 # Silence Superflous AstroPy FITS Header Warnings
 warnings.simplefilter("ignore", FITSFixedWarning)
@@ -193,7 +192,7 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
             for x in ["x", "y"]:
                 metadict[f"rc{n}pos_{x.lower()}"] = float(hdr[f"P{n}{x.upper()}"])
         metadict["icpos"] = float(hdr["ICPOS"])
-        for x in FMS:
+        for x in utils.FMS:
             metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
 
         metadata.append(metadict)
@@ -313,9 +312,9 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     human_readable.pop("typ")
     shape = (hdr["naxis1"], hdr["naxis2"])
 
-    # TODO: Add error checking or type-forcing here to keep InfluxDB happy
+    # TODO: Add error checking here to keep InfluxDB happy
     metadict = {
-        "dateobs": hdr["DATE-OBS"],
+        "dateobs": f"{hdr['DATE-OBS'].strip()}",
         "instrument": f"{hdr['INSTRUME'].strip()}",
         "frametyp": f"{hdr['OBSTYPE'].strip()}",
         "obserno": int(hdr["OBSERNO"]),
@@ -373,7 +372,7 @@ def check_processing_ifc(ifc, binning):
     """
     # Error checking for binning
     if binning is None:
-        raise InputError("Binning not set.")
+        raise utils.InputError("Binning not set.")
 
     # If IFC is empty already, just return it
     if not ifc.files:
@@ -381,37 +380,3 @@ def check_processing_ifc(ifc, binning):
 
     # Double-check that we're processing FULL FRAMEs of identical binning only
     return ifc.filter(ccdsum=binning, subarrno=0)
-
-
-def produce_database_object(bias_meta, flat_meta, inst_flags):
-    """produce_database_object Stuff the metadata tables into a database object
-
-    [extended_summary]
-
-    Parameters
-    ----------
-    bias_meta : `astropy.table.Table`
-        Table containing the metadata and statistics for BIAS frames
-    flat_meta : `astropy.table.Table`
-        Table containing the metadata and statistics for FLAT frames
-    inst_flags : `dict`
-        Dictionary of instrument flags from .utils.set_instrument_flags()
-
-    Returns
-    -------
-    `database_manager.CalibrationDatabase`
-        Database object for use with... something?
-    """
-    # Instantiate the database
-    database = dm.CalibrationDatabase(inst_flags)
-
-    # Analyze the bias_meta table, and insert it into the database
-    database.bias = validate_bias_table(bias_meta)
-
-    if inst_flags["get_flats"]:
-        # Analyze the flat_meta table, sorted by LMI_FILTERS, and insert
-        for lmi_filt in LMI_FILTERS:
-            database.flat[lmi_filt] = validate_flat_table(flat_meta, lmi_filt)
-
-    # Return the filled database
-    return database

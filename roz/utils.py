@@ -103,6 +103,10 @@ def load_saved_bias(instrument, binning):
     print(f"Reading in saved file {fn}...")
     try:
         return CCDData.read(Paths.data.joinpath(fn))
+
+    # TODO: Should also have a way to return a blank (zeros) frame of the
+    #       appropriate size in the event that a bias does not or will not
+    #       exist.
     except Exception as e:
         print(e)
         raise FileNotFoundError(f"Developer: Add {fn} to Paths.data") from e
@@ -153,47 +157,6 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         ligconf[confname], lig_utils.classes.baseTarget, backfill=True
     )
     return ligconf
-
-
-def set_instrument_flags(inst="lmi"):
-    """set_instrument_flags Set the global instrument flags for processing
-
-    These instrument-specific flags are used throughout the code.  As more
-    instruments are added to Roz, this function will grow commensurately.
-
-    Alternatively, this information could be placed in an XML VOTABLE that
-    could simply be read in -- to eliminiate one more hard-coded thing.
-
-    Parameters
-    ----------
-    instrument : `str`, optional
-        Name of the instrument to use.  [Default: LMI]
-
-    Returns
-    -------
-    `dict`
-        Dictionary of instrument flags.
-
-    Raises
-    ------
-    InputError
-        If the input instrument is not in the list, raise error.
-    """
-    # Read in the instrument flag table
-    instrument_table = Table.read(Paths.data.joinpath("instrument_flags.ecsv"))
-
-    # Check that the instrument is in the table
-    if (inst := inst.upper()) not in instrument_table["instrument"]:
-        raise InputError(
-            f"Instrument {inst} not yet supported; " "update instrument_flags.ecsv"
-        )
-
-    # Extract the row , and convert it to a dictionary
-    for row in instrument_table:
-        if row["instrument"] == inst:
-            return dict(zip(row.colnames, row))
-
-    raise InputError("Developer error... this line should never run.")
 
 
 def table_sort_on_list(table, colname, sort_list):

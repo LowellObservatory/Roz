@@ -31,6 +31,7 @@ import tarfile
 
 # 3rd Party Libraries
 from astropy.io.fits import getheader
+from astropy.table import Table
 import ccdproc as ccdp
 import numpy as np
 from tqdm import tqdm
@@ -38,6 +39,9 @@ from tqdm import tqdm
 # Internal Imports
 from roz import send_alerts as sa
 from roz import utils
+
+# Currently Supported Frameclasses
+FRAMECLASSES = ["calibration", "science"]
 
 
 class Dumbwaiter:
@@ -63,9 +67,14 @@ class Dumbwaiter:
     """
 
     def __init__(self, data_dir, frameclass="calibration"):
-        # Check that the (presumably remote) directory is, in fact, a directory
-        if not os.path.isdir(data_dir):
-            sa.send_alert("BadDirectoryAlert : Dumbwaiter.__init__()")
+
+        # Check that `frameclass` is the currently supported
+        if frameclass not in FRAMECLASSES:
+            sa.send_alert("Incorrect frameclass specified", "Dumbwaiter.__init__()")
+            return
+
+        # Recheck that the `data_dir` is, in fact, okay
+        if not check_directory_okay(data_dir, "Dumbwaiter.__init__()"):
             return
 
         # Initialize attributes
@@ -83,7 +92,7 @@ class Dumbwaiter:
             self.empty = True
             return
 
-        self.inst_flags = utils.set_instrument_flags(self.instrument)
+        self.inst_flags = set_instrument_flags(self.instrument)
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
         if self.frameclass == "calibration":
@@ -91,7 +100,9 @@ class Dumbwaiter:
                 self.data_dir, self.inst_flags, fnames_only=True
             )
         else:
-            sa.send_alert("BadFrameclassAlert : Dumbwaiter.__init__()")
+            sa.send_alert(
+                f"Unsupported frameclass {self.frameclass}", "Dumbwaiter.__init__()"
+            )
 
         # Make an attribute specifying whether the dumbwaiter is empty
         self.empty = not self.frames
@@ -202,6 +213,34 @@ class Dumbwaiter:
 
 
 # Non-Class Functions ========================================================#
+def check_directory_okay(directory, caller=None):
+    """check_directory_okay Check `directory` is okay to proceed
+
+    Check that directory is, indeed, a directory and contains FITS files
+
+    Parameters
+    ----------
+    directory : `str` or `Pathlib.path`
+        The directory to check
+    caller : `str`, optional
+        The name of the calling function, to be printed in the alert  [Default: None]
+
+    Returns
+    -------
+    `bool`
+        True if OK, False otherwise
+    """
+    if not os.path.isdir(directory):
+        sa.send_alert(f"DirectoryIssue: {directory} is not a valid directory", caller)
+        return False
+    if not glob.glob(os.path.join(directory, "*.fits")):
+        sa.send_alert(
+            f"DirectoryIssue: {directory} does not contain any FITS files", caller
+        )
+        return False
+    return True
+
+
 def divine_instrument(directory):
     """divine_instrument Divine the instrument whose data is in this directory
 
@@ -253,8 +292,8 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     ----------
     directory : `str` or `pathlib.Path`
         Directory name to search for calibration files
-    instrument : `str`, optional
-        Name of the instrument to gather calibration frames for [Default: LMI]
+    inst_flag : `dict`
+        Dictionary of instrument flags
     fnames_only : `bool`, optional
         Only return a concatenated list of filenames instead of the IFCs
         [Default: False]
@@ -263,9 +302,9 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     -------
     bias_cl : `ccdproc.ImageFileCollection`
         ImageFileColleciton containing the BIAS frames from the directory
-    domeflat_cl : `ccdproc.ImageFileCollection`, optional (LMI only)
+    domeflat_cl : `ccdproc.ImageFileCollection`, optional (if `get_flats`)
         ImageFileCollection containing the FLAT frames from the directory
-    bin_list : `list`, optional (LMI only)
+    bin_list : `list`, optional (if `check_binning`)
         List of binning setups found in this directory
     -- OR --
     fnames, `list`
@@ -281,7 +320,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
-        sa.send_alert("EmptyDirectoryAlert : gather_cal_frames()")
+        sa.send_alert("EmptyDirectoryAlert", "gather_cal_frames()")
         return None
 
     return_object = []
@@ -322,3 +361,40 @@ def gather_other_frames():
 
     [extended_summary]
     """
+
+
+def set_instrument_flags(inst="lmi"):
+    """set_instrument_flags Set the global instrument flags for processing
+
+    These instrument-specific flags are used throughout the code.  As more
+    instruments are added to Roz, this function will grow commensurately.
+
+    Alternatively, this information could be placed in an XML VOTABLE that
+    could simply be read in -- to eliminiate one more hard-coded thing.
+
+    Parameters
+    ----------
+    instrument : `str`, optional
+        Name of the instrument to use.  [Default: LMI]
+
+    Returns
+    -------
+    `dict`
+        Dictionary of instrument flags.
+    """
+    # Read in the instrument flag table
+    instrument_table = Table.read(utils.Paths.data.joinpath("instrument_flags.ecsv"))
+
+    # Check that the instrument is in the table
+    if (inst := inst.upper()) not in instrument_table["instrument"]:
+        sa.send_alert(
+            f"Instrument {inst} not yet supported; update instrument_flags.ecsv"
+        )
+        return None
+
+    # Extract the row , and convert it to a dictionary
+    for row in instrument_table:
+        if row["instrument"] == inst:
+            return dict(zip(row.colnames, row))
+
+    raise utils.InputError("Developer error... this line should never run.")

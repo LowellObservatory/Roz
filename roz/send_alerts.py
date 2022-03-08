@@ -28,10 +28,9 @@ from johnnyfive import gmail as j5g
 from johnnyfive import slack as j5s
 
 # Internal Imports
-from roz.utils import InputError
 
 
-def send_alert(alert_type):
+def send_alert(alert_type, caller=None):
     """send_alert Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
@@ -40,6 +39,6 @@ def send_alert(alert_type):
     There are various types of alerts that can be sent... maybe choose the
     medium based on the input `alertclass`?
     """
-    print(f"***** Alert Alert Alert: {alert_type}")
-    slack_alert = j5s.SlackChannel('bot_test')
-    slack_alert.send_message(f"This is a message from Roz: {alert_type}")
+    print(f"***** Alert Alert Alert: {alert_type}, {caller}")
+    slack_alert = j5s.SlackChannel("bot_test")
+    slack_alert.send_message(f"This is a message from Roz: {alert_type}, {caller}")

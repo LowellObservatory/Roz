@@ -38,7 +38,6 @@ from johnnyfive import confluence as j5c
 from roz import graphics_maker as gm
 from roz import send_alerts as sa
 from roz import utils
-from roz.utils import LMI_FILTERS
 
 
 # Set API Components
@@ -224,7 +223,9 @@ def modify_lmi_dynamic_table(
     #  however, it also sorts the table...
     lmi_filt = join(lmi_filt, dyntable, join_type="left", keys="Filter")
     # Undo the alpha sorting done by .join()
-    lmi_filt = utils.table_sort_on_list(lmi_filt, "FITS Header Value", LMI_FILTERS)
+    lmi_filt = utils.table_sort_on_list(
+        lmi_filt, "FITS Header Value", utils.LMI_FILTERS
+    )
     # Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
 
@@ -233,7 +234,7 @@ def modify_lmi_dynamic_table(
 
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
-    for i, filt in enumerate(LMI_FILTERS):
+    for i, filt in enumerate(utils.LMI_FILTERS):
         # Skip filters not used in this data set
         if database.flat[filt] is None:
             continue
