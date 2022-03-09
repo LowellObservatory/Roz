@@ -89,4 +89,4 @@ newPythonFileTemplate.py
 roz/thumbnails/*.png
 
 # Ignore the dynamically created portion of the LMI table
-data/lmi_dynamic_filter.ecsv
+lmi_dynamic_filter.ecsv

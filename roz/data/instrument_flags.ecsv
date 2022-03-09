@@ -5,10 +5,10 @@
 # - {name: site, datatype: string}
 # - {name: prefix, datatype: string}
 # - {name: get_bias, datatype: bool}
-# - {name: get_flats, datatype: bool}
-# - {name: check_binning, datatype: bool}
+# - {name: get_flat, datatype: bool}
+# - {name: check_bin, datatype: bool}
 # schema: astropy-2.0
-instrument site prefix get_bias get_flats check_binning
+instrument site prefix get_bias get_flat check_bin
 LMI ldt lmi True True True
 DEVENY ldt 20 True False True
 NIHTS ldt xx False False False

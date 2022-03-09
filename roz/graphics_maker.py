@@ -79,7 +79,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     png_fn = [hdr["INSTRUME"].lower()]
     # TODO: Not strictly correct, if we want this routine to also make
     #       thumbnails of bais frames... needs thought.  For now, though...
-    png_fn.append(filt := hdr["FILTERS"] if inst_flags["get_flats"] else "")
+    png_fn.append(filt := hdr["FILTERS"] if inst_flags["get_flat"] else "")
     png_fn.append(hdr["DATE-OBS"].split("T")[0].replace("-", ""))
     png_fn.append(f"{hdr['OBSERNO']:04d}")
     png_fn.append("png")

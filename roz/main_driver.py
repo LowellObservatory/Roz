@@ -31,9 +31,9 @@ from roz import confluence_updater as cu
 from roz import database_manager as dm
 from roz import gather_frames as gf
 from roz import process_calibrations as pc
-from roz import utils
 
 
+# The MAIN Attraction ========================================================#
 def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9):
     """main This is the main function.
 
@@ -116,8 +116,8 @@ class Run:
 
         Chooses which run_* method to call based on the `frameclass`
         """
-        do = f"run_{self.waiter.frameclass[:3]}"
-        if hasattr(self, do) and callable(func := getattr(self, do)):
+        method = f"run_{self.waiter.frameclass[:3]}"
+        if hasattr(self, method) and callable(func := getattr(self, method)):
             func()
 
     def run_cal(self, bin_list="1x1"):
@@ -130,26 +130,26 @@ class Run:
         send alerts, if necessary.  If desired, also update the appropriate
         Confluence page(s) for user support.
 
-        Keyword argument `bin_list` is a default in case `check_binning` is not
+        Keyword argument `bin_list` is a default in case `check_bin` is not
         specified in the instrument flags.
         """
         # Collect the calibration frames for the processing directory
         outputs = gf.gather_cal_frames(self.dir, self.flags)
 
         # Parse outputs:
-        if all([self.flags[key] for key in ["get_bias", "get_flats", "check_binning"]]):
+        if all(self.flags[key] for key in ["get_bias", "get_flat", "check_bin"]):
             bias_cl, flat_cl, bin_list = outputs
-        elif all([self.flags[key] for key in ["get_bias", "check_binning"]]):
+        elif all(self.flags[key] for key in ["get_bias", "check_bin"]):
             bias_cl, bin_list = outputs
-        elif all([self.flags[key] for key in ["get_bias", "get_flats"]]):
+        elif all(self.flags[key] for key in ["get_bias", "get_flat"]):
             bias_cl, flat_cl = outputs
-        elif all([self.flags[key] for key in ["get_flats", "check_binning"]]):
+        elif all(self.flags[key] for key in ["get_flat", "check_bin"]):
             flat_cl, bin_list = outputs
         elif self.flags["get_bias"]:
             bias_cl = outputs
-        elif self.flags["get_flats"]:
+        elif self.flags["get_flat"]:
             flat_cl = outputs
-        elif self.flags["check_binning"]:
+        elif self.flags["check_bin"]:
             bin_list = outputs
         else:
             raise ValueError(
@@ -163,10 +163,16 @@ class Run:
             human_bin = binning.replace(" ", "x")
             print(f"Processing the database for {human_bin} binning...")
 
+            # Set default meta to `NoneType`
+            bias_meta = flat_meta = None
+
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
                 bias_meta, bias_frame = pc.process_bias(
-                    bias_cl, binning=binning, mem_limit=self.mem_limit
+                    bias_cl,
+                    binning=binning,
+                    mem_limit=self.mem_limit,
+                    produce_combined=self.flags["get_flat"],
                 )
 
             # Process the FLAT frames to produce statistics
@@ -186,7 +192,7 @@ class Run:
             # Write the contents of the database to InfluxDB
             database.write_to_influxdb()
 
-            if self.flags["instrument"] == "lmi":
+            if self.flags["instrument"].lower() == "lmi":
                 # Update the LMI Filter Information page on Confluence
                 #  Images for all binnings, values only for 2x2 binning
                 cu.update_filter_characterization(
@@ -198,127 +204,6 @@ class Run:
 
         _extended_summary_
         """
-
-###################
-# TODO: Clean out these two functions and make sure they are both properly
-#       represented in the above run_cal() method
-
-def run_lmi_cals(directory, mem_limit=None):
-    """run_lmi_cals Run Roz on the LMI Calibration frames
-
-    Collect the LMI calibration frames, produce statistics, and return a list
-    of `CalibrationDatabase` objects for each binning scheme in this one
-    directory.
-
-    This is the main driver routine for LMI frames, and will call all of the
-    various other modules, as needed.  As such, there should be little need
-    for cross-calling between the other non-utility modules in this package.
-
-    Parameters
-    ----------
-    directory : `str` or `pathlib.Path`
-        The directory containing LMI frames to analyze.
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine.  [Default: None]
-
-    Returns
-    -------
-    `list` of `roz.database_manager.CalibrationDatabase`
-        A list of the Calibration Database objects for each binning scheme
-    """
-    inst_flags = utils.set_instrument_flags("lmi")
-
-    # Collect the BIAS & FLAT frames for this directory
-    bias_cl, flat_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
-
-    db_list = {}
-    # Loop through the binning schemes used
-    for binning in bin_list:
-
-        # Print out a nice status message for those interested
-        human_bin = binning.replace(" ", "x")
-        print(f"Processing the database for {human_bin} LMI binning...")
-
-        # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta, bias_frame = pc.process_bias(
-            bias_cl, binning=binning, mem_limit=mem_limit
-        )
-
-        # Process the FLAT frames to produce statistics
-        flat_meta = pc.process_flats(
-            flat_cl, bias_frame, binning=binning, instrument=inst_flags["instrument"]
-        )
-
-        # Take the metadata from the BAIS and FLAT frames and produce DATABASE
-        database = pc.produce_database_object(bias_meta, flat_meta, inst_flags)
-        # TODO: Find a better way to do this
-        database.proc_dir = directory
-
-        # Write the contents of the database to InfluxDB
-        database.write_to_influxdb()
-
-        # Update the LMI Filter Information page on Confluence
-        #  Images for all binnings, values only for 2x2 binning
-        cu.update_filter_characterization(database, png_only=(human_bin != "2x2"))
-
-        # Add the database to a dictionary containing the different binnings
-        db_list[human_bin] = database
-
-    # Return the list of database objects to the calling function
-    return db_list
-
-
-def run_deveny_cals(directory, mem_limit=None):
-    """run_lmi_cals Run Roz on the DeVeny Calibration frames
-
-    Collect the DeVeny calibration frames, produce statistics, and return a
-    list of `CalibrationDatabase` objects for each binning scheme in this one
-    directory.
-
-    This is the main driver routine for DeVeny frames, and will call all of
-    the various other modules, as needed.  As such, there should be little
-    need for cross-calling between the other modules in this package.
-
-    Parameters
-    ----------
-    directory : `str` or `pathlib.Path`
-        The directory containing DeVeny frames to analyze.
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine.  [Default: None]
-
-    Returns
-    -------
-    `list` of `roz.database_manager.CalibrationDatabase`
-        A list of the Calibration Database objects for each binning scheme
-    """
-    inst_flags = utils.set_instrument_flags("deveny")
-
-    # Collect the BIAS frames for this directory
-    bias_cl, bin_list = gf.gather_cal_frames(directory, inst_flags)
-
-    db_list = {}
-    # Loop through the binning schemes used
-    for binning in bin_list:
-
-        # Print out a nice status message for those interested
-        human_bin = binning.replace(" ", "x")
-        print(f"Processing the database for {human_bin} DeVeny binning...")
-
-        # Process the BIAS frames to produce a reduced frame and statistics
-        bias_meta = pc.process_bias(
-            bias_cl, binning=bin_list[0], mem_limit=mem_limit, produce_combined=False
-        )
-
-        # Take the metadata from the BAIS frames and produce DATABASE
-        database = pc.produce_database_object(bias_meta, bias_meta, inst_flags)
-        # TODO: Find a better way to do this
-        database.proc_dir = directory
-
-        # Add the database to a dictionary containing the different binnings
-        db_list[human_bin] = database
-
-    # Return the list of database objects to the calling function
-    return db_list
 
 
 # ============================================================================#

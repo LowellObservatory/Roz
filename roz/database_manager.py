@@ -34,7 +34,7 @@ from roz import utils
 
 
 # Set API Components
-__all__ = ["CalibrationDatabase", "HistoricalData"]
+__all__ = ["CalibrationDatabase", "ScienceDatabase", "HistoricalData"]
 
 
 class CalibrationDatabase:
@@ -64,7 +64,7 @@ class CalibrationDatabase:
 
         # Set up the internal dictionaries to hold BIAS and FLAT metadata
         self.bias = None
-        self.flat = {} if self.flags["get_flats"] else None
+        self.flat = {} if self.flags["get_flat"] else None
 
         # Read in the InfluxDB config file
         self.db_set = utils.read_ligmos_conffiles("databaseSetup")
@@ -141,6 +141,35 @@ class CalibrationDatabase:
                     self.idb.singleCommit(packet, table=self.db_set.tablename)
 
 
+class ScienceDatabase:
+    """ScienceDatabase
+
+    Database class for science frames
+
+    Provides a container for the metadata from a night plus the methods needed
+    to insert them into the InfluxDB database
+    """
+
+    def __init__(self):
+        pass
+
+    def write_to_influxdb(self, testing=True):
+        """write_to_influxdb _summary_
+
+        _extended_summary_
+
+        Parameters
+        ----------
+        testing : bool, optional
+            _description_, by default True
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+
+
 class HistoricalData:
     """HistoricalData _summary_
 
@@ -148,11 +177,6 @@ class HistoricalData:
     present frames to alert for changes.
     """
 
-    def __init__(self):
-        pass
-
-
-class ScienceDatabase:
     def __init__(self):
         pass
 
@@ -186,7 +210,7 @@ def build_calibration_database(bias_meta, flat_meta, inst_flags, proc_dir):
         # Analyze the bias_meta table, and insert it into the database
         database.bias = pc.validate_bias_table(bias_meta)
 
-    if inst_flags["get_flats"]:
+    if inst_flags["get_flat"]:
         # Analyze the flat_meta table, sorted by LMI_FILTERS, and insert
         for lmi_filt in utils.LMI_FILTERS:
             database.flat[lmi_filt] = pc.validate_flat_table(flat_meta, lmi_filt)

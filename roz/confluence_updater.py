@@ -207,10 +207,10 @@ def modify_lmi_dynamic_table(
 
     else:
         # Make a blank table, including the LMI_FILTERS for correspondence
-        nrow = len(LMI_FILTERS)
+        nrow = len(utils.LMI_FILTERS)
         dyntable = Table(
             [
-                Column(LMI_FILTERS, name="Filter"),
+                Column(utils.LMI_FILTERS, name="Filter"),
                 Column(name="Latest Image", length=nrow, dtype="U256"),
                 Column(name="UT Date of Latest Flat", length=nrow, dtype="U128"),
                 Column(name="Count Rate (ADU/s)", length=nrow, dtype=float),

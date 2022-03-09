@@ -37,7 +37,6 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from roz import database_manager as dm
 from roz import utils
 
 # Silence Superflous AstroPy FITS Header Warnings
@@ -69,9 +68,9 @@ def process_bias(
     -------
     `astropy.table.Table`
         A table containing information about the bias frames for analysis
-    `astropy.nddata.CCDData`
+    `astropy.nddata.CCDData` or `NoneType`
         The combined, overscan-subtracted bias frame (if
-        `produce_combined == True`)
+        `produce_combined == True` else None)
     """
     bias_cl = check_processing_ifc(bias_cl, binning)
     if not bias_cl.files:
@@ -106,23 +105,21 @@ def process_bias(
     progress_bar.close()
 
     # Convert the list of dicts into a Table and return, plus combined bias
+    combined = None
     if produce_combined:
         if debug:
             print("Doing median combine of biases now...")
-        return (
-            Table(metadata),
-            ccdp.combine(
-                bias_ccds,
-                method="median",
-                sigma_clip=True,
-                sigma_clip_low_thresh=5,
-                sigma_clip_high_thresh=5,
-                sigma_clip_func=np.ma.median,
-                mem_limit=mem_limit,
-                sigma_clip_dev_func=mad_std,
-            ),
+        combined = ccdp.combine(
+            bias_ccds,
+            method="median",
+            sigma_clip=True,
+            sigma_clip_low_thresh=5,
+            sigma_clip_high_thresh=5,
+            sigma_clip_func=np.ma.median,
+            mem_limit=mem_limit,
+            sigma_clip_dev_func=mad_std,
         )
-    return Table(metadata)
+    return Table(metadata), combined
 
 
 def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True):
@@ -188,12 +185,14 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
 
         # Additional fields for flats: Stuff that can block the light path
         #  Do type-forcing to make InfluxDB happy
-        for n in [1, 2]:
-            for x in ["x", "y"]:
-                metadict[f"rc{n}pos_{x.lower()}"] = float(hdr[f"P{n}{x.upper()}"])
+        for rc_num in [1, 2]:
+            for axis in ["x", "y"]:
+                metadict[f"rc{rc_num}pos_{axis.lower()}"] = float(
+                    hdr[f"P{rc_num}{axis.upper()}"]
+                )
         metadict["icpos"] = float(hdr["ICPOS"])
-        for x in utils.FMS:
-            metadict[f"fmpos_{x.lower()}"] = float(hdr[f"FM{x.upper()}POS"])
+        for axis in utils.FMS:
+            metadict[f"fmpos_{axis.lower()}"] = float(hdr[f"FM{axis.upper()}POS"])
 
         metadata.append(metadict)
         progress_bar.update(1)

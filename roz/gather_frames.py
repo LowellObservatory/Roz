@@ -207,7 +207,10 @@ class Dumbwaiter:
             self.inst_flags["site"], self.instrument
         )
         if not os.path.isdir(cold_dir):
-            sa.send_alert("Woah, nellie.  No cold storage directory!")
+            sa.send_alert(
+                "Woah, nellie.  No cold storage directory!", "Dumbwaiter.cold_storage()"
+            )
+            return
         print(f"Copying {tarbase} to {cold_dir}...")
         shutil.copy2(tarname, cold_dir)
 
@@ -302,9 +305,9 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     -------
     bias_cl : `ccdproc.ImageFileCollection`
         ImageFileColleciton containing the BIAS frames from the directory
-    domeflat_cl : `ccdproc.ImageFileCollection`, optional (if `get_flats`)
+    domeflat_cl : `ccdproc.ImageFileCollection`, optional (if `get_flat`)
         ImageFileCollection containing the FLAT frames from the directory
-    bin_list : `list`, optional (if `check_binning`)
+    bin_list : `list`, optional (if `check_bin`)
         List of binning setups found in this directory
     -- OR --
     fnames, `list`
@@ -335,13 +338,13 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bias_cl = ccdp.ImageFileCollection(filenames=biases)
         return_object.append(bias_cl.files if fnames_only else bias_cl)
 
-    if inst_flag["get_flats"]:
+    if inst_flag["get_flat"]:
         # Gather DOME FLAT frames; FULL FRAME ONLY
         # TODO: SKY FLAT not supported at this time -- Add support
         domeflat_cl = icl.filter(obstype="dome flat", subarrno=0)
         return_object.append(domeflat_cl.files if fnames_only else domeflat_cl)
 
-    if inst_flag["check_binning"] and not fnames_only:
+    if inst_flag["check_bin"] and not fnames_only:
         # Get the complete list of binnings used -- but clear out `None` entries
         bin_list = icl.values("ccdsum", unique=True)
         bin_list = sorted(list(filter(None, bin_list)))
