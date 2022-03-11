@@ -39,6 +39,6 @@ def send_alert(alert_type, caller=None):
     There are various types of alerts that can be sent... maybe choose the
     medium based on the input `alertclass`?
     """
-    print(f"***** Alert Alert Alert: {alert_type}, {caller}")
+    print(f"***** Alert Alert Alert: {alert_type}: {caller}")
     slack_alert = j5s.SlackChannel("bot_test")
-    slack_alert.send_message(f"This is a message from Roz: {alert_type}, {caller}")
+    slack_alert.send_message(f"This is a message from Roz: {alert_type}: {caller}")

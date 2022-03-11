@@ -142,7 +142,7 @@ class Dumbwaiter:
             total=len(self.frames), unit="file", unit_scale=False, colour="cyan"
         )
         for frame in self.frames:
-            shutil.copy(self.data_dir.joinpath(frame), self.proc_dir)
+            shutil.copy2(self.data_dir.joinpath(frame), self.proc_dir)
             progress_bar.update(1)
         progress_bar.close()
 
@@ -323,7 +323,10 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
-        sa.send_alert("EmptyDirectoryAlert", "gather_cal_frames()")
+        sa.send_alert(
+            f"EmptyDirectoryAlert: No matching files in {directory}",
+            "gather_cal_frames()",
+        )
         return None
 
     return_object = []
@@ -335,6 +338,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bias_fns = icl.files_filtered(obstype="bias", subarrno=0)
         zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
+        # NOTE: We sometimes get weird IFC cant' find file warnings with this line:
         bias_cl = ccdp.ImageFileCollection(filenames=biases)
         return_object.append(bias_cl.files if fnames_only else bias_cl)
 

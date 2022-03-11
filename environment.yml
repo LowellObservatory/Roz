@@ -21,4 +21,4 @@ dependencies:
   - pylint
   - pip
   - pip:
-    - git+https://github.com/LowellObservatory/JohnnyFive@add_oauth
+    - git+https://github.com/LowellObservatory/JohnnyFive

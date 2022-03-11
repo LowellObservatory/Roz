@@ -23,6 +23,7 @@ This module primarily trades in internal databse objects
 # Built-In Libraries
 import datetime as dt
 import os
+import warnings
 
 # 3rd Party Libraries
 from astropy.io.votable import parse as vo_parse
@@ -33,6 +34,7 @@ import numpy as np
 
 # Lowell Libraries
 from johnnyfive import confluence as j5c
+from johnnyfive.utils import PermissionWarning
 
 # Internal Imports
 from roz import graphics_maker as gm
@@ -45,7 +47,9 @@ __all__ = ["update_filter_characterization"]
 
 
 # Outward-facing function ====================================================#
-def update_filter_characterization(database, png_only=False, delete_existing=False):
+def update_filter_characterization(
+    database, png_only=False, delete_existing=False, debug=False
+):
     """update_filter_characterization Update the Confluence Page
 
     This routine is the main function in this module, and should be the only
@@ -62,9 +66,14 @@ def update_filter_characterization(database, png_only=False, delete_existing=Fal
     delete_existing : `bool`, optional
         Delete the existing table on Confluence before upoading the new one?
         [Defualt: False]  NOTE: Once in production, maybe turn this to True?
+    debug : `bool`, optional
+        Pring debugging statements?  [Default: False]
     """
+    # Silence JohnnyFive's PermissionWarning -- we know, and we don't care
+    warnings.simplefilter("ignore", PermissionWarning)
+
     # Instantiate a ConfluencePage object for the LMI Filter Page
-    page_info = utils.read_ligmos_conffiles("lmifilertSetup")
+    page_info = utils.read_ligmos_conffiles("lmifilterSetup")
     lmi_filter_info = j5c.ConfluencePage(page_info.space, page_info.page_title)
 
     # If the page doesn't already exist (or Confluence times out),
@@ -73,8 +82,9 @@ def update_filter_characterization(database, png_only=False, delete_existing=Fal
         sa.send_alert("ConfluenceAlert : update_filter_characterization()")
         return
 
-    # Get the `page_id` needed for intracting with the page we want to update
-    print(f"This is the page_id: {lmi_filter_info.page_id}")
+    if debug:
+        # Get the `page_id` needed for intracting with the page we want to update
+        print(f"This is the page_id: {lmi_filter_info.page_id}")
 
     # Update the HTML table attached to the Confluence page
     png_fn = update_lmi_filter_table(
@@ -82,6 +92,7 @@ def update_filter_characterization(database, png_only=False, delete_existing=Fal
         database,
         lmi_filter_info.attachment_url,
         png_only=png_only,
+        debug=debug,
     )
 
     # Remove the attachment on the Confluence page before uploading the new one
@@ -135,7 +146,7 @@ def update_lmi_filter_table(
         Only update the PNG image and not the countrate/exptime columns
         [Default: False]
     debug : `bool`, optional
-        Print debugging statements? [Default: True]
+        Print debugging statements? [Default: False]
 
     Returns
     -------
@@ -149,7 +160,7 @@ def update_lmi_filter_table(
 
     # Use the `database` to modify the dynamic portions of the LMI table
     lmi_filt, png_fn = modify_lmi_dynamic_table(
-        lmi_filt, database, attachment_url, png_only=png_only
+        lmi_filt, database, attachment_url, png_only=png_only, debug=debug
     )
     if debug:
         lmi_filt.pprint()
@@ -157,7 +168,7 @@ def update_lmi_filter_table(
     # Use the AstroPy Table `lmi_filt` to construct the HTML table and
     #  write it to disk
     construct_lmi_html_table(
-        lmi_filt, section_head, filename, link_text="Image Link", debug=True
+        lmi_filt, section_head, filename, link_text="Image Link", debug=debug
     )
 
     # Return list of PNG filenames
@@ -191,7 +202,7 @@ def modify_lmi_dynamic_table(
     attachment_url : `str`
         The URL for attachments for this page in Confluence.
     debug : `bool`, optional
-        Print debugging statements? [Default: True]
+        Print debugging statements? [Default: False]
 
     Returns
     -------

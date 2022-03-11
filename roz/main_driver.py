@@ -38,8 +38,7 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
     """main This is the main function.
 
     This function takes the directory input, determines the instrument
-    is
-    in questions, and calls the appropriate run_*_cals() function.
+    in question, and calls the appropriate run_*() function.
 
     In the future, if Roz is employed to analyze more than calibration frames,
     other argmuments to this function will be needed, and other driving
@@ -68,14 +67,14 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
             continue
 
         # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
-        dumbwaiters = []
+        waiters = []
         if not skip_cals:
-            dumbwaiters.append(gf.Dumbwaiter(directory, frameclass="calibration"))
+            waiters.append(gf.Dumbwaiter(directory, frameclass="calibration"))
         if do_science:
-            dumbwaiters.append(gf.Dumbwaiter(directory, frameclass="science"))
+            waiters.append(gf.Dumbwaiter(directory, frameclass="science"))
 
         # Loop over appropriate Dumbwaiter(s):
-        for dumbwaiter in dumbwaiters:
+        for dumbwaiter in waiters:
 
             # If empty, move along
             if dumbwaiter.empty:
@@ -83,7 +82,7 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
 
             # Copy over the sorted frames to processing, and package for cold storage
             dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(testing=False)
+            dumbwaiter.cold_storage(testing=True)
 
             # Giddy up!
             run = Run(dumbwaiter, mem_limit=mem_limit)
@@ -190,7 +189,7 @@ class Run:
             )
 
             # Write the contents of the database to InfluxDB
-            database.write_to_influxdb()
+            database.write_to_influxdb(testing=False)
 
             if self.flags["instrument"].lower() == "lmi":
                 # Update the LMI Filter Information page on Confluence

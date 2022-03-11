@@ -37,6 +37,46 @@ from ligmos import utils as lig_utils, workers as lig_workers
 # Internal Imports
 
 
+# Create various augmented classes for Roz-specific configuration things
+class DatabaseTarget(lig_utils.classes.baseTarget):
+    """
+    For roz.conf:[databaseSetup] and roz.conf:[q_rozdata]
+    """
+
+    def __init__(self):
+        # Gather up the properties from the base class
+        super().__init__()
+        # New attributes
+        self.tablename = None
+        self.metricname = None
+
+
+class SetupTarget(lig_utils.classes.baseTarget):
+    """
+    For roz.conf:[rozSetup]
+    """
+
+    def __init__(self):
+        # Gather up the properties from the base class
+        super().__init__()
+        # New attributes
+        self.processing_dir = None
+        self.coldstorage_dir = None
+
+
+class FilterTarget(lig_utils.classes.baseTarget):
+    """
+    For roz.conf:[lmifilterSetup]
+    """
+
+    def __init__(self):
+        # Gather up the properties from the base class
+        super().__init__()
+        # New attributes
+        self.space = None
+        self.page_title = None
+
+
 # Classes to hold useful information
 class Paths:
     """Paths
@@ -98,18 +138,18 @@ def load_saved_bias(instrument, binning):
         error with a note to the Developer to add said file.
     """
     # Build bias filename
-    fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
 
-    print(f"Reading in saved file {fn}...")
+    print(f"Reading in saved file {fname}...")
     try:
-        return CCDData.read(Paths.data.joinpath(fn))
+        return CCDData.read(Paths.data.joinpath(fname))
 
     # TODO: Should also have a way to return a blank (zeros) frame of the
     #       appropriate size in the event that a bias does not or will not
     #       exist.
-    except Exception as e:
-        print(e)
-        raise FileNotFoundError(f"Developer: Add {fn} to Paths.data") from e
+    except Exception as error:
+        print(error)
+        raise FileNotFoundError(f"Developer: Add {fname} to Paths.data") from error
 
 
 def write_saved_bias(ccd, instrument, binning):
@@ -128,8 +168,8 @@ def write_saved_bias(ccd, instrument, binning):
         Instrument binning from CCDSUM
     """
     # Build bias filename
-    fn = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
-    ccd.write(Paths.data.joinpath(fn), overwrite=True)
+    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    ccd.write(Paths.data.joinpath(fname), overwrite=True)
 
 
 def read_ligmos_conffiles(confname, conffile="roz.conf"):
@@ -152,9 +192,19 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         An object with arrtibutes matching the keys in the associated
         configuration file.
     """
+    # Case out the class to use:
+    if confname in ["databaseSetup", "q_rozdata"]:
+        ConfClass = DatabaseTarget
+    elif confname == "rozSetup":
+        ConfClass = SetupTarget
+    elif confname == "lmifilterSetup":
+        ConfClass = FilterTarget
+    else:
+        ConfClass = lig_utils.classes.baseTarget
+
     ligconf = lig_utils.confparsers.rawParser(Paths.config.joinpath(conffile))
     ligconf = lig_workers.confUtils.assignConf(
-        ligconf[confname], lig_utils.classes.baseTarget, backfill=True
+        ligconf[confname], ConfClass, backfill=True
     )
     return ligconf
 
@@ -566,8 +616,7 @@ def compute_human_readable_surface(coefficients):
         "bma": 1.0 / (D * costh + E * sinth),
         "bmi": 1.0 / (-D * sinth + E * costh),
         "zpt": F,
-        "oma": int(np.sign(xpxp)),
-        "omi": int(np.sign(ypyp)),
+        "open": int(np.sign(xpxp)) if np.sign(xpxp) == np.sign(ypyp) else 0,
         "typ": f"Elliptic Paraboloid {'Up' if np.sign(xpxp) == 1 else 'Down'}"
         if np.sign(xpxp) == np.sign(ypyp)
         else "Hyperbolic Paraboloid",

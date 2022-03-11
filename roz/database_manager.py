@@ -32,7 +32,6 @@ from ligmos import utils as lig_utils
 from roz import process_calibrations as pc
 from roz import utils
 
-
 # Set API Components
 __all__ = ["CalibrationDatabase", "ScienceDatabase", "HistoricalData"]
 
@@ -114,10 +113,7 @@ class CalibrationDatabase:
         #  each one individually
         if self.bias is not None:
             for entry in self.bias:
-
-                # TODO: `meas` should reflect the instrument (LMI) OR the entire
-                #  self.idb object should point to a `tablename` reflecing LMI
-                packet = neatly_package(entry, self.bias.colnames)
+                packet = neatly_package(entry, measure=self.db_set.metricname)
                 # Commit
                 if not testing:
                     self.idb.singleCommit(packet, table=self.db_set.tablename)
@@ -135,7 +131,7 @@ class CalibrationDatabase:
 
             # Loop
             for entry in self.flat[filt]:
-                packet = neatly_package(entry, self.flat[filt].colnames)
+                packet = neatly_package(entry, measure=self.db_set.metricname)
                 # Commit
                 if not testing:
                     self.idb.singleCommit(packet, table=self.db_set.tablename)
@@ -175,10 +171,39 @@ class HistoricalData:
 
     This class pulls historical data from the InfluxDB for comparison with the
     present frames to alert for changes.
+
+        Parameters
+        ----------
+        instrument : `str`
+            Instrument name for which to pull (REQUIRED)
+        frametype : `str`
+            Frame type for which to pull (REQUIRED)
+        filter : `str, optional
+            Filter for which to pull [Default: None]
+        binning : `str` (of form 'cxr'), optional
+            Binning for which to pull [Default: None]
+        numamp : `int`, optional
+            Number of amplifiers for which to pull [Default: None]
+        ampid : `str`, optional
+            Amplifier ID for which to pull [Default: None]
+        cropborder : `int`, optional
+            Crop border size for which to pull [Default: None]
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        instrument,
+        frametype,
+        filter=None,
+        binning=None,
+        numamp=None,
+        ampid=None,
+        cropborder=None,
+    ):
         pass
+
+
+
 
 
 # Non-Class Functions ========================================================#
@@ -219,30 +244,34 @@ def build_calibration_database(bias_meta, flat_meta, inst_flags, proc_dir):
     return database
 
 
-def neatly_package(table_row, colnames, measure="Instrument_Data"):
+def neatly_package(table_row, measure="Instrument_Data"):
     """neatly_package Carefully curate and package the InfluxDB packet
 
     This function translates the internal database into an InfluxDB object.
+
+    Makes an InfluxDB styled packet given the measurement name, metadata tags,
+    and actual fields/values to put into the database
 
     Parameters
     ----------
     table_row : `astropy.table.Row`
         The row of data to commit to InfluxDB
-    colnames : `list`
-        List of the column names corresponding to this row
     measure : `str`, optional
         The database MEASUREMENT into which to place this row
         [Default: "Instrument_Data"]
-    tags : `dict`, optional
-        Tags with which to mark these fields within the measurement
-        [Default: None] -- If `None`, build standard tags
+
+    Returns
+    -------
+    `list` of `dict`
+        Single-element list of packet `dict` containing the information to be
+        inserted into the InfluxDB database.
     """
     # Convert the AstroPy Table Row into a dict by adding colnames
-    row_as_dict = dict(zip(colnames, table_row))
+    row_as_dict = dict(zip(table_row.colnames, table_row))
 
     # We want the database timestamp to be that of the image DATEOBS,
     #  not the current time.  Therefore, we need to create a datetime()
-    #  object from the field `dateobs`.
+    #  object from the field `dateobs`.  (NOTE: .fromisoformat() not working)
     timestamp = dt.datetime.strptime(
         f"{row_as_dict.pop('dateobs')}", "%Y-%m-%dT%H:%M:%S.%f"
     )
@@ -261,9 +290,13 @@ def neatly_package(table_row, colnames, measure="Instrument_Data"):
     # Strip off the filename, as it can be reconstructed from obserno
     row_as_dict.pop("filename")
 
-    # Create the packet for upload to the InfluxDB
-    packet = lig_utils.packetizer.makeInfluxPacket(
-        meas=[measure], ts=timestamp, fields=row_as_dict, tags=tags, debug=False
-    )
+    # Build the packet as a dictionary with the proper InfluxDB keys
+    packet = {
+        "measurement": measure,
+        "tags": tags,
+        "time": timestamp,
+        "fields": row_as_dict,
+    }
 
-    return packet
+    # InfluxDB expects a list of dicts, so return such
+    return [packet]
