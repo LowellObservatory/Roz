@@ -21,6 +21,7 @@ This module primarily trades in its own class.
 
 # Built-In Libraries
 import datetime as dt
+import warnings
 
 # 3rd Party Libraries
 from astropy.table import Table
@@ -265,6 +266,56 @@ class HistoricalData:
             self.query[key], tags=self.tagdict, debug=False
         )
 
+    def metric_mean(self, metric, **kwargs):
+        """metric_mean Compute the Mean of the Metric
+
+        Uses np.nanmean() to produce a NaN-resistant mean of the specified
+        metric in the InfluxDB result table.
+
+        Parameters
+        ----------
+        metric : `str`
+            The InfluxDB field name for which to compute the mean.
+        **kwargs : `str`, optional
+            The method also accepts key/value pairs of InfluxDB TAGS to further
+            narrow the result table to a specific, say, `filter` or `binning`.
+
+        Returns
+        -------
+        `float`
+            The mean value of the specified metric.  If the metric does not
+            exist, or is full of undefined values, the method will return
+            `np.nan`.
+        """
+        # Return the NaN-resistant mean of the table metric
+        return np.nanmean(self._check_metric_kwargs(metric, **kwargs))
+
+    def metric_stddev(self, metric, **kwargs):
+        """metric_mean Compute the Standard Deviation of the Metric
+
+        Uses np.nanstd() to produce a NaN-resistant standard deviation of the
+        specified metric in the InfluxDB result table.
+
+        Parameters
+        ----------
+        metric : `str`
+            The InfluxDB field name for which to compute the standard
+            deviation.
+        **kwargs : `str`, optional
+            The method also accepts key/value pairs of InfluxDB TAGS to further
+            narrow the result table to a specific, say, `filter` or `binning`.
+
+        Returns
+        -------
+        `float`
+            The standard deviation value of the specified metric.  If the
+            metric does not exist, or is full of undefined values, the method
+            will return `np.nan`.
+        """
+        # Return the NaN-resistant standard deviation of the table metric
+        return np.nanstd(self._check_metric_kwargs(metric, **kwargs))
+
+    # The following methods are @property methods of the class =====#
     @property
     def instruments(self):
         """
@@ -334,6 +385,42 @@ class HistoricalData:
             Sorted list of the unique cropborders found in this query result
         """
         return self._sorted_list_set("cropborder")
+
+    # Internal-use class methods ===================================#
+    def _check_metric_kwargs(self, metric, **kwargs):
+        """_check_metric_kwargs Do QA testing on the input metric & kwargs
+
+        _extended_summary_
+
+        Parameters
+        ----------
+        metric : `str`
+            The InfluxDB field name for which to compute something.
+        **kwargs : `str`, optional
+            The method also accepts key/value pairs of InfluxDB TAGS to further
+            narrow the result table to a specific, say, `filter` or `binning`.
+
+        Returns
+        -------
+        `astropy.table.Column` or `np.nan`
+            The specified column of the InfluxDB result table -- or NaN, if
+            the metric is empty or does not exist.
+        """
+        # Use any passed **kwargs to further narrow the self.results table
+        results = self.results
+        for key, value in kwargs.items():
+            # print ("%s == %s" %(key, value))
+            if key in results.colnames:
+                results = results[results[key] == value]
+            else:
+                warnings.warn(f"The tag {key} is not in the results table!")
+
+        # If the specifid metric is not in the table, return NaN
+        if metric not in results.colnames:
+            warnings.warn(f"The metric {metric} is not in the results table!")
+            return np.nan
+
+        return results[metric]
 
     def _sorted_list_set(self, tagname):
         """_sorted_list_set Return a Sorted Unique List of result tagname
@@ -536,7 +623,7 @@ def neatly_package(table_row, measure):
 
 # Testing ====================================================================#
 if __name__ == "__main__":
-    hist = HistoricalData("lmi", "dome flat")
+    hist = HistoricalData("lmi", "bias")
     hist.perform_query()
     hist.results.pprint()
     print(hist.results.colnames)
@@ -548,3 +635,7 @@ if __name__ == "__main__":
     print(hist.numamps)
     print(hist.ampids)
     print(hist.cropborders)
+    mu = hist.metric_mean("crop_avg")
+    sig = hist.metric_stddev("crop_avg")
+    print(f"For LMI bias frames, the cropped AVG is: {mu:.2f} ± {sig:.2f}")
+    print(hist.results['timestamp'].tolist())
