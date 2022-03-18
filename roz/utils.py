@@ -98,6 +98,9 @@ class Paths:
     local_html_table_fn = data.joinpath("lmi_filter_table.html")
     css_table = data.joinpath("lmi_filter_table.css")
 
+    # DB Query Filename
+    dbqueries = config.joinpath("dbqueries.conf")
+
     def __init__(self):
         pass
 
@@ -193,12 +196,14 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         configuration file.
     """
     # Case out the class to use:
-    if confname in ["databaseSetup", "q_rozdata"]:
+    if confname == "databaseSetup":
         ConfClass = DatabaseTarget
     elif confname == "rozSetup":
         ConfClass = SetupTarget
     elif confname == "lmifilterSetup":
         ConfClass = FilterTarget
+    elif confname == "q_rozdata":
+        ConfClass = lig_utils.classes.databaseQuery
     else:
         ConfClass = lig_utils.classes.baseTarget
 

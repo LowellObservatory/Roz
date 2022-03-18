@@ -1,0 +1,17 @@
+[database-roz]
+host = influxdb
+port = 8086
+type = influxdb
+user = None
+password = None
+
+
+[q_rozdata]
+database = database-influx
+tablename = YourTableName
+metricname = Metric1.Name
+fields = fieldName1, fieldName2, fieldName3
+fieldlabels = fieldName1DataLabel, fieldName2DataLabel, fieldName3DataLabel
+tagnames = None
+tagvals = None
+rangehours = 1

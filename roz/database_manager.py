@@ -20,13 +20,18 @@ This module primarily trades in its own class.
 """
 
 # Built-In Libraries
+from collections import OrderedDict
 import datetime as dt
 
 # 3rd Party Libraries
+from astropy.table import Table
+from influxdb import DataFrameClient
 import numpy as np
 
 # Lowell Libraries
 from ligmos import utils as lig_utils
+from ligmos import workers as lig_workers
+from johnnyfive import utils as j5u
 
 # Internal Imports
 from roz import process_calibrations as pc
@@ -114,9 +119,11 @@ class CalibrationDatabase:
         if self.bias is not None:
             for entry in self.bias:
                 packet = neatly_package(entry, measure=self.db_set.metricname)
-                # Commit
+                # Commit in a safe way
                 if not testing:
-                    self.idb.singleCommit(packet, table=self.db_set.tablename)
+                    j5u.safe_service_connect(
+                        self.idb.singleCommit, packet, table=self.db_set.tablename
+                    )
 
         # If not LMI, then bomb out now
         if self.flags["instrument"] != "LMI":
@@ -200,10 +207,46 @@ class HistoricalData:
         ampid=None,
         cropborder=None,
     ):
-        pass
 
+        # Create the tag dictionary from the class init inputs
+        tagdict = {
+            "instrument": instrument,
+            "frametype": frametype,
+            "filter": filter,
+            "binning": binning,
+            "numamp": numamp,
+            "ampid": ampid,
+            "cropborder": cropborder,
+        }
 
+        # Parse the configuration file
+        qs, cb = lig_utils.confparsers.parseConfig(
+            utils.Paths.dbqueries,
+            lig_utils.classes.databaseQuery,
+            passfile=None,
+            searchCommon=True,
+            enableCheck=False,
+        )
 
+        # Formally create the query from the parsed configuration file
+        query = lig_workers.confUtils.assignComm(qs, cb, commkey="database")
+
+        # This is the dictionary to hold the query data returned
+        qdata = OrderedDict()
+
+        # Loop through the query keys:
+        print(f"These are the query keys: {query.keys()}")
+
+        for iq in query.keys():
+            td = get_results_table(query[iq], tags=tagdict, debug=False)
+            qdata.update({iq: td})
+        print(f"{len(qdata)} queries complete!")
+        # print(qdata["q_rozdata"])
+        print(type(qdata["q_rozdata"]))
+        table = qdata["q_rozdata"]
+        if table:
+            table.pprint()
+        print(table.colnames)
 
 
 # Non-Class Functions ========================================================#
@@ -244,7 +287,125 @@ def build_calibration_database(bias_meta, flat_meta, inst_flags, proc_dir):
     return database
 
 
-def neatly_package(table_row, measure="Instrument_Data"):
+def build_influxdb_query(dbq, tags=None, debug=False):
+    """build_influxdb_query Build the query string for InfluxDB
+
+    This function builds the (long) query string to be posted to InfluxDB
+
+    NOTE: dtime = int(dbq.rangehours) is the time from present (in hours)
+          to query back
+
+    Parameters
+    ----------
+    dbq : `ligmos.utils.classes.databaseQuery`
+        The database query object, as read from the configuration file
+    tags : `dict`, optional
+        The tags to which to limit the database search [Default: None]
+    debug : `bool`, optional
+       Print debugging statements? [Default: False]
+
+    Returns
+    -------
+    `str`
+        The InfluxDB-compliant query string
+    """
+    try:
+        dtime = int(dbq.rangehours)
+    except ValueError:
+        print(f"Can't convert {dbq.rangehours} to int... using ~1.5yrs")
+        dtime = 13000
+
+    if dbq.database.type.lower() != "influxdb":
+        print("Error: Database must be of type `influxdb`!")
+        return None
+
+    if debug is True:
+        print(
+            f"Searching for {dbq.fields} in {dbq.tablename}.{dbq.metricname} "
+            f"on {dbq.database.host}:{dbq.database.port}"
+        )
+
+    # Begin by specifying we want ALL THE FIELDS from the Metric Name
+    query = f'SELECT * FROM "{dbq.metricname}"'
+
+    # Add the Time Range: Namely the most recent `dtime` hours
+    query += f" WHERE time > now() - {dtime}h"
+
+    # Finally, add the tags as the primary constraints on the query
+    if tags:
+        query += " AND "
+        for tagname, tagval in tags.items():
+            # Check that tagval is not None:
+            if tagval:
+                query += f"\"{tagname}\"='{tagval}' AND "
+
+        # Strip the trailing ' AND ':
+        query = query.rstrip(" AND ")
+
+    # Return the mess
+    return query
+
+
+def get_results_table(query, tags=None, debug=False):
+    """get_results_table Get the query results as a Table
+
+    This function is a simplified version of
+    `ligmos.utils.database.getResultsDataFrame()`, in that it doesn't try to
+    catch all eventualities.  It also returns an AstroPy Table instead of a
+    pandas dataframe, for simplicity of use with the rest of Roz.
+
+    Parameters
+    ----------
+    query : `ligmos.utils.classes.databaseQuery`
+        The database query object, as read from the configuration file
+    tags : `dict`, optional
+        The tags to which to limit the database search [Default: None]
+    debug : `bool`, optional
+       Print debugging statements? [Default: False]
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The Table containing the database query results
+    """
+    # Build the query string
+    query_str = build_influxdb_query(query, tags=tags, debug=debug)
+    print(f"This is the query string:\n{query_str}")
+
+    # InfluxDB Data Frame Client:
+    idfc = DataFrameClient(
+        host=query.database.host,
+        port=query.database.port,
+        username=query.database.user,
+        password=query.database.password,
+        database=query.tablename,
+    )
+
+    # Get the results of the query in a safe way:
+    results = j5u.safe_service_connect(idfc.query, query_str)
+
+    # If `results` is empty, return an empty table
+    if results == {}:
+        # TODO: Convert this to a warning or send_alert() thing
+        print("Query returned no results!")
+        return Table()
+
+    # `results` is a dict of pandas dataframes; but in our case there is only
+    #   one key in the dict, namely `query.metricname`.
+
+    # First, extract the "index", which is the timestamp for the measurement
+    timestamp = results[query.metricname].index.to_pydatetime()
+
+    # Convert to a single AstroPy Table
+    table = Table.from_pandas(results[query.metricname])
+
+    # Add the timestamps as an additional column
+    table["timestamp"] = timestamp
+
+    return table
+
+
+def neatly_package(table_row, measure):
     """neatly_package Carefully curate and package the InfluxDB packet
 
     This function translates the internal database into an InfluxDB object.
@@ -256,9 +417,8 @@ def neatly_package(table_row, measure="Instrument_Data"):
     ----------
     table_row : `astropy.table.Row`
         The row of data to commit to InfluxDB
-    measure : `str`, optional
+    measure : `str`
         The database MEASUREMENT into which to place this row
-        [Default: "Instrument_Data"]
 
     Returns
     -------
@@ -300,3 +460,8 @@ def neatly_package(table_row, measure="Instrument_Data"):
 
     # InfluxDB expects a list of dicts, so return such
     return [packet]
+
+
+# Testing ====================================================================#
+if __name__ == "__main__":
+    hist = HistoricalData("lmi", "bias")
