@@ -5,18 +5,19 @@
 # - {name: site, datatype: string}
 # - {name: prefix, datatype: string}
 # - {name: get_bias, datatype: bool}
+# - {name: get_dark, datatype: bool}
 # - {name: get_flat, datatype: bool}
 # - {name: check_bin, datatype: bool}
 # schema: astropy-2.0
-instrument site prefix get_bias get_flat check_bin
-LMI ldt lmi True True True
-DEVENY ldt 20 True False True
-NIHTS ldt xx False False False
-RC1 ldt xx False False False
-RC2 ldt xx False False False
-LDT_ALLSKY ldt xx False False False
-AM_ALLSKY andersonmesa xx False False False
-NASA42 andersonmesa xx False False False
-NPOIET1 andersonmesa xx False False False
-NPOIET2 andersonmesa xx False False False
-NPOIET3 andersonmesa xx False False False
+instrument site prefix get_bias get_dark get_flat check_bin
+LMI ldt lmi True False True True
+DEVENY ldt 20 True False False True
+NIHTS ldt xx False False False False
+RC1 ldt xx False False False False
+RC2 ldt xx False False False False
+LDT_ALLSKY ldt xx False False False False
+AM_ALLSKY andersonmesa xx False False False False
+NASA42 andersonmesa xx False False False False
+NPOIET1 andersonmesa xx False False False False
+NPOIET2 andersonmesa xx False False False False
+NPOIET3 andersonmesa xx False False False False

@@ -133,27 +133,11 @@ class Run:
         specified in the instrument flags.
         """
         # Collect the calibration frames for the processing directory
-        outputs = gf.gather_cal_frames(self.dir, self.flags)
+        cframes = gf.gather_cal_frames(self.dir, self.flags)
 
-        # Parse outputs:
-        if all(self.flags[key] for key in ["get_bias", "get_flat", "check_bin"]):
-            bias_cl, flat_cl, bin_list = outputs
-        elif all(self.flags[key] for key in ["get_bias", "check_bin"]):
-            bias_cl, bin_list = outputs
-        elif all(self.flags[key] for key in ["get_bias", "get_flat"]):
-            bias_cl, flat_cl = outputs
-        elif all(self.flags[key] for key in ["get_flat", "check_bin"]):
-            flat_cl, bin_list = outputs
-        elif self.flags["get_bias"]:
-            bias_cl = outputs
-        elif self.flags["get_flat"]:
-            flat_cl = outputs
-        elif self.flags["check_bin"]:
-            bin_list = outputs
-        else:
-            raise ValueError(
-                f"Somthing is very wrong with instrument flags:\n{self.flags}"
-            )
+        # Copy over `bin_list`, if returned from the above routine
+        if "bin_list" in cframes:
+            bin_list = cframes["bin_list"]
 
         # Loop through the binning schemes used
         for binning in bin_list:
@@ -163,29 +147,41 @@ class Run:
             print(f"Processing the database for {human_bin} binning...")
 
             # Set default meta to `NoneType`
-            bias_meta = flat_meta = None
+            bias_meta = flat_meta = dark_meta = None
 
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
                 bias_meta, bias_frame = pc.process_bias(
-                    bias_cl,
+                    cframes["bias_cl"],
+                    binning=binning,
+                    mem_limit=self.mem_limit,
+                    produce_combined=self.flags["get_flat"],
+                )
+            # Process the DARK frames to produce a reduced frame and statistics
+            if self.flags["get_dark"]:
+                bias_meta, bias_frame = pc.process_dark(
+                    cframes["dark_cl"],
                     binning=binning,
                     mem_limit=self.mem_limit,
                     produce_combined=self.flags["get_flat"],
                 )
 
-            # Process the FLAT frames to produce statistics
+            # Process the DOME FLAT frames to produce statistics
             if self.flags["get_flat"]:
                 flat_meta = pc.process_flats(
-                    flat_cl,
+                    cframes["domeflat_cl"],
                     bias_frame,
                     binning=binning,
                     instrument=self.flags["instrument"],
                 )
 
             # Take the metadata from the calibration frames and produce DATABASE
-            database = dm.build_calibration_database(
-                bias_meta, flat_meta, self.flags, self.dir
+            database = dm.CalibrationDatabase(
+                self.flags,
+                self.dir,
+                bias_meta=bias_meta,
+                dark_meta=dark_meta,
+                flat_meta=flat_meta,
             )
 
             # Write the contents of the database to InfluxDB

@@ -303,14 +303,11 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     Returns
     -------
-    bias_cl : `ccdproc.ImageFileCollection`
-        ImageFileColleciton containing the BIAS frames from the directory
-    domeflat_cl : `ccdproc.ImageFileCollection`, optional (if `get_flat`)
-        ImageFileCollection containing the FLAT frames from the directory
-    bin_list : `list`, optional (if `check_bin`)
-        List of binning setups found in this directory
+    return_object : `dict`
+        Dictionary containing the various filename lists, ImageFileCollections,
+        and/or binning lists, as specified by `inst_flag`.
     -- OR --
-    fnames, `list`
+    fnames : `list`
         List of calibration filenames (returned when `fnames_only = True`)
     """
     # Because over-the-network reads can take a while, say something!
@@ -329,7 +326,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         )
         return None
 
-    return_object = []
+    return_object = {}
 
     # Keep these items separate for now, in case future instruments need one
     #  but not the others
@@ -340,27 +337,44 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
         # NOTE: We sometimes get weird IFC cant' find file warnings with this line:
         bias_cl = ccdp.ImageFileCollection(filenames=biases)
-        return_object.append(bias_cl.files if fnames_only else bias_cl)
+        return_object["bias_fn"] = bias_cl.files
+        return_object["bias_cl"] = bias_cl
+
+    if inst_flag["get_dark"]:
+        # Gather DARK frames; FULL FRAME ONLY
+        dark_cl = icl.filter(obstype="dark", subarrno=0)
+        return_object["dark_fn"] = dark_cl.files
+        return_object["dark_cl"] = dark_cl
 
     if inst_flag["get_flat"]:
         # Gather DOME FLAT frames; FULL FRAME ONLY
-        # TODO: SKY FLAT not supported at this time -- Add support
         domeflat_cl = icl.filter(obstype="dome flat", subarrno=0)
-        return_object.append(domeflat_cl.files if fnames_only else domeflat_cl)
+        return_object["domeflat_fn"] = domeflat_cl.files
+        return_object["domeflat_cl"] = domeflat_cl
+        # TODO: SKY FLATs returned separately -- will need to deal with them elswehere
+        skyflat_cl = icl.filter(obstype="sky flat", subarrno=0)
+        return_object["skyflat_fn"] = skyflat_cl.files
+        return_object["skyflat_cl"] = skyflat_cl
 
-    if inst_flag["check_bin"] and not fnames_only:
+    if inst_flag["check_bin"]:
         # Get the complete list of binnings used -- but clear out `None` entries
         bin_list = icl.values("ccdsum", unique=True)
         bin_list = sorted(list(filter(None, bin_list)))
-        return_object.append(bin_list)
+        return_object["bin_list"] = bin_list
 
     # ===============================================================#
-    # If we only want the filenames, flatten out the list and return
+    # If we only want the filenames, flatten out the fn lists and return
     if fnames_only:
-        return list(np.concatenate(return_object).flat)
+        # Append all the filename lists onto `fn_list`
+        fn_list = []
+        for key, val in return_object.items():
+            if key.find("_fn") != -1:
+                fn_list.append(val)
+        # Flatten and return
+        return list(np.concatenate(fn_list).flat)
 
-    # Otherwise, return the accumulated objects as a tuple
-    return tuple(return_object)
+    # Otherwise, return the accumulated dictionary
+    return return_object
 
 
 def gather_other_frames():

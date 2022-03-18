@@ -122,6 +122,33 @@ def process_bias(
     return Table(metadata), combined
 
 
+def process_dark(
+    dark_cl, binning=None, debug=True, mem_limit=8.192e9, produce_combined=True
+):
+    """process_dark Process and combine available dark frames
+
+    NOTE: Not yet implemented -- Boilerplate below is from process_bias
+    """
+    dark_cl = check_processing_ifc(dark_cl, binning)
+    dark_ccds, metadata, _ = [], [], None
+    # Convert the list of dicts into a Table and return, plus combined bias
+    combined = None
+    if produce_combined:
+        if debug:
+            print("Doing median combine of darks now...")
+        combined = ccdp.combine(
+            dark_ccds,
+            method="median",
+            sigma_clip=True,
+            sigma_clip_low_thresh=5,
+            sigma_clip_high_thresh=5,
+            sigma_clip_func=np.ma.median,
+            mem_limit=mem_limit,
+            sigma_clip_dev_func=mad_std,
+        )
+    return Table(metadata), combined
+
+
 def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True):
     """process_flats Process the flat fields and return statistics
 
@@ -233,6 +260,14 @@ def validate_bias_table(bias_meta):
     # Add logic checks for header datatypes (edge cases)
 
     return bias_meta
+
+
+def validate_dark_table(dark_meta):
+    """validate_dark_table Analyze and validate the dark frame metadata table
+
+    NOTE: Not yet implemented
+    """
+    return dark_meta
 
 
 def validate_flat_table(flat_meta, lmi_filt):

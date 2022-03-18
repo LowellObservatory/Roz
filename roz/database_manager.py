@@ -20,7 +20,6 @@ This module primarily trades in its own class.
 """
 
 # Built-In Libraries
-from collections import OrderedDict
 import datetime as dt
 
 # 3rd Party Libraries
@@ -48,27 +47,41 @@ class CalibrationDatabase:
 
     Provides a container for the metadata from a night plus the methods needed
     to insert them into the InfluxDB database
+
+    Parameters
+    ----------
+    inst_flags : `dict`
+        Dictionary of instrument flags from .utils.set_instrument_flags()
+    proc_dir : `str` or `pathlib.Path`
+        Path to the processing directory
+    bias_meta : `astropy.table.Table`, optional
+        Table containing the metadata and statistics for BIAS frames [Default: None]
+    dark_meta : `astropy.table.Table`, optional
+        Table containing the metadata and statistics for DARK frames [Default: None]
+    flat_meta : `astropy.table.Table`, optional
+        Table containing the metadata and statistics for FLAT frames [Default: None]
     """
 
-    def __init__(self, inst_flags, proc_dir):
-        """__init__ Class initialization
-
-        [extended_summary]
-
-        Parameters
-        ----------
-        inst_flags : `dict`
-            Dictionary of instrument flags.
-        proc_dir : `str` or `pathlib.Path`
-            Path to the processing directory
-        """
+    def __init__(
+        self, inst_flags, proc_dir, bias_meta=None, dark_meta=None, flat_meta=None
+    ):
         # Set internal variables
         self.flags = inst_flags
         self.proc_dir = proc_dir
 
-        # Set up the internal dictionaries to hold BIAS and FLAT metadata
-        self.bias = None
-        self.flat = {} if self.flags["get_flat"] else None
+        # Set up the internal dictionaries to hold calibration metadata
+        self.bias = (
+            pc.validate_bias_table(bias_meta) if inst_flags["get_bias"] else None
+        )
+        self.dark = (
+            pc.validate_dark_table(dark_meta) if inst_flags["get_dark"] else None
+        )
+        if inst_flags["get_flat"]:
+            self.flat = {}
+            for lmi_filt in utils.LMI_FILTERS:
+                self.flat[lmi_filt] = pc.validate_flat_table(flat_meta, lmi_filt)
+        else:
+            self.flat = None
 
         # Read in the InfluxDB config file
         self.db_set = utils.read_ligmos_conffiles("databaseSetup")
@@ -185,7 +198,7 @@ class HistoricalData:
             Instrument name for which to pull (REQUIRED)
         frametype : `str`
             Frame type for which to pull (REQUIRED)
-        filter : `str, optional
+        filt : `str, optional
             Filter for which to pull [Default: None]
         binning : `str` (of form 'cxr'), optional
             Binning for which to pull [Default: None]
@@ -201,18 +214,20 @@ class HistoricalData:
         self,
         instrument,
         frametype,
-        filter=None,
+        filt=None,
         binning=None,
         numamp=None,
         ampid=None,
         cropborder=None,
     ):
+        # Init various attributes
+        self.results = None
 
         # Create the tag dictionary from the class init inputs
-        tagdict = {
+        self.tagdict = {
             "instrument": instrument,
             "frametype": frametype,
-            "filter": filter,
+            "filter": filt,
             "binning": binning,
             "numamp": numamp,
             "ampid": ampid,
@@ -220,7 +235,7 @@ class HistoricalData:
         }
 
         # Parse the configuration file
-        qs, cb = lig_utils.confparsers.parseConfig(
+        db_query, db_info = lig_utils.confparsers.parseConfig(
             utils.Paths.dbqueries,
             lig_utils.classes.databaseQuery,
             passfile=None,
@@ -229,64 +244,119 @@ class HistoricalData:
         )
 
         # Formally create the query from the parsed configuration file
-        query = lig_workers.confUtils.assignComm(qs, cb, commkey="database")
+        self.query = lig_workers.confUtils.assignComm(
+            db_query, db_info, commkey="database"
+        )
 
-        # This is the dictionary to hold the query data returned
-        qdata = OrderedDict()
+    def perform_query(self):
+        """perform_query Perform the InfluxDB query
 
-        # Loop through the query keys:
-        print(f"These are the query keys: {query.keys()}")
+        _extended_summary_
 
-        for iq in query.keys():
-            td = get_results_table(query[iq], tags=tagdict, debug=False)
-            qdata.update({iq: td})
-        print(f"{len(qdata)} queries complete!")
-        # print(qdata["q_rozdata"])
-        print(type(qdata["q_rozdata"]))
-        table = qdata["q_rozdata"]
-        if table:
-            table.pprint()
-        print(table.colnames)
+        Returns
+        -------
+        `astropy.table.Table`
+            The AstroPy table containing the query results
+        """
+        # There should only be one query key
+        key = list(self.query.keys())[0]
+
+        self.results = get_results_table(
+            self.query[key], tags=self.tagdict, debug=False
+        )
+
+    @property
+    def instruments(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique instruments found in this query result
+        """
+        return self._sorted_list_set("instrument")
+
+    @property
+    def frametypes(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique frametypes found in this query result
+        """
+        return self._sorted_list_set("frametype")
+
+    @property
+    def filters(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique filters found in this query result
+        """
+        return self._sorted_list_set("filter")
+
+    @property
+    def binnings(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique binnings found in this query result
+        """
+        return self._sorted_list_set("binning")
+
+    @property
+    def numamps(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique numamps found in this query result
+        """
+        return self._sorted_list_set("numamp")
+
+    @property
+    def ampids(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique ampids found in this query result
+        """
+        return self._sorted_list_set("ampid")
+
+    @property
+    def cropborders(self):
+        """
+        Returns
+        -------
+        `list`
+            Sorted list of the unique cropborders found in this query result
+        """
+        return self._sorted_list_set("cropborder")
+
+    def _sorted_list_set(self, tagname):
+        """_sorted_list_set Return a Sorted Unique List of result tagname
+
+        Checks to see if the tagname exists in the results table; if not,
+        return an empty list.
+
+        Parameters
+        ----------
+        tagname : `str`
+            The InfluxDB tagname to be returned
+
+        Returns
+        -------
+        `list`
+            The sorted list of unique entries
+        """
+        if tagname in self.results.colnames:
+            return sorted(list(set(self.results[tagname])))
+        return []
 
 
-# Non-Class Functions ========================================================#
-def build_calibration_database(bias_meta, flat_meta, inst_flags, proc_dir):
-    """produce_database_object Stuff the metadata tables into a database object
-
-    [extended_summary]
-
-    Parameters
-    ----------
-    bias_meta : `astropy.table.Table`
-        Table containing the metadata and statistics for BIAS frames
-    flat_meta : `astropy.table.Table`
-        Table containing the metadata and statistics for FLAT frames
-    inst_flags : `dict`
-        Dictionary of instrument flags from .utils.set_instrument_flags()
-    proc_dir : `str` or `pathlib.Path`
-        Path to the processing directory
-
-    Returns
-    -------
-    `roz.database_manager.CalibrationDatabase`
-        Database object for use with... something?
-    """
-    # Instantiate the database
-    database = CalibrationDatabase(inst_flags, proc_dir)
-
-    if inst_flags["get_bias"]:
-        # Analyze the bias_meta table, and insert it into the database
-        database.bias = pc.validate_bias_table(bias_meta)
-
-    if inst_flags["get_flat"]:
-        # Analyze the flat_meta table, sorted by LMI_FILTERS, and insert
-        for lmi_filt in utils.LMI_FILTERS:
-            database.flat[lmi_filt] = pc.validate_flat_table(flat_meta, lmi_filt)
-
-    # Return the filled database
-    return database
-
-
+# Non-Class Helper Functions =================================================#
 def build_influxdb_query(dbq, tags=None, debug=False):
     """build_influxdb_query Build the query string for InfluxDB
 
@@ -384,11 +454,13 @@ def get_results_table(query, tags=None, debug=False):
     # Get the results of the query in a safe way:
     results = j5u.safe_service_connect(idfc.query, query_str)
 
-    # If `results` is empty, return an empty table
+    # If `results` is empty, return a (nearly) empty table
     if results == {}:
         # TODO: Convert this to a warning or send_alert() thing
         print("Query returned no results!")
-        return Table()
+        return Table(
+            names=("timestamp", "instrument", "frametype"), dtype=("O", "U12", "U12")
+        )
 
     # `results` is a dict of pandas dataframes; but in our case there is only
     #   one key in the dict, namely `query.metricname`.
@@ -464,4 +536,15 @@ def neatly_package(table_row, measure):
 
 # Testing ====================================================================#
 if __name__ == "__main__":
-    hist = HistoricalData("lmi", "bias")
+    hist = HistoricalData("lmi", "dome flat")
+    hist.perform_query()
+    hist.results.pprint()
+    print(hist.results.colnames)
+
+    print(hist.instruments)
+    print(hist.frametypes)
+    print(hist.filters)
+    print(hist.binnings)
+    print(hist.numamps)
+    print(hist.ampids)
+    print(hist.cropborders)
