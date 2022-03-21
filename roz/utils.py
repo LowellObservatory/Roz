@@ -105,8 +105,12 @@ class Paths:
         pass
 
 
-# List of LMI Filters
-LMI_FILTERS = list(Table.read(Paths.ecsv_filters)["FITS Header Value"])
+# List of Imager Filters (augment, as needed for other instruments)
+FILTER_LIST = {
+    "LMI": list(Table.read(Paths.ecsv_filters)["FITS Header Value"]),
+    "JC": ["U", "B", "V", "R", "I"],
+    "SDSS": ["u'", "g'", "r'", "i'", "z'"],
+}
 
 # Fold Mirror Names
 FMS = ["A", "B", "C", "D"]
@@ -293,6 +297,13 @@ def trim_oscan(ccd, biassec, trimsec):
     one-dimensional polynomial.  The model used can be changed in the future
     or allowed as a input, as desired.
 
+    NOTE: This function explicitly assumes that the chip is read out ROW-by-ROW
+          and that overscan pixels are in each ROW.  Some instruments may have
+          the native orientation such that the CCD is read out along COLUMNS;
+          if such an instrument is added to this package, the present routine
+          will need to be modified to include a rotation such that the order
+          of operations below is correctly applied to such data.
+
     Parameters
     ----------
     ccd : `astropy.nddata.CCDData`
@@ -424,7 +435,7 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
 
     # Produce the coordinate arrays, if not fed an existing dict OR if the
     #  array size is different (occasional edge case)
-    reproduce = (c_arr is None) or (data.shape != c_arr["x_coord_arr"].shape)
+    reproduce = (not c_arr) or (data.shape != c_arr["x_coord_arr"].shape)
     c_arr = produce_coordinate_arrays(data.shape) if reproduce else c_arr
 
     # Fill in the matrix elements

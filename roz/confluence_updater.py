@@ -211,17 +211,20 @@ def modify_lmi_dynamic_table(
     png_fn : `list`
         List of the PNG filenames created during this run
     """
+    # Shorthand
+    lmi_filters = utils.FILTER_LIST["LMI"]
+
     # Check if the dynamic-portion FITS table is extant
     if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
         dyntable = Table.read(utils.Paths.lmi_dyntable)
 
     else:
-        # Make a blank table, including the LMI_FILTERS for correspondence
-        nrow = len(utils.LMI_FILTERS)
+        # Make a blank table, including the lmi_filters for correspondence
+        nrow = len(lmi_filters)
         dyntable = Table(
             [
-                Column(utils.LMI_FILTERS, name="Filter"),
+                Column(lmi_filters, name="Filter"),
                 Column(name="Latest Image", length=nrow, dtype="U256"),
                 Column(name="UT Date of Latest Flat", length=nrow, dtype="U128"),
                 Column(name="Count Rate (ADU/s)", length=nrow, dtype=float),
@@ -234,9 +237,7 @@ def modify_lmi_dynamic_table(
     #  however, it also sorts the table...
     lmi_filt = join(lmi_filt, dyntable, join_type="left", keys="Filter")
     # Undo the alpha sorting done by .join()
-    lmi_filt = utils.table_sort_on_list(
-        lmi_filt, "FITS Header Value", utils.LMI_FILTERS
-    )
+    lmi_filt = utils.table_sort_on_list(lmi_filt, "FITS Header Value", lmi_filters)
     # Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
 
@@ -245,9 +246,9 @@ def modify_lmi_dynamic_table(
 
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
-    for i, filt in enumerate(utils.LMI_FILTERS):
+    for i, filt in enumerate(lmi_filters):
         # Skip filters not used in this data set
-        if database.flat[filt] is None:
+        if not database.flat[filt]:
             continue
 
         # But, only update if the DATOBS of this flat is LATER than what's

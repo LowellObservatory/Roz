@@ -149,7 +149,9 @@ def process_dark(
     return Table(metadata), combined
 
 
-def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True):
+def process_domeflat(
+    flat_cl, bias_frame=None, dark_frame=None, binning=None, instrument=None, debug=True
+):
     """process_flats Process the flat fields and return statistics
 
     [extended_summary]
@@ -158,8 +160,12 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
     ----------
     flat_cl : `ccdproc.ImageFileCollection`
         The ImageFileCollection of FLAT frames to process
-    bias_frame : `astropy.nddata.CCDData`
-        The combined, overscan-subtracted bias frame
+    bias_frame : `astropy.nddata.CCDData`, optional
+        The combined, overscan-subtracted bias frame  [Default: None]
+        If None, the routine will load in a saved bias
+    dark_frame : `astropt.nddata.CCDData`, optional
+        The combined, bias-subtracted dark frame [Default: None]
+        If None, the routine will load in a saved dark, if necessary
     binning : `str`, optional
         The binning to use for this routine [Default: None]
     instrument : `str`, optional
@@ -180,10 +186,12 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
 
     # Check for actual bias frame, else make something up
     if not bias_frame:
-        print("No appropriate bias frames...")
+        print("No appropriate bias frames passed; loading saved BIAS...")
         bias_frame = utils.load_saved_bias(instrument, binning)
     else:
+        # Write this bias to disk for future use
         utils.write_saved_bias(bias_frame, instrument, binning)
+
     if debug:
         print("Processing flat frames...")
 
@@ -197,7 +205,9 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
     for ccd, fname in flat_cl.ccds(bitpix=16, return_fname=True):
 
         hdr = ccd.header
+        # Add a "short filename" to the header for use further along
         hdr["SHORT_FN"] = fname.split(os.sep)[-1]
+
         # Fit & subtract the overscan section, trim the image, subtract bias
         ccd = utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
         ccd = ccdp.subtract_bias(ccd, bias_frame)
@@ -228,6 +238,16 @@ def process_flats(flat_cl, bias_frame, binning=None, instrument=None, debug=True
 
     # Convert the list of dicts into a Table and return
     return Table(metadata)
+
+
+def process_skyflat(
+    flat_cl, bias_frame=None, dark_frame=None, binning=None, instrument=None, debug=True
+):
+    """process_flats Process the flat fields and return statistics
+
+    NOTE: Not yet implemented --
+    """
+    return Table()
 
 
 def validate_bias_table(bias_meta):
@@ -270,7 +290,7 @@ def validate_dark_table(dark_meta):
     return dark_meta
 
 
-def validate_flat_table(flat_meta, lmi_filt):
+def validate_flat_table(flat_meta, flat_filter):
     """validate_flat_table Analyze and validate the flat frame metadata table
 
     Separates the wheat from the chaff -- returning a subtable for the
@@ -280,35 +300,30 @@ def validate_flat_table(flat_meta, lmi_filt):
     ----------
     flat_meta : `astropy.table.Table`
         Table containing the flat frame metadata
-    lmi_filt : `str`
-        LMI filter to validate
+    flat_filter : `str`
+        Flatfield filter to validate
 
     Returns
     -------
     `astropy.table.Table` or `None`
-        If the `lmi_filt` was used in this set, return the subtable of
+        If the `flat_filter` was used in this set, return the subtable of
         `flat_meta` containing that filter.  Otherwise, return `None`.
     """
     # If there were no flats at all (blank Table), return None
     if not flat_meta:
         return None
 
-    # Find the rows of the table corresponding to this filter, return if 0
-    idx = np.where(flat_meta["filter"] == lmi_filt)
-    if len(idx[0]) == 0:
+    # Find the rows of the table corresponding to this filter, return if none
+    subtable = flat_meta[flat_meta["filter"] == flat_filter]
+    if not subtable:
         return None
-
-    # For ease, pull these rows into a subtable
-    subtable = flat_meta[idx]
 
     # Make sure 'flats' have a reasonable flat countrate, or total counts
     #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
     #  exptime).
 
     # Do something...
-    print("\nIn validate_flat_table():")
-    print(lmi_filt)
-    # subtable.pprint()
+    print(f"\nValidating {flat_filter} in validate_flat_table():")
     print(np.mean(subtable["frame_avg"]), np.median(subtable["frame_med"]))
 
     # Find the mean quadric surface for this set of flats
@@ -316,6 +331,14 @@ def validate_flat_table(flat_meta, lmi_filt):
     # print(quadsurf)
 
     return subtable
+
+
+def validate_skyf_table(skyf_meta):
+    """validate_dark_table Analyze and validate the sky flat frame metadata table
+
+    NOTE: Not yet implemented
+    """
+    return skyf_meta
 
 
 # Helper Functions (Alphabetical) ============================================#
@@ -405,7 +428,7 @@ def check_processing_ifc(ifc, binning):
         Raised if the binning is not set.
     """
     # Error checking for binning
-    if binning is None:
+    if not binning:
         raise utils.InputError("Binning not set.")
 
     # If IFC is empty already, just return it

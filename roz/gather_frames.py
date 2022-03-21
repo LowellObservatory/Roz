@@ -22,16 +22,17 @@ This module primarily trades in CCDPROC Image File Collections
 """
 
 # Built-In Libraries
-import glob
 import os
 import pathlib
 import re
 import shutil
 import tarfile
+import warnings
 
 # 3rd Party Libraries
 from astropy.io.fits import getheader
 from astropy.table import Table
+from astropy.utils.exceptions import AstropyUserWarning
 import ccdproc as ccdp
 import numpy as np
 from tqdm import tqdm
@@ -73,7 +74,7 @@ class Dumbwaiter:
             sa.send_alert("Incorrect frameclass specified", "Dumbwaiter.__init__()")
             return
 
-        # Recheck that the `data_dir` is, in fact, okay
+        # Recheck that the `data_dir` is, in fact, okay, just to be sure
         if not check_directory_okay(data_dir, "Dumbwaiter.__init__()"):
             return
 
@@ -88,7 +89,7 @@ class Dumbwaiter:
 
         # If the directory is completely empty: send alert, set empty, return
         if not self.instrument:
-            sa.send_alert("EmptyDirectoryAlert : Dumbwaiter.__init__()")
+            sa.send_alert("Empty Directory", "Dumbwaiter.__init__()")
             self.empty = True
             return
 
@@ -221,6 +222,9 @@ def check_directory_okay(directory, caller=None):
 
     Check that directory is, indeed, a directory and contains FITS files
 
+    NOTE: This is the first function called, and should have robust alerting if
+          things aren't up to snuff!
+
     Parameters
     ----------
     directory : `str` or `Pathlib.path`
@@ -233,14 +237,23 @@ def check_directory_okay(directory, caller=None):
     `bool`
         True if OK, False otherwise
     """
+    # Check that `directory` is, in fact, a directory
     if not os.path.isdir(directory):
-        sa.send_alert(f"DirectoryIssue: {directory} is not a valid directory", caller)
+        sa.send_alert(f"Directory Issue: {directory} is not a valid directory", caller)
         return False
-    if not glob.glob(os.path.join(directory, "*.fits")):
+
+    # Get the list of normal FITS files in the directory
+    fits_files = get_sequential_fitsfiles(directory)
+
+    # Check if there's anything useful
+    if not fits_files:
         sa.send_alert(
-            f"DirectoryIssue: {directory} does not contain any FITS files", caller
+            f"Empty Directory: {directory} does not contain any sequential FITS files",
+            caller,
         )
         return False
+
+    # If we get here, we're clear to proceed!
     return True
 
 
@@ -268,21 +281,19 @@ def divine_instrument(directory):
     `str`
         Lowercase string of the contents of the FITS `INSTRUME` keyword
     """
-    # Get a sorted list of all the FITS files
-    fitsfiles = sorted(glob.glob(f"{directory}/*.fits"))
+    # Get the list of normal FITS files in the directory
+    fits_files = get_sequential_fitsfiles(directory)
 
     # Loop through the files, looking for a valid INSTRUME keyword
-    for fitsfile in fitsfiles:
-        # print(f"Attempting to find INSTRUME in {fitsfile}")
+    for fitsfile in fits_files:
         try:
             # If we're good to go...
             if os.path.isfile(fitsfile):
-                header = getheader(fitsfile)
-                return header["instrume"].lower()
+                return getheader(fitsfile)["instrume"].lower()
         except KeyError:
             continue
     # Otherwise...
-    sa.send_alert("BadDirectoryAlert : divine_instrument()")
+    sa.send_alert("No Instrument Found", "divine_instrument()")
     return None
 
 
@@ -310,6 +321,9 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     fnames : `list`
         List of calibration filenames (returned when `fnames_only = True`)
     """
+    # Silence the AstropyUserWarning from CCDPROC
+    warnings.simplefilter("ignore", AstropyUserWarning)
+
     # Because over-the-network reads can take a while, say something!
     print(f"Reading the files in {directory}...")
 
@@ -317,6 +331,8 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     icl = ccdp.ImageFileCollection(
         directory, glob_include=f"{inst_flag['prefix']}*.fits"
     )
+
+    print(f"These are the files I found: {icl.files}")
 
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
@@ -384,7 +400,40 @@ def gather_other_frames():
     """
 
 
-def set_instrument_flags(inst="lmi"):
+def get_sequential_fitsfiles(directory):
+    """get_sequential_fitsfiles Get the sequential FITS files in a directory
+
+    Since we do this several times, pull it out to a separate function.  This
+    function returns a list of the non-test (assumed sequential) FITS files in
+    `directory`.
+
+    Parameters
+    ----------
+    directory : `str` or `pathlib.Path`
+        Directory name to search for FITS files
+
+    Returns
+    -------
+    `list`
+        List of the non-test (i.e. sequential) FITS files in `directory`
+    """
+    # Make sure directory is a pathlib.Path
+    if isinstance(directory, str):
+        directory = pathlib.Path(directory)
+
+    # Get a sorted list of all the FITS files
+    fits_files = sorted(directory.glob("*.fits"))
+
+    # Remove `test.fits` because we just don't care about it.
+    try:
+        fits_files.remove(directory.joinpath("test.fits"))
+    except ValueError:
+        pass
+
+    return fits_files
+
+
+def set_instrument_flags(inst):
     """set_instrument_flags Set the global instrument flags for processing
 
     These instrument-specific flags are used throughout the code.  As more
@@ -395,8 +444,8 @@ def set_instrument_flags(inst="lmi"):
 
     Parameters
     ----------
-    instrument : `str`, optional
-        Name of the instrument to use.  [Default: LMI]
+    instrument : `str`
+        Name of the instrument to use
 
     Returns
     -------
@@ -409,11 +458,12 @@ def set_instrument_flags(inst="lmi"):
     # Check that the instrument is in the table
     if (inst := inst.upper()) not in instrument_table["instrument"]:
         sa.send_alert(
-            f"Instrument {inst} not yet supported; update instrument_flags.ecsv"
+            f"Instrument {inst} not yet supported; update instrument_flags.ecsv",
+            "set_instrument_flags()",
         )
         return None
 
-    # Extract the row , and convert it to a dictionary
+    # Extract the row, and convert it to a dictionary
     for row in instrument_table:
         if row["instrument"] == inst:
             return dict(zip(row.colnames, row))

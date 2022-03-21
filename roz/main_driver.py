@@ -146,8 +146,9 @@ class Run:
             human_bin = binning.replace(" ", "x")
             print(f"Processing the database for {human_bin} binning...")
 
-            # Set default meta to `NoneType`
-            bias_meta = flat_meta = dark_meta = None
+            # Set default meta and combined frames to `NoneType`
+            bias_meta = dark_meta = flat_meta = skyf_meta = None
+            bias_frame = dark_frame = None
 
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
@@ -157,20 +158,29 @@ class Run:
                     mem_limit=self.mem_limit,
                     produce_combined=self.flags["get_flat"],
                 )
+
             # Process the DARK frames to produce a reduced frame and statistics
             if self.flags["get_dark"]:
-                bias_meta, bias_frame = pc.process_dark(
+                dark_meta, dark_frame = pc.process_dark(
                     cframes["dark_cl"],
                     binning=binning,
                     mem_limit=self.mem_limit,
                     produce_combined=self.flags["get_flat"],
                 )
 
-            # Process the DOME FLAT frames to produce statistics
+            # Process the DOME (&SKY?) FLAT frames to produce statistics
             if self.flags["get_flat"]:
-                flat_meta = pc.process_flats(
+                flat_meta = pc.process_domeflat(
                     cframes["domeflat_cl"],
-                    bias_frame,
+                    bias_frame=bias_frame,
+                    dark_frame=dark_frame,
+                    binning=binning,
+                    instrument=self.flags["instrument"],
+                )
+                skyf_meta = pc.process_skyflat(
+                    cframes["skyflat_cl"],
+                    bias_frame=bias_frame,
+                    dark_frame=dark_frame,
                     binning=binning,
                     instrument=self.flags["instrument"],
                 )
@@ -182,7 +192,11 @@ class Run:
                 bias_meta=bias_meta,
                 dark_meta=dark_meta,
                 flat_meta=flat_meta,
+                skyf_meta=skyf_meta,
             )
+
+            # Validate the metadata tables
+            database.validate()
 
             # Write the contents of the database to InfluxDB
             database.write_to_influxdb(testing=False)

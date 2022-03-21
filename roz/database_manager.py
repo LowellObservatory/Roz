@@ -12,11 +12,15 @@
 
 This module is part of the Roz package, written at Lowell Observatory.
 
-This module houses the database class CalibrationDatabase().  Among its methods
-are those for committing data to an InfluxDB database for posterity.  Functions
-from the LIGMOS library are used for the InfluxDB pieces.
+This module houses the database classes `CalibrationDatabase()`,
+`ScienceDatabase()`, and `HistoricalData()`.  Among their methods are those
+for committing data to an InfluxDB database for posterity, as well as reading
+back in committed data for comparison with new frames.  Functions from the
+LIGMOS library are used for most of the InfluxDB pieces, and custom
+distillations of extant LIGMOS functions are also included here when Roz's
+needs differ from those of other LIGMOS consumers.
 
-This module primarily trades in its own class.
+This module primarily trades in its own classes.
 """
 
 # Built-In Libraries
@@ -47,7 +51,7 @@ class CalibrationDatabase:
     Database class for calibration frames
 
     Provides a container for the metadata from a night plus the methods needed
-    to insert them into the InfluxDB database
+    to insert them into the InfluxDB database.
 
     Parameters
     ----------
@@ -60,40 +64,44 @@ class CalibrationDatabase:
     dark_meta : `astropy.table.Table`, optional
         Table containing the metadata and statistics for DARK frames [Default: None]
     flat_meta : `astropy.table.Table`, optional
-        Table containing the metadata and statistics for FLAT frames [Default: None]
+        Table containing the metadata and statistics for DOME FLAT frames [Default: None]
+    skyf_meta : `astropy.table.Table`, optional
+        Table containing the metadata and statistics for SKY FLAT frames [Default: None]
     """
 
     def __init__(
-        self, inst_flags, proc_dir, bias_meta=None, dark_meta=None, flat_meta=None
+        self,
+        inst_flags,
+        proc_dir,
+        bias_meta=None,
+        dark_meta=None,
+        flat_meta=None,
+        skyf_meta=None,
     ):
         # Set internal variables
         self.flags = inst_flags
         self.proc_dir = proc_dir
+        self.bias_meta = bias_meta
+        self.dark_meta = dark_meta
+        self.flat_meta = flat_meta
+        self.skyf_meta = skyf_meta
 
-        # Set up the internal dictionaries to hold calibration metadata
-        self.bias = (
-            pc.validate_bias_table(bias_meta) if inst_flags["get_bias"] else None
-        )
-        self.dark = (
-            pc.validate_dark_table(dark_meta) if inst_flags["get_dark"] else None
-        )
-        if inst_flags["get_flat"]:
-            self.flat = {}
-            for lmi_filt in utils.LMI_FILTERS:
-                self.flat[lmi_filt] = pc.validate_flat_table(flat_meta, lmi_filt)
-        else:
-            self.flat = None
+        # Init empty validated tables
+        self.bias = None
+        self.dark = None
+        self.flat = None
+        self.skyf = None
 
         # Read in the InfluxDB config file
-        self.db_set = utils.read_ligmos_conffiles("databaseSetup")
+        self.db_setup = utils.read_ligmos_conffiles("databaseSetup")
 
         # The InfluxDB object is thuswise constructed:
         self.idb = lig_utils.database.influxobj(
-            tablename=self.db_set.tablename,
-            host=self.db_set.host,
-            port=self.db_set.port,
-            user=self.db_set.user,
-            pw=self.db_set.password,
+            tablename=self.db_setup.tablename,
+            host=self.db_setup.host,
+            port=self.db_setup.port,
+            user=self.db_setup.user,
+            pw=self.db_setup.password,
             connect=True,
         )
 
@@ -111,9 +119,27 @@ class CalibrationDatabase:
             Array of the corresponding mount temperatures
         """
         # If the bias table is empty, return zeros
-        if self.bias is None:
+        if not self.bias:
             return np.asarray([0]), np.asarray([0])
         return np.asarray(self.bias["crop_avg"]), np.asarray(self.bias["mnttemp"])
+
+    def validate(self):
+        """validate Run the validation routines on the tables
+
+        _extended_summary_
+        """
+        # Set up the internal dictionaries to hold calibration metadata
+        self.bias = pc.validate_bias_table(self.bias_meta)
+        self.dark = pc.validate_dark_table(self.dark_meta)
+        self.skyf = pc.validate_skyf_table(self.skyf_meta)
+
+        # For flat frames, need information about the instrument's filters
+        if self.flat_meta:
+            self.flat = {"filters": utils.FILTER_LIST[self.flags["instrument"]]}
+            for flat_filter in self.flat["filters"]:
+                self.flat[flat_filter] = pc.validate_flat_table(
+                    self.flat_meta, flat_filter
+                )
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -128,34 +154,57 @@ class CalibrationDatabase:
         testing : `bool`, optional
             If testing, don't commit to InfluxDB  [Default: True]
         """
-        # If bias table is extant, loop over frames in self.bias to commit
-        #  each one individually
-        if self.bias is not None:
+        # If bias table is extant, loop over frames in self.bias
+        if self.bias:
+            # List of packets to be committed
+            pkt_list = []
             for entry in self.bias:
-                packet = neatly_package(entry, measure=self.db_set.metricname)
-                # Commit in a safe way
-                if not testing:
-                    j5u.safe_service_connect(
-                        self.idb.singleCommit, packet, table=self.db_set.tablename
+                # Append the packet for this frame to a list to be committed
+                pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
+            # Commit the whole list in a safe way
+            if not testing:
+                print(f"Writing {len(self.bias)} BIAS frames to InfluxDB...")
+                j5u.safe_service_connect(
+                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                )
+
+        # If dark tbale is extant, loop over frames in self.dark
+        if self.dark:
+            # List of packets to be committed
+            pkt_list = []
+            for entry in self.dark:
+                # Append the packet for this frame to a list to be committed
+                pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
+            # Commit the whole list in a safe way
+            if not testing:
+                print(f"Writing {len(pkt_list)} DARK frames to InfluxDB...")
+                j5u.safe_service_connect(
+                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                )
+
+        # If flat table is extant, loop over filters
+        if self.flat:
+
+            # List of packets to be committed
+            pkt_list = []
+            # Loop through the filters, making FLAT packets and commit them
+            for filt in self.flat["filters"]:
+                # Skip filters not used in this data set
+                # print(f"Committing LMI filter {filt}...")
+                if not self.flat[filt]:
+                    continue
+
+                # Loop
+                for entry in self.flat[filt]:
+                    pkt_list.append(
+                        neatly_package(entry, measure=self.db_setup.metricname)
                     )
-
-        # If not LMI, then bomb out now
-        if self.flags["instrument"] != "LMI":
-            return
-
-        # Loop through the filters, making FLAT packets and commit them
-        for filt in utils.LMI_FILTERS:
-            # Skip filters not used in this data set
-            # print(f"Committing LMI filter {filt}...")
-            if self.flat[filt] is None:
-                continue
-
-            # Loop
-            for entry in self.flat[filt]:
-                packet = neatly_package(entry, measure=self.db_set.metricname)
-                # Commit
-                if not testing:
-                    self.idb.singleCommit(packet, table=self.db_set.tablename)
+            # Commit
+            if not testing:
+                print(f"Writing {len(pkt_list)} FLAT frames to InfluxDB...")
+                j5u.safe_service_connect(
+                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                )
 
 
 class ScienceDatabase:
@@ -581,9 +630,9 @@ def neatly_package(table_row, measure):
 
     Returns
     -------
-    `list` of `dict`
-        Single-element list of packet `dict` containing the information to be
-        inserted into the InfluxDB database.
+    `dict`
+        Packet dictionary containing the information to be inserted into the
+        InfluxDB database.
     """
     # Convert the AstroPy Table Row into a dict by adding colnames
     row_as_dict = dict(zip(table_row.colnames, table_row))
@@ -609,16 +658,13 @@ def neatly_package(table_row, measure):
     # Strip off the filename, as it can be reconstructed from obserno
     row_as_dict.pop("filename")
 
-    # Build the packet as a dictionary with the proper InfluxDB keys
-    packet = {
+    # Build & return the packet as a dictionary with the proper InfluxDB keys
+    return {
         "measurement": measure,
         "tags": tags,
         "time": timestamp,
         "fields": row_as_dict,
     }
-
-    # InfluxDB expects a list of dicts, so return such
-    return [packet]
 
 
 # Testing ====================================================================#
@@ -638,4 +684,4 @@ if __name__ == "__main__":
     mu = hist.metric_mean("crop_avg")
     sig = hist.metric_stddev("crop_avg")
     print(f"For LMI bias frames, the cropped AVG is: {mu:.2f} ± {sig:.2f}")
-    print(hist.results['timestamp'].tolist())
+    print(hist.results["timestamp"].tolist())
