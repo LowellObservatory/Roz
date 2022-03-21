@@ -332,8 +332,6 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         directory, glob_include=f"{inst_flag['prefix']}*.fits"
     )
 
-    print(f"These are the files I found: {icl.files}")
-
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
         sa.send_alert(
@@ -352,7 +350,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
         # NOTE: We sometimes get weird IFC cant' find file warnings with this line:
-        bias_cl = ccdp.ImageFileCollection(filenames=biases)
+        bias_cl = ccdp.ImageFileCollection(location=directory, filenames=biases)
         return_object["bias_fn"] = bias_cl.files
         return_object["bias_cl"] = bias_cl
 

@@ -194,11 +194,8 @@ class Run:
                 flat_meta=flat_meta,
                 skyf_meta=skyf_meta,
             )
-
-            # Validate the metadata tables
+            # Validate the metadata tables, and write contents to InfluxDB
             database.validate()
-
-            # Write the contents of the database to InfluxDB
             database.write_to_influxdb(testing=False)
 
             if self.flags["instrument"].lower() == "lmi":

@@ -695,4 +695,6 @@ def compute_flatness(human, shape, stddev):
     # Get the lower pixel count of the two linear axes (distance to 1 sigma)
     pix_lin = np.minimum(np.absolute(human["bma"]), np.absolute(human["bmi"])) * stddev
 
+    # TODO: Sometimes one or the other of these yield a warning:
+    #       RuntimeWarning: divide by zero encountered in true_divide
     return dim_min / pix_lin, dim_min / pix_quad

@@ -272,12 +272,13 @@ def validate_bias_table(bias_meta):
     # For now, just print some stats and return the table.
     print("\nIn validate_bias_table():")
     print(
-        np.mean(bias_meta["crop_avg"]),
-        np.median(bias_meta["crop_med"]),
-        np.mean(bias_meta["crop_std"]),
+        f"Mean: {np.mean(bias_meta['crop_avg']):.2f}  "
+        f"Median: {np.median(bias_meta['crop_med']):.2f}  "
+        f"Stddev: {np.mean(bias_meta['crop_std']):.2f}"
     )
 
     # Add logic checks for header datatypes (edge cases)
+    print(bias_meta["frametype", "exptime", "obserno"])
 
     return bias_meta
 
@@ -324,7 +325,11 @@ def validate_flat_table(flat_meta, flat_filter):
 
     # Do something...
     print(f"\nValidating {flat_filter} in validate_flat_table():")
-    print(np.mean(subtable["frame_avg"]), np.median(subtable["frame_med"]))
+    print(
+        f"Mean: {np.mean(subtable['frame_avg']):.2f}  "
+        f"Median:  {np.median(subtable['frame_med']):.2f}  "
+        f"Stddev:  {np.mean(subtable['frame_std']):.2f}"
+    )
 
     # Find the mean quadric surface for this set of flats
     # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
@@ -373,7 +378,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     metadict = {
         "dateobs": f"{hdr['DATE-OBS'].strip()}",
         "instrument": f"{hdr['INSTRUME'].strip()}",
-        "frametyp": f"{hdr['OBSTYPE'].strip()}",
+        "frametype": f"{hdr['OBSTYPE'].strip()}",
         "obserno": int(hdr["OBSERNO"]),
         "filename": f"{hdr['SHORT_FN'].strip()}",
         "binning": "x".join(hdr["CCDSUM"].split()),

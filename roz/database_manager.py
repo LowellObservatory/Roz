@@ -294,26 +294,54 @@ class HistoricalData:
         )
 
         # Formally create the query from the parsed configuration file
-        self.query = lig_workers.confUtils.assignComm(
-            db_query, db_info, commkey="database"
+        query = lig_workers.confUtils.assignComm(db_query, db_info, commkey="database")
+        # There should only be one query key; extract into self.query
+        self.query = query[list(query.keys())[0]]
+
+        # Build the InfluxDB Data Frame Client:
+        self.idfc = DataFrameClient(
+            host=self.query.database.host,
+            port=self.query.database.port,
+            username=self.query.database.user,
+            password=self.query.database.password,
+            database=self.query.tablename,
         )
 
-    def perform_query(self):
-        """perform_query Perform the InfluxDB query
+    def perform_query(self, debug=False):
+        """perform_query Perform the InfluxDB query, saving as a Table
 
-        _extended_summary_
-
-        Returns
-        -------
-        `astropy.table.Table`
-            The AstroPy table containing the query results
+        This method is a simplified version of
+        `ligmos.utils.database.getResultsDataFrame()`, in that it doesn't try
+        to catch all eventualities.  It also saves the result in an AstroPy
+        Table instead of a pandas dataframe, for simplicity of use with the
+        rest of Roz.
         """
-        # There should only be one query key
-        key = list(self.query.keys())[0]
+        # Build the query string
+        query_str = build_influxdb_query(self.query, tags=self.tagdict, debug=debug)
+        if debug:
+            print(f"This is the query string:\n{query_str}")
 
-        self.results = get_results_table(
-            self.query[key], tags=self.tagdict, debug=False
-        )
+        # Get the results of the query in a safe way:
+        results = j5u.safe_service_connect(self.idfc.query, query_str)
+
+        # If `results` is empty, return a (nearly) empty table
+        if results == {}:
+            # TODO: Convert this to a warning or send_alert() thing
+            print("Query returned no results!")
+            return Table(
+                names=("timestamp", "instrument", "frametype"),
+                dtype=("O", "U12", "U12"),
+            )
+
+        # `results` is a dict of pandas dataframes; but in our case there is only
+        #   one key in the dict, namely `query.metricname`.
+
+        # First, extract the "index", which is the timestamp for the measurement
+        timestamp = results[self.query.metricname].index.to_pydatetime()
+
+        # Convert to a single AstroPy Table; add timestamps as additional column
+        self.results = Table.from_pandas(results[self.query.metricname])
+        self.results["timestamp"] = timestamp
 
     def metric_mean(self, metric, **kwargs):
         """metric_mean Compute the Mean of the Metric
@@ -552,67 +580,6 @@ def build_influxdb_query(dbq, tags=None, debug=False):
     return query
 
 
-def get_results_table(query, tags=None, debug=False):
-    """get_results_table Get the query results as a Table
-
-    This function is a simplified version of
-    `ligmos.utils.database.getResultsDataFrame()`, in that it doesn't try to
-    catch all eventualities.  It also returns an AstroPy Table instead of a
-    pandas dataframe, for simplicity of use with the rest of Roz.
-
-    Parameters
-    ----------
-    query : `ligmos.utils.classes.databaseQuery`
-        The database query object, as read from the configuration file
-    tags : `dict`, optional
-        The tags to which to limit the database search [Default: None]
-    debug : `bool`, optional
-       Print debugging statements? [Default: False]
-
-    Returns
-    -------
-    `astropy.table.Table`
-        The Table containing the database query results
-    """
-    # Build the query string
-    query_str = build_influxdb_query(query, tags=tags, debug=debug)
-    print(f"This is the query string:\n{query_str}")
-
-    # InfluxDB Data Frame Client:
-    idfc = DataFrameClient(
-        host=query.database.host,
-        port=query.database.port,
-        username=query.database.user,
-        password=query.database.password,
-        database=query.tablename,
-    )
-
-    # Get the results of the query in a safe way:
-    results = j5u.safe_service_connect(idfc.query, query_str)
-
-    # If `results` is empty, return a (nearly) empty table
-    if results == {}:
-        # TODO: Convert this to a warning or send_alert() thing
-        print("Query returned no results!")
-        return Table(
-            names=("timestamp", "instrument", "frametype"), dtype=("O", "U12", "U12")
-        )
-
-    # `results` is a dict of pandas dataframes; but in our case there is only
-    #   one key in the dict, namely `query.metricname`.
-
-    # First, extract the "index", which is the timestamp for the measurement
-    timestamp = results[query.metricname].index.to_pydatetime()
-
-    # Convert to a single AstroPy Table
-    table = Table.from_pandas(results[query.metricname])
-
-    # Add the timestamps as an additional column
-    table["timestamp"] = timestamp
-
-    return table
-
-
 def neatly_package(table_row, measure):
     """neatly_package Carefully curate and package the InfluxDB packet
 
@@ -647,7 +614,7 @@ def neatly_package(table_row, measure):
     # Build the tags from information in the table Row
     tags = {
         "instrument": row_as_dict.pop("instrument").lower(),
-        "frametype": row_as_dict.pop("frametyp").lower(),
+        "frametype": row_as_dict.pop("frametype").lower(),
         "filter": row_as_dict.pop("filter"),
         "binning": row_as_dict.pop("binning"),
         "numamp": row_as_dict.pop("numamp"),
@@ -674,14 +641,16 @@ if __name__ == "__main__":
     hist.results.pprint()
     print(hist.results.colnames)
 
-    print(hist.instruments)
-    print(hist.frametypes)
-    print(hist.filters)
-    print(hist.binnings)
-    print(hist.numamps)
-    print(hist.ampids)
-    print(hist.cropborders)
+    print("")
+    print(f"Instruments: {hist.instruments}")
+    print(f"Frametypes: {hist.frametypes}")
+    print(f"Filters: {hist.filters}")
+    print(f"Binnings: {hist.binnings}")
+    # print(hist.numamps)
+    # print(hist.ampids)
+    # print(hist.cropborders)
     mu = hist.metric_mean("crop_avg")
     sig = hist.metric_stddev("crop_avg")
-    print(f"For LMI bias frames, the cropped AVG is: {mu:.2f} ± {sig:.2f}")
-    print(hist.results["timestamp"].tolist())
+    print(f"\nFor LMI bias frames, the cropped AVG is: {mu:.2f} ± {sig:.2f}")
+    print([d.isoformat(timespec="minutes") for d in hist.results["timestamp"].tolist()])
+    print(f"There were {len(hist.results)} frames found in the database.")

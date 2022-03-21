@@ -247,8 +247,8 @@ def modify_lmi_dynamic_table(
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i, filt in enumerate(lmi_filters):
-        # Skip filters not used in this data set
-        if not database.flat[filt]:
+        # Skip filters not used in this data set (also check for `database.flat`)
+        if not database.flat or not database.flat[filt]:
             continue
 
         # But, only update if the DATOBS of this flat is LATER than what's
