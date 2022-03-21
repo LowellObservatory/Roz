@@ -278,7 +278,6 @@ def validate_bias_table(bias_meta):
     )
 
     # Add logic checks for header datatypes (edge cases)
-    print(bias_meta["frametype", "exptime", "obserno"])
 
     return bias_meta
 

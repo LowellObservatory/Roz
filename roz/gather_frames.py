@@ -383,6 +383,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         fn_list = []
         for key, val in return_object.items():
             if key.find("_fn") != -1:
+                print(f"Found {len(val)} {key.split('_')[0].upper()} frames")
                 fn_list.append(val)
         # Flatten and return
         return list(np.concatenate(fn_list).flat)
