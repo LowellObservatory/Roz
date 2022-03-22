@@ -34,11 +34,21 @@ from roz import send_alerts as sa
 from roz import utils
 
 
-def plot_lmi_bias_temp():
+def plot_lmi_bias_temp(bias_values, temp_values, bin=None):
     """plot_lmi_bias_temp [summary]
 
     [extended_summary]
     """
+    # Set up the plot environment
+    _, axis = plt.subplots()
+    tsz = 8
+
+    axis.plot(temp_values, bias_values, '.')
+    axis.set_xlabel('Mount Temperature (ºC)')
+    axis.set_ylabel(f'LMI Mean Bias Level (ADU); Binning: {bin}')
+
+    plt.tight_layout()
+    plt.show()
 
 
 def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):

@@ -38,7 +38,7 @@ from ligmos import workers as lig_workers
 from johnnyfive import utils as j5u
 
 # Internal Imports
-from roz import process_calibrations as pc
+from roz import validate_statistics as vs
 from roz import utils
 
 # Set API Components
@@ -129,15 +129,15 @@ class CalibrationDatabase:
         _extended_summary_
         """
         # Set up the internal dictionaries to hold calibration metadata
-        self.bias = pc.validate_bias_table(self.bias_meta)
-        self.dark = pc.validate_dark_table(self.dark_meta)
-        self.skyf = pc.validate_skyf_table(self.skyf_meta)
+        self.bias = vs.validate_bias_table(self.bias_meta)
+        self.dark = vs.validate_dark_table(self.dark_meta)
+        self.skyf = vs.validate_skyf_table(self.skyf_meta)
 
         # For flat frames, need information about the instrument's filters
         if self.flat_meta:
             self.flat = {"filters": utils.FILTER_LIST[self.flags["instrument"]]}
             for flat_filter in self.flat["filters"]:
-                self.flat[flat_filter] = pc.validate_flat_table(
+                self.flat[flat_filter] = vs.validate_flat_table(
                     self.flat_meta, flat_filter
                 )
 
@@ -636,10 +636,12 @@ def neatly_package(table_row, measure):
 
 # Testing ====================================================================#
 if __name__ == "__main__":
-    hist = HistoricalData("lmi", "bias")
+    from roz import graphics_maker as gm
+
+    hist = HistoricalData("lmi", "bias", binning='2x2')
     hist.perform_query()
-    hist.results.pprint()
-    print(hist.results.colnames)
+    # hist.results.pprint()
+    print(f"Table column names:\n{hist.results.colnames}")
 
     print("")
     print(f"Instruments: {hist.instruments}")
@@ -649,8 +651,13 @@ if __name__ == "__main__":
     # print(hist.numamps)
     # print(hist.ampids)
     # print(hist.cropborders)
-    mu = hist.metric_mean("crop_avg")
-    sig = hist.metric_stddev("crop_avg")
-    print(f"\nFor LMI bias frames, the cropped AVG is: {mu:.2f} ± {sig:.2f}")
-    print([d.isoformat(timespec="minutes") for d in hist.results["timestamp"].tolist()])
-    print(f"There were {len(hist.results)} frames found in the database.")
+    print("")
+    for metric in hist.results.colnames:
+        notjunk = np.issubdtype(hist.results[metric].dtype, np.floating)
+        if notjunk:
+            mu = hist.metric_mean(metric)
+            sig = hist.metric_stddev(metric)
+            print(f"For {len(hist.results)} LMI bias frames, the {metric} is: {mu:.2f} ± {sig:.2f}")
+        # print([d.isoformat(timespec="minutes") for d in hist.results["timestamp"].tolist()])
+
+    #gm.plot_lmi_bias_temp(hist.results['crop_avg'], hist.results['mnttemp'], bin=hist.binnings)
