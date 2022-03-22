@@ -80,7 +80,7 @@ def process_bias(
 
     # Show progress bar for processing bias frames
     progress_bar = tqdm(
-        total=len(bias_cl.files), unit="frame", unit_scale=False, colour="yellow"
+        total=len(bias_cl.files), unit="frame", unit_scale=False, colour="#bbc4cc"
     )
 
     # Loop through files
@@ -128,6 +128,7 @@ def process_dark(
     """process_dark Process and combine available dark frames
 
     NOTE: Not yet implemented -- Boilerplate below is from process_bias
+          tqdm color should be "#00008b"
     """
     dark_cl = check_processing_ifc(dark_cl, binning)
     dark_ccds, metadata, _ = [], [], None
@@ -197,7 +198,7 @@ def process_domeflat(
 
     # Show progress bar for processing flat frames
     progress_bar = tqdm(
-        total=len(flat_cl.files), unit="frame", unit_scale=False, colour="yellow"
+        total=len(flat_cl.files), unit="frame", unit_scale=False, colour="#fc6a03"
     )
 
     # Loop through flat frames, subtracting bias and gathering statistics
@@ -246,6 +247,7 @@ def process_skyflat(
     """process_flats Process the flat fields and return statistics
 
     NOTE: Not yet implemented --
+          tqdm color should be "red"
     """
     return Table()
 
@@ -270,11 +272,11 @@ def validate_bias_table(bias_meta):
         return None
 
     # For now, just print some stats and return the table.
-    print("\nIn validate_bias_table():")
+    print("==> Validating BIAS in validate_bias_table():")
     print(
-        f"Mean: {np.mean(bias_meta['crop_avg']):.2f}  "
-        f"Median: {np.median(bias_meta['crop_med']):.2f}  "
-        f"Stddev: {np.mean(bias_meta['crop_std']):.2f}"
+        f"  Mean: {np.mean(bias_meta['crop_avg']):.2f}  "
+        f"  Median: {np.median(bias_meta['crop_med']):.2f}  "
+        f"  Stddev: {np.mean(bias_meta['crop_std']):.2f}"
     )
 
     # Add logic checks for header datatypes (edge cases)
@@ -323,11 +325,11 @@ def validate_flat_table(flat_meta, flat_filter):
     #  exptime).
 
     # Do something...
-    print(f"\nValidating {flat_filter} in validate_flat_table():")
+    print(f"==> Validating {flat_filter} in validate_flat_table():")
     print(
-        f"Mean: {np.mean(subtable['frame_avg']):.2f}  "
-        f"Median:  {np.median(subtable['frame_med']):.2f}  "
-        f"Stddev:  {np.mean(subtable['frame_std']):.2f}"
+        f"  Mean: {np.mean(subtable['frame_avg']):.2f}  "
+        f"  Median:  {np.median(subtable['frame_med']):.2f}  "
+        f"  Stddev:  {np.mean(subtable['frame_std']):.2f}"
     )
 
     # Find the mean quadric surface for this set of flats

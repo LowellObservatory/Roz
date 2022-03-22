@@ -116,6 +116,10 @@ def update_filter_characterization(
             content_type="image/png",
             comment="Flat Field Image",
         )
+        print(f"Uploaded: {png}")
+
+    # Print a happy little message
+    print(f"Successfully updated the Confluence page {page_info.page_title}")
 
 
 # Descriptive, high-level functions ==========================================#

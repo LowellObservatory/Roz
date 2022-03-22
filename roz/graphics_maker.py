@@ -30,6 +30,7 @@ from astropy.visualization import AsymmetricPercentileInterval
 import matplotlib.pyplot as plt
 
 # Internal Imports
+from roz import send_alerts as sa
 from roz import utils
 
 
@@ -40,7 +41,7 @@ def plot_lmi_bias_temp():
     """
 
 
-def make_png_thumbnail(img_fn, inst_flags, latest=True):
+def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):
     """make_png_thumbnail Make PNG thumbnails of calibration frames
 
     These thumbnails will be uploaded to the Confluence page and will be
@@ -55,6 +56,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     latest : `bool`, optional
         Label this image as a 'Latest' image rather than a 'Nominal' image.
         [Default: True]
+    debug : `bool`, optional
+        Pring debugging statements?  [Default: False]
 
     Returns
     -------
@@ -64,8 +67,10 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     # Read in the image, with error checking
     try:
         ccd = CCDData.read(img_fn)
-    except Exception as exception:
-        print(f"Could not open {img_fn} because of {exception}.")
+    except OSError as exception:
+        sa.send_alert(
+            f"Could not open {img_fn} because of {exception}.", "make_png_thumbnail()"
+        )
         return None
 
     # Since we use the filename (sans path) in the graphic title...
@@ -84,17 +89,18 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
     png_fn.append(f"{hdr['OBSERNO']:04d}")
     png_fn.append("png")
     png_fn = ".".join(png_fn)
-    print(f"This is the PNG filename!  {png_fn}")
+    if debug:
+        print(f"This is the PNG filename!  {png_fn}")
 
     # Set up the plot environment
-    _, ax = plt.subplots(figsize=(5, 5.2))
+    _, axis = plt.subplots(figsize=(5, 5.2))
     tsz = 10
 
     # Plotting percentile limits -- convert to image intensity limits
     vmin, vmax = get_image_intensity_limits(ccd)
 
     # Show the data on the plot, using the limits computed above
-    ax.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower", cmap="gist_gray")
+    axis.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower", cmap="gist_gray")
 
     # Set the title and don't draw any axes
     title = [
@@ -105,8 +111,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True):
         hdr["DATE-OBS"].split("T")[0],
         img_fn,
     ]
-    ax.set_title("   ".join(title), y=-0.00, pad=-14, fontsize=tsz)
-    ax.axis("off")
+    axis.set_title("   ".join(title), y=-0.00, pad=-14, fontsize=tsz)
+    axis.axis("off")
 
     # Clean up the plot and save
     plt.tight_layout()

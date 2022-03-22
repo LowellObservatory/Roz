@@ -144,7 +144,7 @@ class Run:
 
             # Print out a nice status message for those interested
             human_bin = binning.replace(" ", "x")
-            print(f"Processing the database for {human_bin} binning...")
+            print(f"\nProcessing the database for {human_bin} binning...")
 
             # Set default meta and combined frames to `NoneType`
             bias_meta = dark_meta = flat_meta = skyf_meta = None

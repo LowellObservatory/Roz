@@ -139,7 +139,7 @@ class Dumbwaiter:
         print(f"Copying data from {self.data_dir} to {self.proc_dir} for processing...")
         # Show progress bar for copying files
         progress_bar = tqdm(
-            total=len(self.frames), unit="file", unit_scale=False, colour="cyan"
+            total=len(self.frames), unit="file", unit_scale=False, colour="#2a52be"
         )
         for frame in self.frames:
             shutil.copy2(self.data_dir.joinpath(frame), self.proc_dir)
@@ -189,12 +189,16 @@ class Dumbwaiter:
         if testing:
             return
 
+        # Create a summary table to include in the tarball
+        self._make_summary_table()
+
         # Tar up the files!
         print("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
+            tar.add(self.proc_dir.joinpath("README.txt"), arcname="README.txt")
             # Show progress bar for processing the tarball
             progress_bar = tqdm(
-                total=len(self.frames), unit="file", unit_scale=False, colour="green"
+                total=len(self.frames), unit="file", unit_scale=False, colour="#00ff7f"
             )
             for name in self.frames:
                 tar.add(self.proc_dir.joinpath(name), arcname=name)
@@ -216,6 +220,26 @@ class Dumbwaiter:
         print(f"Copying {tarbase} to {cold_dir}...")
         # NOTE: Using this lower-level function to avoid chmod() errors
         shutil.copyfile(tarname, cold_dir.joinpath(tarbase))
+
+    def _make_summary_table(self, debug=False):
+        """_make_summary_table Create and write to disk a summary table
+
+        Add summary table to the tarball for future reference
+        Tags: obserno, frametype, filter, binning, numamp, ampid
+        """
+        icl = ccdp.ImageFileCollection(location=self.proc_dir, filenames=self.frames)
+        # Pull the subtable based on FITS header keywords
+        summary = icl.summary[
+            "obserno", "imagetyp", "filters", "ccdsum", "numamp", "ampid"
+        ]
+        # Convert those to the InfluxDB tags used with Roz
+        summary.rename_columns(
+            ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
+        )
+        # Write it out!
+        summary.write(self.proc_dir.joinpath("README.txt"), format="ascii.fixed_width")
+        if debug:
+            summary.pprint()
 
 
 # Non-Class Functions ========================================================#
@@ -337,7 +361,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
-        directory, glob_include=f"{inst_flag['prefix']}*.fits"
+        location=directory, glob_include=f"{inst_flag['prefix']}*.fits"
     )
 
     if not icl.files:
@@ -389,14 +413,14 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     if fnames_only:
         # Append all the filename lists onto `fn_list`
         fn_list = []
-        print(f"{'='*19}\nFrame Summary:")
+        print(f"{'*'*19}\n* -Frame Summary- *")
         for key, val in return_object.items():
             if key.find("_fn") != -1:
-                print(f"= {key.split('_')[0].upper():10s}: {len(val):3d} =")
+                print(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
                 fn_list.append(val)
-        # Flatten and return
-        print("=" * 19)
-        return list(np.concatenate(fn_list).flat)
+        print("*" * 19)
+        # Flatten and return the BASENAME only
+        return [os.path.basename(fn) for fn in list(np.concatenate(fn_list).flat)]
 
     # Otherwise, return the accumulated dictionary
     return return_object
