@@ -19,6 +19,7 @@ This module primarily trades in... utility?
 """
 
 # Built-In Libraries
+import os
 import pathlib
 
 # 3rd Party Libraries
@@ -216,6 +217,26 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         ligconf[confname], ConfClass, backfill=True
     )
     return ligconf
+
+
+def subpath(path_to_dir):
+    """subpath Simple function to return the instrument/date part of the path
+
+    The instrument/date part of the path should be independent of machine
+    on which Roz is running, so the notes posted to Slack, etc., will neither
+    reveal the host machine nor will include that distracting information.
+
+    Parameters
+    ----------
+    path_to_dir : `str` or `pathlib.Path`
+        The full path to the directory of interest
+
+    Returns
+    -------
+    `str`
+        The `instrument/date` portion of the full path
+    """
+    return os.sep.join(path_to_dir.split(os.sep)[-2:])
 
 
 def table_sort_on_list(table, colname, sort_list):

@@ -324,11 +324,11 @@ class HistoricalData:
         # Get the results of the query in a safe way:
         results = j5u.safe_service_connect(self.idfc.query, query_str)
 
-        # If `results` is empty, return a (nearly) empty table
+        # If `results` is empty, assign a (nearly) empty table
         if results == {}:
             # TODO: Convert this to a warning or send_alert() thing
             print("Query returned no results!")
-            return Table(
+            self.results = Table(
                 names=("timestamp", "instrument", "frametype"),
                 dtype=("O", "U12", "U12"),
             )

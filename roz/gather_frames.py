@@ -89,7 +89,9 @@ class Dumbwaiter:
 
         # If the directory is completely empty: send alert, set empty, return
         if not self.instrument:
-            sa.send_alert("Empty Directory", "Dumbwaiter.__init__()")
+            sa.send_alert(
+                f"Directory {self.data_dir} is empty", "Dumbwaiter.__init__()"
+            )
             self.empty = True
             return
 
@@ -129,10 +131,7 @@ class Dumbwaiter:
             return
 
         if not keep_existing:
-            print(
-                "Cleaning out previous cruft in processing directory "
-                f"{self.proc_dir}"
-            )
+            print("Clearing cruft from processing directory " f"{self.proc_dir}")
             for entry in os.scandir(self.proc_dir):
                 if entry.is_file():
                     os.remove(self.proc_dir.joinpath(entry))
@@ -169,7 +168,8 @@ class Dumbwaiter:
 
         # First, check to see if the UT Date is encoded in the source `data_dir`
         #  (8 consecutive digits) using regex negative lookbehind / lookahead
-        if result := re.search(r"(?<!\d)\d{8}(?!\d)", str(self.data_dir)):
+        #  but also includes the lowercase letter sub-night designation
+        if result := re.search(r"(?<!\d)\d{8}[a-z](?!\d)", str(self.data_dir)):
             utdate = result.group(0)
 
         # Otherwise, grab the header of the LAST file in self.frames (as this
@@ -197,7 +197,7 @@ class Dumbwaiter:
                 total=len(self.frames), unit="file", unit_scale=False, colour="green"
             )
             for name in self.frames:
-                tar.add(self.proc_dir.joinpath(name))
+                tar.add(self.proc_dir.joinpath(name), arcname=name)
                 progress_bar.update(1)
             progress_bar.close()
 
@@ -207,13 +207,15 @@ class Dumbwaiter:
         cold_dir = pathlib.Path(self.locations.coldstorage_dir).joinpath(
             self.inst_flags["site"], self.instrument
         )
-        if not os.path.isdir(cold_dir):
+        if not cold_dir.is_dir():
             sa.send_alert(
-                "Woah, nellie.  No cold storage directory!", "Dumbwaiter.cold_storage()"
+                f"Woah!  No cold storage directory at {cold_dir}",
+                "Dumbwaiter.cold_storage()",
             )
             return
         print(f"Copying {tarbase} to {cold_dir}...")
-        shutil.copy2(tarname, cold_dir)
+        # NOTE: Using this lower-level function to avoid chmod() errors
+        shutil.copyfile(tarname, cold_dir.joinpath(tarbase))
 
 
 # Non-Class Functions ========================================================#
@@ -239,7 +241,10 @@ def check_directory_okay(directory, caller=None):
     """
     # Check that `directory` is, in fact, a directory
     if not os.path.isdir(directory):
-        sa.send_alert(f"Directory Issue: {directory} is not a valid directory", caller)
+        sa.send_alert(
+            f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
+            caller,
+        )
         return False
 
     # Get the list of normal FITS files in the directory
@@ -248,7 +253,8 @@ def check_directory_okay(directory, caller=None):
     # Check if there's anything useful
     if not fits_files:
         sa.send_alert(
-            f"Empty Directory: {directory} does not contain any sequential FITS files",
+            f"Empty Directory: {utils.subpath(directory)} does not contain "
+            "any sequential FITS files",
             caller,
         )
         return False
@@ -288,12 +294,14 @@ def divine_instrument(directory):
     for fitsfile in fits_files:
         try:
             # If we're good to go...
-            if os.path.isfile(fitsfile):
+            if fitsfile.is_file():
                 return getheader(fitsfile)["instrume"].lower()
         except KeyError:
             continue
     # Otherwise...
-    sa.send_alert("No Instrument Found", "divine_instrument()")
+    sa.send_alert(
+        f"No Instrument found in {utils.subpath(directory)}", "divine_instrument()"
+    )
     return None
 
 
@@ -335,7 +343,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     if not icl.files:
         print("There ain't nothin' here that meets my needs!")
         sa.send_alert(
-            f"EmptyDirectoryAlert: No matching files in {directory}",
+            f"Empty Directory: No matching files in {utils.subpath(directory)}",
             "gather_cal_frames()",
         )
         return None
@@ -381,11 +389,13 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     if fnames_only:
         # Append all the filename lists onto `fn_list`
         fn_list = []
+        print(f"{'='*19}\nFrame Summary:")
         for key, val in return_object.items():
             if key.find("_fn") != -1:
-                print(f"Found {len(val)} {key.split('_')[0].upper()} frames")
+                print(f"= {key.split('_')[0].upper():10s}: {len(val):3d} =")
                 fn_list.append(val)
         # Flatten and return
+        print("=" * 19)
         return list(np.concatenate(fn_list).flat)
 
     # Otherwise, return the accumulated dictionary

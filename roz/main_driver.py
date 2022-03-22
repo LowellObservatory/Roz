@@ -82,7 +82,7 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
 
             # Copy over the sorted frames to processing, and package for cold storage
             dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(testing=True)
+            dumbwaiter.cold_storage(testing=False)
 
             # Giddy up!
             run = Run(dumbwaiter, mem_limit=mem_limit)
@@ -236,7 +236,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Do not process the calibration frames",
     )
+    parser.add_argument(
+        "--gb16", action="store_true", help="Allow 16GB RAM for image combining"
+    )
     args = parser.parse_args()
 
     # Giddy Up!
-    main(args.directory, do_science=args.science, skip_cals=args.nocal)
+    main(
+        args.directory,
+        do_science=args.science,
+        skip_cals=args.nocal,
+        mem_limit=16.384e9 if args.gb16 else 8.192e9,
+    )
