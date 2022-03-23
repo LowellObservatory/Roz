@@ -19,6 +19,7 @@ This module primarily trades in Exception-like `Alert` objects.
 """
 
 # Built-In Libraries
+import os
 import warnings
 
 # 3rd Party Libraries
@@ -30,6 +31,10 @@ from johnnyfive import slack as j5s
 # Internal Imports
 
 
+# Constants
+MACHINE = os.uname()[1].split(".")[0]
+
+
 def send_alert(alert_type, caller=None):
     """send_alert Send out an alert
 
@@ -39,6 +44,6 @@ def send_alert(alert_type, caller=None):
     There are various types of alerts that can be sent... maybe choose the
     medium based on the input `alertclass`?
     """
-    print(f"***** Alert Alert Alert: {alert_type}: {caller}")
+    print(f"***** Alert: {alert_type.replace('`','')}: {caller}")
     slack_alert = j5s.SlackChannel("bot_test")
-    slack_alert.send_message(f"This is a message from Roz: {alert_type}: {caller}")
+    slack_alert.send_message(f"From Roz on `{MACHINE}`:: {alert_type}: `{caller}`")

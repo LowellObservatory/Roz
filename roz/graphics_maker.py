@@ -43,10 +43,13 @@ def plot_lmi_bias_temp(bias_values, temp_values, bin=None):
     _, axis = plt.subplots()
     tsz = 8
 
-    axis.plot(temp_values, bias_values, '.')
-    axis.set_xlabel('Mount Temperature (ºC)')
-    axis.set_ylabel(f'LMI Mean Bias Level (ADU); Binning: {bin}')
+    axis.plot(temp_values, bias_values, ".")
+    axis.set_xlabel("Mount Temperature (ºC)", fontsize=tsz)
+    axis.set_ylabel(f"LMI Mean Bias Level (ADU); Binning: {bin}", fontsize=tsz)
 
+    axis.tick_params(
+        "both", which="both", direction="in", top=True, right=True, labelsize=tsz
+    )
     plt.tight_layout()
     plt.show()
 

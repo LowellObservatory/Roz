@@ -34,7 +34,7 @@ from roz import process_calibrations as pc
 
 
 # The MAIN Attraction ========================================================#
-def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9):
+def main(directories=None, do_science=False, skip_cals=False, no_cold=False, mem_limit=8.192e9):
     """main This is the main function.
 
     This function takes the directory input, determines the instrument
@@ -52,6 +52,8 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
         Also do QA on science frames?  [Default: False]
     skip_cals : `bool`, optional
         Do not process the calibration frames.  [Default: False]
+    no_cold : `bool`, optional
+        Pass to `testing` in .cold_storage()  [Default: False]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
     """
@@ -82,7 +84,7 @@ def main(directories=None, do_science=False, skip_cals=False, mem_limit=8.192e9)
 
             # Copy over the sorted frames to processing, and package for cold storage
             dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(testing=False)
+            dumbwaiter.cold_storage(testing=no_cold)
 
             # Giddy up!
             run = Run(dumbwaiter, mem_limit=mem_limit)

@@ -213,7 +213,7 @@ class Dumbwaiter:
         )
         if not cold_dir.is_dir():
             sa.send_alert(
-                f"Woah!  No cold storage directory at {cold_dir}",
+                f"Woah!  No cold storage directory at {cold_dir} on `{sa.MACHINE}`",
                 "Dumbwaiter.cold_storage()",
             )
             return
@@ -277,7 +277,7 @@ def check_directory_okay(directory, caller=None):
     # Check if there's anything useful
     if not fits_files:
         sa.send_alert(
-            f"Empty Directory: {utils.subpath(directory)} does not contain "
+            f"Empty Directory: `{utils.subpath(directory)}` does not contain "
             "any sequential FITS files",
             caller,
         )
@@ -361,7 +361,9 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
 
     # Create an ImageFileCollection for the specified directory
     icl = ccdp.ImageFileCollection(
-        location=directory, glob_include=f"{inst_flag['prefix']}*.fits"
+        location=directory,
+        glob_include=f"{inst_flag['prefix']}*.fits",
+        glob_exclude="test.fits",
     )
 
     if not icl.files:

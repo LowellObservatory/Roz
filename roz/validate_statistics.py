@@ -37,18 +37,24 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
+from roz import database_manager as dm
+from roz import send_alerts as sa
 from roz import utils
 
 
-def validate_bias_table(bias_meta):
+def validate_bias_table(bias_meta, junk=None):
+    return validate_metadata_table(bias_meta, "bias")
+
+
+def validate_metadata_table(meta_table, frametype=None):
     """validate_bias_table Analyze and validate the bias frame metadata table
 
     [extended_summary]
 
     Parameters
     ----------
-    bias_meta : `astropy.table.Table`
-        A table containing information about the bias frames for analysis
+    meta_table : `astropy.table.Table`
+        A table containing information about the frames for analysis
 
     Returns
     -------
@@ -56,23 +62,73 @@ def validate_bias_table(bias_meta):
         The, um, validated table?  This may change.
     """
     # If there were no biases at all (blank Table), return None
-    if not bias_meta:
+    if not meta_table:
         return None
 
+    # These are the metrics we will validate (remove problematic metrics)
+    metrics = [
+        metric
+        for metric in meta_table.colnames
+        if any(s in metric for s in ["qs_", "crop_", "frame_", "_flat"])
+    ]
+    for removal in ["qs_maj", "qs_bma", "qs_open"]:
+        metrics.remove(removal)
+
+    # Print the banner
+    print(f"==> Validating {frametype.upper()} in validate_metadata_table():")
+
+    # Pull the Historical Data matching this set
+    hist = dm.HistoricalData(
+        sorted(list(set(meta_table["instrument"])))[0].lower(),
+        frametype,
+        binning=sorted(list(set(meta_table["binning"])))[0],
+        numamp=sorted(list(set(meta_table["numamp"])))[0],
+        ampid=sorted(list(set(meta_table["ampid"])))[0],
+        debug=False,
+    )
+    hist.perform_query()
+
+    # Build some quick dictionaries containing the Gaussian statistics
+    mu = {}
+    sig = {}
+    for check in metrics:
+        mu[check] = hist.metric_mean(check)
+        sig[check] = hist.metric_stddev(check)
+
+    # Loop through the frames one by one
+    for row in meta_table:
+        # Then, loop over the list of metrics in bias_meta that should be compared
+        for check in metrics:
+            # Greater than 3 sigma deviation, alert
+            if (deviation := np.abs(row[check] - mu[check]) / sig[check]) > 3.0:
+                sa.send_alert(
+                    f"{frametype.upper()} frame {row['obserno']} with timestamp "
+                    f"`{row['dateobs'][:19]}` has a `{check}` that is "
+                    f"{deviation:.2f} sigma from the metric mean",
+                    "validate_metadata_table()",
+                )
+                # TODO: Figure out how to send the image of the frame and a
+                #       graph showing the tend over time of this metric along
+                #       with the discrepant value.
+                # TODO: Also, figure out how to add an extra column to the
+                #       meta_table containing a flag for discrepant frame.
+                #       It's possible that we could loop through the table
+                #       somewhere else in the code, and upload the above
+                #       graphs / PNGs at that time.
+
     # For now, just print some stats and return the table.
-    print("==> Validating BIAS in validate_bias_table():")
     print(
-        f"  Mean: {np.mean(bias_meta['crop_avg']):.2f}  "
-        f"  Median: {np.median(bias_meta['crop_med']):.2f}  "
-        f"  Stddev: {np.mean(bias_meta['crop_std']):.2f}"
+        f"  Mean: {np.mean(meta_table['crop_avg']):.2f}  "
+        f"  Median: {np.median(meta_table['crop_med']):.2f}  "
+        f"  Stddev: {np.mean(meta_table['crop_std']):.2f}"
     )
 
     # Add logic checks for header datatypes (edge cases)
 
-    return bias_meta
+    return meta_table
 
 
-def validate_dark_table(dark_meta):
+def validate_dark_table(dark_meta, junk=None):
     """validate_dark_table Analyze and validate the dark frame metadata table
 
     NOTE: Not yet implemented
@@ -80,7 +136,7 @@ def validate_dark_table(dark_meta):
     return dark_meta
 
 
-def validate_flat_table(flat_meta, flat_filter):
+def validate_flat_table(flat_meta, flat_filter, junk=None):
     """validate_flat_table Analyze and validate the flat frame metadata table
 
     Separates the wheat from the chaff -- returning a subtable for the
@@ -127,11 +183,9 @@ def validate_flat_table(flat_meta, flat_filter):
     return subtable
 
 
-def validate_skyf_table(skyf_meta):
+def validate_skyf_table(skyf_meta, junk=None):
     """validate_dark_table Analyze and validate the sky flat frame metadata table
 
     NOTE: Not yet implemented
     """
     return skyf_meta
-
-

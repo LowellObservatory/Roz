@@ -129,16 +129,16 @@ class CalibrationDatabase:
         _extended_summary_
         """
         # Set up the internal dictionaries to hold calibration metadata
-        self.bias = vs.validate_bias_table(self.bias_meta)
-        self.dark = vs.validate_dark_table(self.dark_meta)
-        self.skyf = vs.validate_skyf_table(self.skyf_meta)
+        self.bias = vs.validate_bias_table(self.bias_meta, "bias")
+        self.dark = vs.validate_dark_table(self.dark_meta, "dark")
+        self.skyf = vs.validate_skyf_table(self.skyf_meta, "sky flat")
 
         # For flat frames, need information about the instrument's filters
         if self.flat_meta:
             self.flat = {"filters": utils.FILTER_LIST[self.flags["instrument"]]}
             for flat_filter in self.flat["filters"]:
                 self.flat[flat_filter] = vs.validate_flat_table(
-                    self.flat_meta, flat_filter
+                    self.flat_meta, flat_filter, "dome flat"
                 )
 
     def write_to_influxdb(self, testing=True):
@@ -269,6 +269,7 @@ class HistoricalData:
         numamp=None,
         ampid=None,
         cropborder=None,
+        debug=False,
     ):
         # Init various attributes
         self.results = None
@@ -283,6 +284,8 @@ class HistoricalData:
             "ampid": ampid,
             "cropborder": cropborder,
         }
+        if debug:
+            print(self.tagdict)
 
         # Parse the configuration file
         db_query, db_info = lig_utils.confparsers.parseConfig(
@@ -291,6 +294,7 @@ class HistoricalData:
             passfile=None,
             searchCommon=True,
             enableCheck=False,
+            debug=debug,
         )
 
         # Formally create the query from the parsed configuration file
@@ -332,6 +336,7 @@ class HistoricalData:
                 names=("timestamp", "instrument", "frametype"),
                 dtype=("O", "U12", "U12"),
             )
+            return
 
         # `results` is a dict of pandas dataframes; but in our case there is only
         #   one key in the dict, namely `query.metricname`.
@@ -638,7 +643,7 @@ def neatly_package(table_row, measure):
 if __name__ == "__main__":
     from roz import graphics_maker as gm
 
-    hist = HistoricalData("lmi", "bias", binning='2x2')
+    hist = HistoricalData("lmi", "bias", binning="3x3", debug=True)
     hist.perform_query()
     # hist.results.pprint()
     print(f"Table column names:\n{hist.results.colnames}")
@@ -657,7 +662,9 @@ if __name__ == "__main__":
         if notjunk:
             mu = hist.metric_mean(metric)
             sig = hist.metric_stddev(metric)
-            print(f"For {len(hist.results)} LMI bias frames, the {metric} is: {mu:.2f} ± {sig:.2f}")
+            print(
+                f"For {len(hist.results)} LMI bias frames, the {metric} is: {mu:.2f} ± {sig:.2f}"
+            )
         # print([d.isoformat(timespec="minutes") for d in hist.results["timestamp"].tolist()])
 
-    #gm.plot_lmi_bias_temp(hist.results['crop_avg'], hist.results['mnttemp'], bin=hist.binnings)
+    # gm.plot_lmi_bias_temp(hist.results['crop_avg'], hist.results['mnttemp'], bin=hist.binnings)
