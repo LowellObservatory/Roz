@@ -59,6 +59,8 @@ class CalibrationDatabase:
         Dictionary of instrument flags from .utils.set_instrument_flags()
     proc_dir : `str` or `pathlib.Path`
         Path to the processing directory
+    nightname: `str`
+        Name of the night (e.g., `lmi/20210106b` or `deveny/20220221a`)
     bias_meta : `astropy.table.Table`, optional
         Table containing the metadata and statistics for BIAS frames [Default: None]
     dark_meta : `astropy.table.Table`, optional
@@ -69,34 +71,21 @@ class CalibrationDatabase:
         Table containing the metadata and statistics for SKY FLAT frames [Default: None]
     """
 
-    def __init__(
-        self,
-        inst_flags,
-        proc_dir,
-        bias_meta=None,
-        dark_meta=None,
-        flat_meta=None,
-        skyf_meta=None,
-    ):
-        # Set internal variables
+    def __init__(self, inst_flags, proc_dir, nightname, **kwargs):
+        # Set instance attributes
         self.flags = inst_flags
         self.proc_dir = proc_dir
-        self.bias_meta = bias_meta
-        self.dark_meta = dark_meta
-        self.flat_meta = flat_meta
-        self.skyf_meta = skyf_meta
+        self.nightname = nightname
 
-        # Init empty validated tables
-        self.bias = None
-        self.dark = None
-        self.flat = None
-        self.skyf = None
+        # Place the metadata tables into a dictionary; init empty validated dict
+        self.meta_tabls = {key: val for key, val in kwargs.items() if "_meta" in key}
+        self.valid_tabls = {}
 
         # Read in the InfluxDB config file
         self.db_setup = utils.read_ligmos_conffiles("databaseSetup")
 
         # The InfluxDB object is thuswise constructed:
-        self.idb = lig_utils.database.influxobj(
+        self.influxdb = lig_utils.database.influxobj(
             tablename=self.db_setup.tablename,
             host=self.db_setup.host,
             port=self.db_setup.port,
@@ -119,9 +108,11 @@ class CalibrationDatabase:
             Array of the corresponding mount temperatures
         """
         # If the bias table is empty, return zeros
-        if not self.bias:
+        if "bias" not in self.valid_tabls or not self.valid_tabls["bias"]:
             return np.asarray([0]), np.asarray([0])
-        return np.asarray(self.bias["crop_avg"]), np.asarray(self.bias["mnttemp"])
+        return np.asarray(self.valid_tabls["bias"]["crop_avg"]), np.asarray(
+            self.valid_tabls["bias"]["mnttemp"]
+        )
 
     def validate(self):
         """validate Run the validation routines on the tables
@@ -129,17 +120,9 @@ class CalibrationDatabase:
         _extended_summary_
         """
         # Set up the internal dictionaries to hold calibration metadata
-        self.bias = vs.validate_bias_table(self.bias_meta, "bias")
-        self.dark = vs.validate_dark_table(self.dark_meta, "dark")
-        self.skyf = vs.validate_skyf_table(self.skyf_meta, "sky flat")
-
-        # For flat frames, need information about the instrument's filters
-        if self.flat_meta:
-            self.flat = {"filters": utils.FILTER_LIST[self.flags["instrument"]]}
-            for flat_filter in self.flat["filters"]:
-                self.flat[flat_filter] = vs.validate_flat_table(
-                    self.flat_meta, flat_filter, "dome flat"
-                )
+        self.valid_tabls = vs.validate_calibration_metadata(
+            self.meta_tabls, filt_list=utils.FILTER_LIST[self.flags["instrument"]]
+        )
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -155,47 +138,49 @@ class CalibrationDatabase:
             If testing, don't commit to InfluxDB  [Default: True]
         """
         # If bias table is extant, loop over frames in self.bias
-        if self.bias:
+        if "bias" in self.valid_tabls and self.valid_tabls["bias"]:
             # List of packets to be committed
             pkt_list = []
-            for entry in self.bias:
+            for entry in self.valid_tabls["bias"]:
                 # Append the packet for this frame to a list to be committed
                 pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
             # Commit the whole list in a safe way
             if not testing:
-                print(f"Writing {len(self.bias)} BIAS frames to InfluxDB...")
+                print(
+                    f"Writing {len(self.valid_tabls['bias'])} BIAS frames to InfluxDB..."
+                )
                 j5u.safe_service_connect(
-                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                    self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
                 )
 
         # If dark tbale is extant, loop over frames in self.dark
-        if self.dark:
+        if "dark" in self.valid_tabls and self.valid_tabls["dark"]:
             # List of packets to be committed
             pkt_list = []
-            for entry in self.dark:
+            for entry in self.valid_tabls["dark"]:
                 # Append the packet for this frame to a list to be committed
                 pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
             # Commit the whole list in a safe way
             if not testing:
                 print(f"Writing {len(pkt_list)} DARK frames to InfluxDB...")
                 j5u.safe_service_connect(
-                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                    self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
                 )
 
         # If flat table is extant, loop over filters
-        if self.flat:
+        if "flat" in self.valid_tabls and self.valid_tabls["flat"]:
 
             # List of packets to be committed
             pkt_list = []
             # Loop through the filters, making FLAT packets and commit them
-            for filt in self.flat["filters"]:
+            for filt in self.valid_tabls["flat"]["filters"]:
                 # Skip filters not used in this data set
                 # print(f"Committing LMI filter {filt}...")
-                if not self.flat[filt]:
+                if not self.valid_tabls["flat"][filt]:
                     continue
 
                 # Loop
-                for entry in self.flat[filt]:
+                for entry in self.valid_tabls["flat"][filt]:
                     pkt_list.append(
                         neatly_package(entry, measure=self.db_setup.metricname)
                     )
@@ -203,7 +188,7 @@ class CalibrationDatabase:
             if not testing:
                 print(f"Writing {len(pkt_list)} FLAT frames to InfluxDB...")
                 j5u.safe_service_connect(
-                    self.idb.singleCommit, pkt_list, table=self.db_setup.tablename
+                    self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
                 )
 
 
@@ -248,7 +233,7 @@ class HistoricalData:
             Instrument name for which to pull (REQUIRED)
         frametype : `str`
             Frame type for which to pull (REQUIRED)
-        filt : `str, optional
+        filter : `str, optional
             Filter for which to pull [Default: None]
         binning : `str` (of form 'cxr'), optional
             Binning for which to pull [Default: None]
@@ -258,32 +243,17 @@ class HistoricalData:
             Amplifier ID for which to pull [Default: None]
         cropborder : `int`, optional
             Crop border size for which to pull [Default: None]
+        debug : `bool`, optional
+            Print debugging statements?  [Default: False]
     """
 
-    def __init__(
-        self,
-        instrument,
-        frametype,
-        filt=None,
-        binning=None,
-        numamp=None,
-        ampid=None,
-        cropborder=None,
-        debug=False,
-    ):
+    def __init__(self, instrument, frametype, debug=False, **kwargs):
         # Init various attributes
         self.results = None
 
         # Create the tag dictionary from the class init inputs
-        self.tagdict = {
-            "instrument": instrument,
-            "frametype": frametype,
-            "filter": filt,
-            "binning": binning,
-            "numamp": numamp,
-            "ampid": ampid,
-            "cropborder": cropborder,
-        }
+        self.tagdict = {"instrument": instrument, "frametype": frametype}
+        self.tagdict.update(kwargs)
         if debug:
             print(self.tagdict)
 
@@ -488,14 +458,19 @@ class HistoricalData:
             The specified column of the InfluxDB result table -- or NaN, if
             the metric is empty or does not exist.
         """
+        # Check that all kwarg keys are in the results table
+        if absent_keys := [key for key in kwargs if key not in self.results.colnames]:
+            warnings.warn(
+                f"The tag{'s' if (plural := len(absent_keys) > 1) else ''} "
+                f"{absent_keys} {'are' if plural else 'is'} not in the results table!"
+            )
+
         # Use any passed **kwargs to further narrow the self.results table
-        results = self.results
-        for key, value in kwargs.items():
-            # print ("%s == %s" %(key, value))
-            if key in results.colnames:
-                results = results[results[key] == value]
-            else:
-                warnings.warn(f"The tag {key} is not in the results table!")
+        results = (
+            {key: val for key, val in kwargs.items() if key in self.results.colnames}
+            if kwargs
+            else self.results
+        )
 
         # If the specifid metric is not in the table, return NaN
         if metric not in results.colnames:
@@ -657,14 +632,16 @@ if __name__ == "__main__":
     # print(hist.ampids)
     # print(hist.cropborders)
     print("")
-    for metric in hist.results.colnames:
-        notjunk = np.issubdtype(hist.results[metric].dtype, np.floating)
+    for metrc in hist.results.colnames:
+        notjunk = np.issubdtype(hist.results[metrc].dtype, np.floating)
         if notjunk:
-            mu = hist.metric_mean(metric)
-            sig = hist.metric_stddev(metric)
+            mu = hist.metric_mean(metrc)
+            sig = hist.metric_stddev(metrc)
             print(
-                f"For {len(hist.results)} LMI bias frames, the {metric} is: {mu:.2f} ± {sig:.2f}"
+                f"For {len(hist.results)} LMI bias frames, the {metrc} is: {mu:.2f} ± {sig:.2f}"
             )
         # print([d.isoformat(timespec="minutes") for d in hist.results["timestamp"].tolist()])
 
-    # gm.plot_lmi_bias_temp(hist.results['crop_avg'], hist.results['mnttemp'], bin=hist.binnings)
+    gm.plot_lmi_bias_temp(
+        hist.results["crop_avg"], hist.results["mnttemp"], binning=hist.binnings
+    )

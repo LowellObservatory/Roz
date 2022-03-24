@@ -34,7 +34,13 @@ from roz import process_calibrations as pc
 
 
 # The MAIN Attraction ========================================================#
-def main(directories=None, do_science=False, skip_cals=False, no_cold=False, mem_limit=8.192e9):
+def main(
+    directories=None,
+    do_science=False,
+    skip_cals=False,
+    no_cold=False,
+    mem_limit=8.192e9,
+):
     """main This is the main function.
 
     This function takes the directory input, determines the instrument
@@ -53,7 +59,7 @@ def main(directories=None, do_science=False, skip_cals=False, no_cold=False, mem
     skip_cals : `bool`, optional
         Do not process the calibration frames.  [Default: False]
     no_cold : `bool`, optional
-        Pass to `testing` in .cold_storage()  [Default: False]
+        Pass to `testing` in gf.Dumbwaiter.cold_storage()  [Default: False]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
     """
@@ -109,7 +115,6 @@ class Run:
         # Set instance attributes
         self.waiter = waiter
         self.mem_limit = mem_limit
-        self.dir = self.waiter.proc_dir
         self.flags = self.waiter.inst_flags
 
     def proc(self):
@@ -135,7 +140,7 @@ class Run:
         specified in the instrument flags.
         """
         # Collect the calibration frames for the processing directory
-        cframes = gf.gather_cal_frames(self.dir, self.flags)
+        cframes = gf.gather_cal_frames(self.waiter.proc_dir, self.flags)
 
         # Copy over `bin_list`, if returned from the above routine
         if "bin_list" in cframes:
@@ -190,7 +195,8 @@ class Run:
             # Take the metadata from the calibration frames and produce DATABASE
             database = dm.CalibrationDatabase(
                 self.flags,
-                self.dir,
+                self.waiter.proc_dir,
+                self.waiter.nightname,
                 bias_meta=bias_meta,
                 dark_meta=dark_meta,
                 flat_meta=flat_meta,

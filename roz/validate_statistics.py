@@ -24,60 +24,113 @@ and the internal database objects (`roz.database_manager.HistoricalData` and
 """
 
 # Built-In Libraries
-import os
-import warnings
 
 # 3rd Party Libraries
-from astropy.stats import mad_std
-from astropy.table import Table
-from astropy.wcs import FITSFixedWarning
-import ccdproc as ccdp
-from ccdproc.utils.slices import slice_from_string as get_slice
 import numpy as np
-from tqdm import tqdm
 
 # Internal Imports
 from roz import database_manager as dm
 from roz import send_alerts as sa
-from roz import utils
 
 
-def validate_bias_table(bias_meta, junk=None):
-    return validate_metadata_table(bias_meta, "bias")
+def validate_calibration_metadata(table_dict, filt_list=None):
+    """validate_metadata_tables Analyze and validate calibration metadata tables
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    table_dict : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    # Blank output dictionary; frametype conversion dictionary
+    validated_metadata = {}
+    frametypes = {
+        "bias": "bias",
+        "dark": "dark",
+        "flat": "dome flat",
+        "skyf": "sky flat",
+    }
+
+    # Loop through tables included in the dictionary (bias, flat, etc.)
+    for tabname, meta_table in table_dict.items():
+        out_key = tabname.replace("_meta", "")
+
+        # If there is no information (blank Table), return None
+        if not meta_table:
+            validated_metadata[out_key] = None
+            continue
+
+        # For DOME FLAT frames, consider individual filters separately
+        if out_key == "flat":
+            flat_dict = {"filters": filt_list}
+            # Put data from each filter into a subdictionary
+            flat_dict.update(
+                {
+                    filt: perform_validation(
+                        meta_table[meta_table["filter"] == filt],
+                        frametypes[out_key],
+                        filt=filt,
+                    )
+                    for filt in filt_list
+                }
+            )
+            validated_metadata[out_key] = flat_dict
+
+        # For everything else, validate en masse
+        else:
+            validated_metadata[out_key] = perform_validation(
+                meta_table, frametypes[out_key]
+            )
+
+    return validated_metadata
 
 
-def validate_metadata_table(meta_table, frametype=None):
-    """validate_bias_table Analyze and validate the bias frame metadata table
+def perform_validation(meta_table, frametype, filt=None):
+    """perform_validation _summary_
 
-    [extended_summary]
+    _extended_summary_
 
     Parameters
     ----------
     meta_table : `astropy.table.Table`
-        A table containing information about the frames for analysis
+        The metadata table to validate
+    frametype : `str`
+        Frame type (e.g., `bias`, `dome flat`, etc.)
+    filt : `str`, optional
+        Filter used for flats [Default: None]
 
     Returns
     -------
     `astropy.table.Table`
-        The, um, validated table?  This may change.
+        The validated metadata table
     """
-    # If there were no biases at all (blank Table), return None
+    # If passed a blank table, return None here.
     if not meta_table:
         return None
 
-    # These are the metrics we will validate (remove problematic metrics)
+    # These are the metrics we will validate for this frametype, namely
+    #   Quadric Surface, frame and crop stats, flatness statistics,
+    #   and thing positions
     metrics = [
         metric
         for metric in meta_table.colnames
-        if any(s in metric for s in ["qs_", "crop_", "frame_", "_flat"])
+        if any(s in metric for s in ["qs_", "crop_", "frame_", "_flat", "pos"])
     ]
-    for removal in ["qs_maj", "qs_bma", "qs_open"]:
+    # Remove less helpful quadric surface metrics from the validation
+    for removal in ["qs_maj", "qs_bma", "qs_open", "qs_rot"]:
         metrics.remove(removal)
 
-    # Print the banner
-    print(f"==> Validating {frametype.upper()} in validate_metadata_table():")
-
-    # Pull the Historical Data matching this set
+    # Print the banner; pull the Historical Data matching this set
+    fstr = f" : {filt}" if filt else ""
+    print(
+        f"==> Validating {frametype.upper()}{fstr} in validate_calibration_metadata_():"
+    )
     hist = dm.HistoricalData(
         sorted(list(set(meta_table["instrument"])))[0].lower(),
         frametype,
@@ -89,18 +142,21 @@ def validate_metadata_table(meta_table, frametype=None):
     hist.perform_query()
 
     # Build some quick dictionaries containing the Gaussian statistics
-    mu = {}
-    sig = {}
-    for check in metrics:
-        mu[check] = hist.metric_mean(check)
-        sig[check] = hist.metric_stddev(check)
+    mu = {check: hist.metric_mean(check) for check in metrics}
+    sig = {check: hist.metric_stddev(check) for check in metrics}
 
     # Loop through the frames one by one
     for row in meta_table:
+
+        # TODO: Gotta find a way to consolidate the alerts to have only 1 per
+        #       frame.  It gets a little rediculous, especially when there are
+        #       are a whole bunch that have gone awry.
+
         # Then, loop over the list of metrics in bias_meta that should be compared
         for check in metrics:
-            # Greater than 3 sigma deviation, alert
-            if (deviation := np.abs(row[check] - mu[check]) / sig[check]) > 3.0:
+            # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
+            deviation = np.abs(row[check] - mu[check]) / np.max([sig[check], 1e-3])
+            if deviation > 3.0:
                 sa.send_alert(
                     f"{frametype.upper()} frame {row['obserno']} with timestamp "
                     f"`{row['dateobs'][:19]}` has a `{check}` that is "
@@ -128,64 +184,8 @@ def validate_metadata_table(meta_table, frametype=None):
     return meta_table
 
 
-def validate_dark_table(dark_meta, junk=None):
-    """validate_dark_table Analyze and validate the dark frame metadata table
+def validate_science_metadata(table_dict):
+    """validate_science_metadata  Analyze and validate science metadata tables
 
     NOTE: Not yet implemented
     """
-    return dark_meta
-
-
-def validate_flat_table(flat_meta, flat_filter, junk=None):
-    """validate_flat_table Analyze and validate the flat frame metadata table
-
-    Separates the wheat from the chaff -- returning a subtable for the
-    specified filter, or None.
-
-    Parameters
-    ----------
-    flat_meta : `astropy.table.Table`
-        Table containing the flat frame metadata
-    flat_filter : `str`
-        Flatfield filter to validate
-
-    Returns
-    -------
-    `astropy.table.Table` or `None`
-        If the `flat_filter` was used in this set, return the subtable of
-        `flat_meta` containing that filter.  Otherwise, return `None`.
-    """
-    # If there were no flats at all (blank Table), return None
-    if not flat_meta:
-        return None
-
-    # Find the rows of the table corresponding to this filter, return if none
-    subtable = flat_meta[flat_meta["filter"] == flat_filter]
-    if not subtable:
-        return None
-
-    # Make sure 'flats' have a reasonable flat countrate, or total counts
-    #  in the range 1,500 - 52,000 ADU above bias.  (Can get from countrate *
-    #  exptime).
-
-    # Do something...
-    print(f"==> Validating {flat_filter} in validate_flat_table():")
-    print(
-        f"  Mean: {np.mean(subtable['frame_avg']):.2f}  "
-        f"  Median:  {np.median(subtable['frame_med']):.2f}  "
-        f"  Stddev:  {np.mean(subtable['frame_std']):.2f}"
-    )
-
-    # Find the mean quadric surface for this set of flats
-    # quadsurf = np.mean(np.asarray(subtable['quadsurf']), axis=0)
-    # print(quadsurf)
-
-    return subtable
-
-
-def validate_skyf_table(skyf_meta, junk=None):
-    """validate_dark_table Analyze and validate the sky flat frame metadata table
-
-    NOTE: Not yet implemented
-    """
-    return skyf_meta

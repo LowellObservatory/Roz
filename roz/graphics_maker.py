@@ -28,13 +28,14 @@ from pathlib import Path
 from astropy.nddata import CCDData
 from astropy.visualization import AsymmetricPercentileInterval
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Internal Imports
 from roz import send_alerts as sa
 from roz import utils
 
 
-def plot_lmi_bias_temp(bias_values, temp_values, bin=None):
+def plot_lmi_bias_temp(bias_values, temp_values, binning=None):
     """plot_lmi_bias_temp [summary]
 
     [extended_summary]
@@ -43,9 +44,14 @@ def plot_lmi_bias_temp(bias_values, temp_values, bin=None):
     _, axis = plt.subplots()
     tsz = 8
 
+    # Check that the temperature values are sensible!
+    idx = np.where((temp_values > -20) & (temp_values < 30))
+    temp_values = temp_values[idx]
+    bias_values = bias_values[idx]
+
     axis.plot(temp_values, bias_values, ".")
     axis.set_xlabel("Mount Temperature (ºC)", fontsize=tsz)
-    axis.set_ylabel(f"LMI Mean Bias Level (ADU); Binning: {bin}", fontsize=tsz)
+    axis.set_ylabel(f"LMI Mean Bias Level (ADU); Binning: {binning}", fontsize=tsz)
 
     axis.tick_params(
         "both", which="both", direction="in", top=True, right=True, labelsize=tsz

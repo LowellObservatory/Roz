@@ -45,5 +45,23 @@ def send_alert(alert_type, caller=None):
     medium based on the input `alertclass`?
     """
     print(f"***** Alert: {alert_type.replace('`','')}: {caller}")
+
+    # TODO: Gotta find a way to not re-init the Slack instance with each call.
+    #       Otherwise, with each alert (could be many in short sequence) the
+    #       code goes through the whole initialization mess (disk reads,
+    #       credential handshakes, etc.).
+
     slack_alert = j5s.SlackChannel("bot_test")
     slack_alert.send_message(f"From Roz on `{MACHINE}`:: {alert_type}: `{caller}`")
+
+
+def build_problem_report(validation_dict):
+    """build_problem_report _summary_
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    validation_dict : _type_
+        _description_
+    """
