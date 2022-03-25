@@ -39,6 +39,7 @@ def main(
     do_science=False,
     skip_cals=False,
     no_cold=False,
+    sigma_thresh=3.0,
     mem_limit=8.192e9,
 ):
     """main This is the main function.
@@ -60,6 +61,9 @@ def main(
         Do not process the calibration frames.  [Default: False]
     no_cold : `bool`, optional
         Pass to `testing` in gf.Dumbwaiter.cold_storage()  [Default: False]
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
     """
@@ -93,7 +97,7 @@ def main(
             dumbwaiter.cold_storage(testing=no_cold)
 
             # Giddy up!
-            run = Run(dumbwaiter, mem_limit=mem_limit)
+            run = Run(dumbwaiter, sigma_thresh=sigma_thresh, mem_limit=mem_limit)
             run.proc()
 
 
@@ -109,13 +113,17 @@ class Run:
         The dumbwaiter holding the incoming files for processing
     mem_limit : `float`, optional
         Memory limit for the image combination routine.  [Default: None]
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
     """
 
-    def __init__(self, waiter, mem_limit=None):
+    def __init__(self, waiter, sigma_thresh=3, mem_limit=None):
         # Set instance attributes
         self.waiter = waiter
         self.mem_limit = mem_limit
         self.flags = self.waiter.inst_flags
+        self.sigma_thresh = sigma_thresh
 
     def proc(self):
         """proc Process the files specified in the Dumbwaiter
@@ -204,7 +212,7 @@ class Run:
                 skyf_meta=skyf_meta,
             )
             # Validate the metadata tables, and write contents to InfluxDB
-            database.validate()
+            database.validate(sigma_thresh=self.sigma_thresh)
             database.write_to_influxdb(testing=False)
 
             if self.flags["instrument"].lower() == "lmi":
@@ -248,6 +256,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gb16", action="store_true", help="Allow 16GB RAM for image combining"
     )
+    parser.add_argument(
+        "--sig_thresh",
+        type=float,
+        default=3.0,
+        help="Sigma threshold for reporting problematic frames [Default: 3.0]",
+    )
     args = parser.parse_args()
 
     # Giddy Up!
@@ -255,5 +269,6 @@ if __name__ == "__main__":
         args.directory,
         do_science=args.science,
         skip_cals=args.nocal,
+        sigma_thresh=args.sig_thresh,
         mem_limit=16.384e9 if args.gb16 else 8.192e9,
     )

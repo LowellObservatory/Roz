@@ -32,7 +32,7 @@ import numpy as np
 from roz import database_manager as dm
 
 
-def validate_calibration_metadata(table_dict, filt_list=None):
+def validate_calibration_metadata(table_dict, filt_list=None, sigma_thresh=3.0):
     """validate_metadata_tables Analyze and validate calibration metadata tables
 
     _extended_summary_
@@ -41,6 +41,10 @@ def validate_calibration_metadata(table_dict, filt_list=None):
     ----------
     table_dict : _type_
         _description_
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
+
 
     Returns
     -------
@@ -81,6 +85,7 @@ def validate_calibration_metadata(table_dict, filt_list=None):
                 meta_table[meta_table["filter"] == filt],
                 frametypes[out_key],
                 filt=filt,
+                sigma_thresh=sigma_thresh,
             )
         validated_metadata[out_key] = frame_dict
         validation_report[out_key] = frame_report
@@ -88,7 +93,7 @@ def validate_calibration_metadata(table_dict, filt_list=None):
     return validated_metadata, validation_report
 
 
-def perform_validation(meta_table, frametype, filt=None):
+def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3):
     """perform_validation Perform the validation on this frametype
 
     This function is the heart of the validation scheme, doing the actual
@@ -102,6 +107,9 @@ def perform_validation(meta_table, frametype, filt=None):
         Frame type (e.g., `bias`, `dome flat`, etc.)
     filt : `str`, optional
         Filter used for flats [Default: None]
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
 
     Returns
     -------
@@ -177,7 +185,7 @@ def perform_validation(meta_table, frametype, filt=None):
 
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
             deviation = np.abs(row[check] - mu[check]) / np.max([sig[check], 1e-3])
-            if deviation > 3.0:
+            if deviation > sigma_thresh:
                 report[tag].update(
                     {
                         "timestamp": row["dateobs"],
@@ -214,7 +222,7 @@ def validate_science_metadata(table_dict):
     """
 
 
-def build_problem_report(report_dict):
+def build_problem_report(report_dict, sigma_thresh=3.0):
     """build_problem_report Construct the Problem Report
 
     Parse through the report dictionary to build a string
@@ -229,6 +237,9 @@ def build_problem_report(report_dict):
     ----------
     report_dict : `dict`
         The validation report dictionary from `vs.perform_validation()`
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
 
     Returns
     -------
@@ -253,7 +264,8 @@ def build_problem_report(report_dict):
         f"Problem Report for directory {report_dict['nightname']}, "
         f"binning {report_dict['binning']}\n"
         f"Site: {report_dict['flags']['site'].upper()}, "
-        f"Instrument: {report_dict['flags']['instrument'].upper()}\n*.*."
+        f"Instrument: {report_dict['flags']['instrument'].upper()}\n"
+        f"Statistical deviation threshold: {sigma_thresh}σ from historical values*.*."
     )
     # Loop through frame types first:
     for ftype in report_dict["frame_reports"]:

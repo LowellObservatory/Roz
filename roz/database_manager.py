@@ -117,14 +117,22 @@ class CalibrationDatabase:
             self.valid_tabls["bias"]["mnttemp"]
         )
 
-    def validate(self):
+    def validate(self, sigma_thresh=3):
         """validate Run the validation routines on the tables
 
         _extended_summary_
+
+        Parameters
+        ----------
+        sigma_thresh : `float`, optional
+            The sigma discrepancy threshold for flagging a frame as being
+            'problematic'  [Default: 3.0]
         """
         # Set up the internal dictionaries to hold calibration metadata
         self.valid_tabls, frame_reports = vs.validate_calibration_metadata(
-            self.meta_tabls, filt_list=utils.FILTER_LIST[self.flags["instrument"]]
+            self.meta_tabls,
+            filt_list=utils.FILTER_LIST[self.flags["instrument"]],
+            sigma_thresh=sigma_thresh,
         )
 
         # Construct the full validation report
@@ -136,7 +144,9 @@ class CalibrationDatabase:
         }
 
         # Convert the validation report in to a problem report; post
-        if problem_report := vs.build_problem_report(self.valid_report):
+        if problem_report := vs.build_problem_report(
+            self.valid_report, sigma_thresh=sigma_thresh
+        ):
             sa.post_report(problem_report)
             sa.post_pngs(self.valid_tabls, self.proc_dir, self.flags)
 
