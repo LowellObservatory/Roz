@@ -60,7 +60,7 @@ def plot_lmi_bias_temp(bias_values, temp_values, binning=None):
     plt.show()
 
 
-def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):
+def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=False):
     """make_png_thumbnail Make PNG thumbnails of calibration frames
 
     These thumbnails will be uploaded to the Confluence page and will be
@@ -75,6 +75,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):
     latest : `bool`, optional
         Label this image as a 'Latest' image rather than a 'Nominal' image.
         [Default: True]
+    problem : `bool`, optional
+        If True, this overrides the `latest` flag and labels it as a 'Problem'
     debug : `bool`, optional
         Pring debugging statements?  [Default: False]
 
@@ -123,7 +125,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):
 
     # Set the title and don't draw any axes
     title = [
-        "*Latest*" if latest else "*Nominal*",
+        "*Problem*" if problem else "*Latest*" if latest else "*Nominal*",
         hdr["INSTRUME"].upper(),
         hdr["OBSTYPE"],
         filt,
@@ -137,6 +139,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, debug=False):
     plt.tight_layout()
     plt.subplots_adjust(left=0.01, right=0.99, top=0.99)
     plt.savefig(utils.Paths.thumbnail.joinpath(png_fn))
+    plt.close()
 
     # Return the filename we just saved
     return png_fn

@@ -30,7 +30,6 @@ import numpy as np
 
 # Internal Imports
 from roz import database_manager as dm
-from roz import send_alerts as sa
 
 
 def validate_calibration_metadata(table_dict, filt_list=None):
@@ -48,8 +47,9 @@ def validate_calibration_metadata(table_dict, filt_list=None):
     _type_
         _description_
     """
-    # Blank output dictionary; frametype conversion dictionary
+    # Blank output dict; blank report dict; frametype conversion dict
     validated_metadata = {}
+    validation_report = {}
     frametypes = {
         "bias": "bias",
         "dark": "dark",
@@ -61,40 +61,38 @@ def validate_calibration_metadata(table_dict, filt_list=None):
     for tabname, meta_table in table_dict.items():
         out_key = tabname.replace("_meta", "")
 
-        # If there is no information (blank Table), return None
+        # If there is no information (blank Table), insert None into output dicts
         if not meta_table:
             validated_metadata[out_key] = None
+            validation_report[out_key] = None
             continue
 
-        # For DOME FLAT frames, consider individual filters separately
-        if out_key == "flat":
-            flat_dict = {"filters": filt_list}
-            # Put data from each filter into a subdictionary
-            flat_dict.update(
-                {
-                    filt: perform_validation(
-                        meta_table[meta_table["filter"] == filt],
-                        frametypes[out_key],
-                        filt=filt,
-                    )
-                    for filt in filt_list
-                }
-            )
-            validated_metadata[out_key] = flat_dict
+        # For all Tables that contain information, build the report dictionary
+        #  in the same fashion: [out_key][filter][framecollection][frameinfo]
+        #  The metadata tables should also be [out_key][filter][augmented_meta]
 
-        # For everything else, validate en masse
-        else:
-            validated_metadata[out_key] = perform_validation(
-                meta_table, frametypes[out_key]
-            )
+        # Build the basic [filter] steps of the dictionaries:
+        frame_dict = {"filters": filt_list if out_key == "flat" else ["DARK"]}
+        frame_report = {}
 
-    return validated_metadata
+        # Put data from each filter into a subdictionary
+        for filt in frame_dict["filters"]:
+            frame_dict[filt], frame_report[filt] = perform_validation(
+                meta_table[meta_table["filter"] == filt],
+                frametypes[out_key],
+                filt=filt,
+            )
+        validated_metadata[out_key] = frame_dict
+        validation_report[out_key] = frame_report
+
+    return validated_metadata, validation_report
 
 
 def perform_validation(meta_table, frametype, filt=None):
-    """perform_validation _summary_
+    """perform_validation Perform the validation on this frametype
 
-    _extended_summary_
+    This function is the heart of the validation scheme, doing the actual
+    comparison with historical data and
 
     Parameters
     ----------
@@ -107,12 +105,18 @@ def perform_validation(meta_table, frametype, filt=None):
 
     Returns
     -------
-    `astropy.table.Table`
+    meta_table : `astropy.table.Table`
         The validated metadata table
+    report : `dict`
+        Problem report dictionary
     """
+    # Start with a basic report dictionary
+    report = {"frametype": frametype, "filter": filt}
+
     # If passed a blank table, return None here.
     if not meta_table:
-        return None
+        report["status"] = "EMPTY"
+        return None, report
 
     # These are the metrics we will validate for this frametype, namely
     #   Quadric Surface, frame and crop stats, flatness statistics,
@@ -127,13 +131,14 @@ def perform_validation(meta_table, frametype, filt=None):
         metrics.remove(removal)
 
     # Print the banner; pull the Historical Data matching this set
-    fstr = f" : {filt}" if filt else ""
+    fstr = f" : {filt}" if filt != "DARK" else ""
     print(
         f"==> Validating {frametype.upper()}{fstr} in validate_calibration_metadata_():"
     )
     hist = dm.HistoricalData(
         sorted(list(set(meta_table["instrument"])))[0].lower(),
         frametype,
+        filter=sorted(list(set(meta_table["filter"])))[0],
         binning=sorted(list(set(meta_table["binning"])))[0],
         numamp=sorted(list(set(meta_table["numamp"])))[0],
         ampid=sorted(list(set(meta_table["ampid"])))[0],
@@ -142,35 +147,53 @@ def perform_validation(meta_table, frametype, filt=None):
     hist.perform_query()
 
     # Build some quick dictionaries containing the Gaussian statistics
+    n_vals = {check: hist.metric_n(check) for check in metrics}
     mu = {check: hist.metric_mean(check) for check in metrics}
     sig = {check: hist.metric_stddev(check) for check in metrics}
 
-    # Loop through the frames one by one
-    for row in meta_table:
+    # Make empty arrays to hold 'problem' and 'obstruction' flags
+    p_flag = np.zeros(len(meta_table), dtype=np.int8)
+    o_flag = np.zeros(len(meta_table), dtype=np.int8)
 
-        # TODO: Gotta find a way to consolidate the alerts to have only 1 per
-        #       frame.  It gets a little rediculous, especially when there are
-        #       are a whole bunch that have gone awry.
+    # Loop through the frames one by one
+    frame_status = "GOOD"
+    for i, row in enumerate(meta_table):
+        report[(tag := f"FRAME_{row['obserno']:03d}")] = {}
 
         # Then, loop over the list of metrics in bias_meta that should be compared
         for check in metrics:
+            # If fewer than 30 comparison frames in the DB, skip
+            if n_vals[check] < 30:
+                continue
+
+            # Check for RC/IC positions -- if nonsensical, then set to NaN
+            #   If the mean value is nonsensical, just move on
+            if "pos" in check:
+                if np.abs(row[check]) > 500:
+                    meta_table[check][i] = np.nan
+                    continue
+                if np.abs(mu[check]) > 500:
+                    continue
+
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
             deviation = np.abs(row[check] - mu[check]) / np.max([sig[check], 1e-3])
             if deviation > 3.0:
-                sa.send_alert(
-                    f"{frametype.upper()} frame {row['obserno']} with timestamp "
-                    f"`{row['dateobs'][:19]}` has a `{check}` that is "
-                    f"{deviation:.2f} sigma from the metric mean",
-                    "validate_metadata_table()",
+                report[tag].update(
+                    {
+                        "timestamp": row["dateobs"],
+                        "obserno": row["obserno"],
+                        check: deviation,
+                    }
                 )
-                # TODO: Figure out how to send the image of the frame and a
-                #       graph showing the tend over time of this metric along
-                #       with the discrepant value.
-                # TODO: Also, figure out how to add an extra column to the
-                #       meta_table containing a flag for discrepant frame.
-                #       It's possible that we could loop through the table
-                #       somewhere else in the code, and upload the above
-                #       graphs / PNGs at that time.
+                # Update the frame_status for the report
+                frame_status = "PROBLEM"
+                # Add `p_flag` for this frame
+                p_flag[i] = 1
+                if "pos" in check:
+                    o_flag[i] = 1
+
+    meta_table["problem"] = p_flag
+    meta_table["obstruction"] = o_flag
 
     # For now, just print some stats and return the table.
     print(
@@ -180,8 +203,8 @@ def perform_validation(meta_table, frametype, filt=None):
     )
 
     # Add logic checks for header datatypes (edge cases)
-
-    return meta_table
+    report["status"] = frame_status
+    return meta_table, report
 
 
 def validate_science_metadata(table_dict):
@@ -189,3 +212,87 @@ def validate_science_metadata(table_dict):
 
     NOTE: Not yet implemented
     """
+
+
+def build_problem_report(report_dict):
+    """build_problem_report Construct the Problem Report
+
+    Parse through the report dictionary to build a string
+
+    This is the format of the report dictionary, from `vs.perform_validation()`:
+        Top-level keys: [nightname, flags, binning, frame_reports]
+        Under frame_reports: [bias, flat, (etc.)]
+        Under frame_type: [FILTER, ...]
+        Under filter: [frametype, filter, status, [FRAME_NNN, ...]]
+
+    Parameters
+    ----------
+    report_dict : `dict`
+        The validation report dictionary from `vs.perform_validation()`
+
+    Returns
+    -------
+    `str` or `None`
+        If problems were found in the validation, the Problem Report is returned,
+        otherwise `None`.
+    """
+    # First, gather info on status:
+    status_list = []
+    for ftype in report_dict["frame_reports"]:
+        if not report_dict["frame_reports"][ftype]:
+            continue
+        for filt in report_dict["frame_reports"][ftype]:
+            status_list.append(report_dict["frame_reports"][ftype][filt]["status"])
+
+    # If everything is happy, return None
+    if "PROBLEM" not in status_list:
+        return None
+
+    # Okay, let's build the problem report!
+    report = (
+        f"Problem Report for directory {report_dict['nightname']}, "
+        f"binning {report_dict['binning']}\n"
+        f"Site: {report_dict['flags']['site'].upper()}, "
+        f"Instrument: {report_dict['flags']['instrument'].upper()}\n*.*."
+    )
+    # Loop through frame types first:
+    for ftype in report_dict["frame_reports"]:
+        if not report_dict["frame_reports"][ftype]:
+            continue
+
+        # Then loop through filters:
+        for filt in report_dict["frame_reports"][ftype]:
+            if report_dict["frame_reports"][ftype][filt]["status"] != "PROBLEM":
+                continue
+            # Add information about problems:
+            ff_str = f"{report_dict['frame_reports'][ftype][filt]['frametype']}"
+            if ftype not in ["bias", "dark"]:
+                ff_str += f" : {report_dict['frame_reports'][ftype][filt]['filter']}"
+            report += f"For {ff_str.upper()} the following frames had problems:\n"
+
+            # Find individual frame info
+            for key, fdict in report_dict["frame_reports"][ftype][filt].items():
+                if "FRAME_" not in key or not fdict:
+                    continue
+                time = fdict.pop("timestamp")
+                obsn = fdict.pop("obserno")
+                report += (
+                    f"  File {report_dict['flags']['prefix']}.{obsn:04d}.fits, "
+                    f"DATE-OBS: {time}\n    "
+                )
+
+                # Loop through discrepant items
+                for i, (key2, val) in enumerate(fdict.items()):
+                    if "pos" in key2:
+                        report += f"Possible Obstruction: {key2}"
+                    else:
+                        report += f"{key2}: {val:.2f}σ  "
+                    # Keep the report readable
+                    if (i + 1) % 4 == 0:
+                        report += "\n    "
+                report += "\n"
+
+            # Put a break between each filter
+            report += "*.*."
+
+    return report

@@ -197,6 +197,7 @@ class Run:
                 self.flags,
                 self.waiter.proc_dir,
                 self.waiter.nightname,
+                binning,
                 bias_meta=bias_meta,
                 dark_meta=dark_meta,
                 flat_meta=flat_meta,

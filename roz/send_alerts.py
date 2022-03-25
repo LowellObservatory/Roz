@@ -20,22 +20,22 @@ This module primarily trades in Exception-like `Alert` objects.
 
 # Built-In Libraries
 import os
-import warnings
 
 # 3rd Party Libraries
+from astropy.table import Table
 
 # Lowell Libraries
-from johnnyfive import gmail as j5g
 from johnnyfive import slack as j5s
 
 # Internal Imports
-
+from roz import graphics_maker as gm
+from roz import utils
 
 # Constants
 MACHINE = os.uname()[1].split(".")[0]
 
 
-def send_alert(alert_type, caller=None):
+def send_alert(alert_type, caller=None, no_slack=False):
     """send_alert Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
@@ -51,17 +51,71 @@ def send_alert(alert_type, caller=None):
     #       code goes through the whole initialization mess (disk reads,
     #       credential handshakes, etc.).
 
-    slack_alert = j5s.SlackChannel("bot_test")
-    slack_alert.send_message(f"From Roz on `{MACHINE}`:: {alert_type}: `{caller}`")
+    if not no_slack:
+        slack_alert = j5s.SlackChannel("bot_test")
+        slack_alert.send_message(
+            f"Alert from Roz on `{MACHINE}`:\n{alert_type}: `{caller}`"
+        )
 
 
-def build_problem_report(validation_dict):
-    """build_problem_report _summary_
+def post_report(report):
+    """post_report Post the Problem Report to Slack
 
     _extended_summary_
 
     Parameters
     ----------
-    validation_dict : _type_
-        _description_
+    report : `str`
+        The problem report, as a string with occasional newlines
     """
+    slack_report = j5s.SlackChannel("bot_test")
+    slack_report.send_message(f"Problem report from Roz on `{MACHINE}`:")
+
+    # Split up the report into frame sections to meet the message size limit
+    rlist = report.split("*.*.")
+    for subreport in rlist:
+        if subreport.strip() == "":
+            continue
+        slack_report.send_message(f"```\n{subreport}```")
+
+
+def post_pngs(metadata_tables, directory, inst_flags):
+    """post_pngs Post the problematic PNGs to Slack
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    metadata_tables : `dict`
+        _description_
+    directory : `pathlib.Path`
+        Path to the processing directory
+    """
+    slack_report = j5s.SlackChannel("bot_test")
+
+    # Loop through Frame Types
+    for ftype in metadata_tables:
+        if metadata_tables[ftype]:
+
+            # Loop through Filters
+            for filt in metadata_tables[ftype]:
+                if isinstance(metadata_tables[ftype][filt], Table):
+
+                    # Grab frames marked as "PROBLEM"
+                    mask = metadata_tables[ftype][filt]["problem"] == 1
+                    pngs = list(metadata_tables[ftype][filt]["filename"][mask])
+
+                    # Go through the files one by one, make PNGs, and upload
+                    for png in pngs:
+                        png_fn = gm.make_png_thumbnail(
+                            directory.joinpath(png),
+                            inst_flags,
+                            problem=True,
+                            debug=False,
+                        )
+
+                        # NOTE: SlackChannel.upload_file() requires `str` filename
+                        slack_report.upload_file(
+                            str(utils.Paths.thumbnail.joinpath(png_fn)),
+                            title=png_fn,
+                        )

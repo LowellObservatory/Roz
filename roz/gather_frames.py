@@ -79,12 +79,10 @@ class Dumbwaiter:
             return
 
         # Initialize attributes
-        self.data_dir = (
-            pathlib.Path(data_dir) if isinstance(data_dir, str) else data_dir
-        )
         self.frameclass = frameclass
         self.locations = utils.read_ligmos_conffiles("rozSetup")
-        self.proc_dir = pathlib.Path(self.locations.processing_dir)
+        self.data_dir = pathlib.Path(data_dir).resolve()
+        self.proc_dir = pathlib.Path(self.locations.processing_dir).resolve()
         self.instrument = divine_instrument(self.data_dir)
         # e.g., `lmi/20210107b` or `deveny/20220221a`
         self.nightname = os.sep.join(self.data_dir.parts[-2:])

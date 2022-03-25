@@ -38,6 +38,7 @@ from ligmos import workers as lig_workers
 from johnnyfive import utils as j5u
 
 # Internal Imports
+from roz import send_alerts as sa
 from roz import validate_statistics as vs
 from roz import utils
 
@@ -71,15 +72,17 @@ class CalibrationDatabase:
         Table containing the metadata and statistics for SKY FLAT frames [Default: None]
     """
 
-    def __init__(self, inst_flags, proc_dir, nightname, **kwargs):
+    def __init__(self, inst_flags, proc_dir, nightname, binning, **kwargs):
         # Set instance attributes
         self.flags = inst_flags
         self.proc_dir = proc_dir
         self.nightname = nightname
+        self.binning = binning
 
         # Place the metadata tables into a dictionary; init empty validated dict
         self.meta_tabls = {key: val for key, val in kwargs.items() if "_meta" in key}
         self.valid_tabls = {}
+        self.valid_report = {}
 
         # Read in the InfluxDB config file
         self.db_setup = utils.read_ligmos_conffiles("databaseSetup")
@@ -120,9 +123,22 @@ class CalibrationDatabase:
         _extended_summary_
         """
         # Set up the internal dictionaries to hold calibration metadata
-        self.valid_tabls = vs.validate_calibration_metadata(
+        self.valid_tabls, frame_reports = vs.validate_calibration_metadata(
             self.meta_tabls, filt_list=utils.FILTER_LIST[self.flags["instrument"]]
         )
+
+        # Construct the full validation report
+        self.valid_report = {
+            "nightname": self.nightname,
+            "flags": self.flags,
+            "binning": self.binning.replace(" ", "x"),
+            "frame_reports": frame_reports,
+        }
+
+        # Convert the validation report in to a problem report; post
+        if problem_report := vs.build_problem_report(self.valid_report):
+            sa.post_report(problem_report)
+            sa.post_pngs(self.valid_tabls, self.proc_dir, self.flags)
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -137,56 +153,32 @@ class CalibrationDatabase:
         testing : `bool`, optional
             If testing, don't commit to InfluxDB  [Default: True]
         """
-        # If bias table is extant, loop over frames in self.bias
-        if "bias" in self.valid_tabls and self.valid_tabls["bias"]:
-            # List of packets to be committed
-            pkt_list = []
-            for entry in self.valid_tabls["bias"]:
-                # Append the packet for this frame to a list to be committed
-                pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
-            # Commit the whole list in a safe way
-            if not testing:
-                print(
-                    f"Writing {len(self.valid_tabls['bias'])} BIAS frames to InfluxDB..."
-                )
-                j5u.safe_service_connect(
-                    self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
-                )
+        # Loop through the frame types
+        for ftype, ftype_table in self.valid_tabls.items():
 
-        # If dark tbale is extant, loop over frames in self.dark
-        if "dark" in self.valid_tabls and self.valid_tabls["dark"]:
-            # List of packets to be committed
-            pkt_list = []
-            for entry in self.valid_tabls["dark"]:
-                # Append the packet for this frame to a list to be committed
-                pkt_list.append(neatly_package(entry, measure=self.db_setup.metricname))
-            # Commit the whole list in a safe way
-            if not testing:
-                print(f"Writing {len(pkt_list)} DARK frames to InfluxDB...")
-                j5u.safe_service_connect(
-                    self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
-                )
-
-        # If flat table is extant, loop over filters
-        if "flat" in self.valid_tabls and self.valid_tabls["flat"]:
+            # Check that the table is extant, then loop over individual frames
+            if not ftype_table:
+                continue
 
             # List of packets to be committed
             pkt_list = []
-            # Loop through the filters, making FLAT packets and commit them
-            for filt in self.valid_tabls["flat"]["filters"]:
+            # Loop through the filters, making packets and commit them
+            for filt in ftype_table["filters"]:
                 # Skip filters not used in this data set
-                # print(f"Committing LMI filter {filt}...")
-                if not self.valid_tabls["flat"][filt]:
+                if not ftype_table[filt]:
                     continue
-
-                # Loop
-                for entry in self.valid_tabls["flat"][filt]:
+                # Loop over frames
+                for entry in ftype_table[filt]:
                     pkt_list.append(
                         neatly_package(entry, measure=self.db_setup.metricname)
                     )
-            # Commit
+
+            # Commit the packet list and print a message
             if not testing:
-                print(f"Writing {len(pkt_list)} FLAT frames to InfluxDB...")
+                print(
+                    f"Writing {len(pkt_list)} {ftype.upper()} frames to InfluxDB...",
+                    end=" ",
+                )
                 j5u.safe_service_connect(
                     self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
                 )
@@ -317,6 +309,25 @@ class HistoricalData:
         # Convert to a single AstroPy Table; add timestamps as additional column
         self.results = Table.from_pandas(results[self.query.metricname])
         self.results["timestamp"] = timestamp
+
+    def metric_n(self, metric, **kwargs):
+        """metric_n Find the length of the metric
+
+        Parameters
+        ----------
+        metric : `str`
+            The InfluxDB field name for which to compute the mean.
+        **kwargs : `str`, optional
+            The method also accepts key/value pairs of InfluxDB TAGS to further
+            narrow the result table to a specific, say, `filter` or `binning`.
+
+        Returns
+        -------
+        `int`
+            The number of frames in the database matching this search
+        """
+        # Return the number of elements in the table metric
+        return len(self._check_metric_kwargs(metric, **kwargs))
 
     def metric_mean(self, metric, **kwargs):
         """metric_mean Compute the Mean of the Metric
@@ -604,6 +615,11 @@ def neatly_package(table_row, measure):
 
     # Strip off the filename, as it can be reconstructed from obserno
     row_as_dict.pop("filename")
+
+    # Remove any NaN fields
+    for key, val in row_as_dict.items():
+        if np.isnan(val):
+            row_as_dict.pop(key)
 
     # Build & return the packet as a dictionary with the proper InfluxDB keys
     return {
