@@ -213,6 +213,11 @@ def process_domeflat(
         ccd = utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
         ccd = ccdp.subtract_bias(ccd, bias_frame)
 
+        # If a DARK frame was passed, scale and subtract
+        if dark_frame:
+            # NOTE: Not yet implemented
+            pass
+
         # Work entirely in COUNT RATE -- ergo divide by exptime
         count_rate = ccd.divide(hdr["EXPTIME"])
 
@@ -229,7 +234,7 @@ def process_domeflat(
                     hdr[f"P{rc_num}{axis.upper()}"]
                 )
         metadict["icpos"] = float(hdr["ICPOS"])
-        for axis in utils.FMS:
+        for axis in utils.LDT_FMS:
             metadict[f"fmpos_{axis.lower()}"] = float(hdr[f"FM{axis.upper()}POS"])
 
         metadata.append(metadict)

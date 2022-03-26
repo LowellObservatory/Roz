@@ -32,7 +32,9 @@ import numpy as np
 from roz import database_manager as dm
 
 
-def validate_calibration_metadata(table_dict, filt_list=None, sigma_thresh=3.0):
+def validate_calibration_metadata(
+    table_dict, filt_list=None, sigma_thresh=3.0, no_prob=True
+):
     """validate_metadata_tables Analyze and validate calibration metadata tables
 
     _extended_summary_
@@ -44,7 +46,9 @@ def validate_calibration_metadata(table_dict, filt_list=None, sigma_thresh=3.0):
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
-
+    no_prob : `bool`, optional
+        Only use metrics not marked as "problem" by previous validation
+        [Default: True]
 
     Returns
     -------
@@ -86,6 +90,7 @@ def validate_calibration_metadata(table_dict, filt_list=None, sigma_thresh=3.0):
                 frametypes[out_key],
                 filt=filt,
                 sigma_thresh=sigma_thresh,
+                no_prob=no_prob,
             )
         validated_metadata[out_key] = frame_dict
         validation_report[out_key] = frame_report
@@ -93,7 +98,7 @@ def validate_calibration_metadata(table_dict, filt_list=None, sigma_thresh=3.0):
     return validated_metadata, validation_report
 
 
-def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3):
+def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob=True):
     """perform_validation Perform the validation on this frametype
 
     This function is the heart of the validation scheme, doing the actual
@@ -110,6 +115,10 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3):
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    no_prob : `bool`, optional
+        Only use metrics not marked as "problem" by previous validation
+        [Default: True]
+
 
     Returns
     -------
@@ -155,9 +164,9 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3):
     hist.perform_query()
 
     # Build some quick dictionaries containing the Gaussian statistics
-    n_vals = {check: hist.metric_n(check) for check in metrics}
-    mu = {check: hist.metric_mean(check) for check in metrics}
-    sig = {check: hist.metric_stddev(check) for check in metrics}
+    n_vals = {check: hist.metric_n(check, no_prob=no_prob) for check in metrics}
+    mu = {check: hist.metric_mean(check, no_prob=no_prob) for check in metrics}
+    sig = {check: hist.metric_stddev(check, no_prob=no_prob) for check in metrics}
 
     # Make empty arrays to hold 'problem' and 'obstruction' flags
     p_flag = np.zeros(len(meta_table), dtype=np.int8)

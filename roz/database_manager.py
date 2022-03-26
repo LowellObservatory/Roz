@@ -74,15 +74,18 @@ class CalibrationDatabase:
 
     def __init__(self, inst_flags, proc_dir, nightname, binning, **kwargs):
         # Set instance attributes
-        self.flags = inst_flags
         self.proc_dir = proc_dir
-        self.nightname = nightname
-        self.binning = binning
+
+        # Construct the basic validation report dictionary:
+        self.v_report = {
+            "nightname": nightname,
+            "flags": inst_flags,
+            "binning": binning.replace(" ", "x"),
+        }
 
         # Place the metadata tables into a dictionary; init empty validated dict
         self.meta_tabls = {key: val for key, val in kwargs.items() if "_meta" in key}
-        self.valid_tabls = {}
-        self.valid_report = {}
+        self.v_tables = {}
 
         # Read in the InfluxDB config file
         self.db_setup = utils.read_ligmos_conffiles("databaseSetup")
@@ -111,44 +114,61 @@ class CalibrationDatabase:
             Array of the corresponding mount temperatures
         """
         # If the bias table is empty, return zeros
-        if "bias" not in self.valid_tabls or not self.valid_tabls["bias"]:
+        if "bias" not in self.v_tables or not self.v_tables["bias"]:
             return np.asarray([0]), np.asarray([0])
-        return np.asarray(self.valid_tabls["bias"]["crop_avg"]), np.asarray(
-            self.valid_tabls["bias"]["mnttemp"]
+        return np.asarray(self.v_tables["bias"]["crop_avg"]), np.asarray(
+            self.v_tables["bias"]["mnttemp"]
         )
 
-    def validate(self, sigma_thresh=3):
+    def validate(self, sigma_thresh=3.0, no_prob=True):
         """validate Run the validation routines on the tables
 
-        _extended_summary_
+        The primary validation is to check the frames against the historical
+        statistics, looking for things that deviate by more than `sigma_thresh`
+        sigma.
+
+        Other validation that could happen is:
+          * ???
 
         Parameters
         ----------
         sigma_thresh : `float`, optional
             The sigma discrepancy threshold for flagging a frame as being
             'problematic'  [Default: 3.0]
+        no_prob : `bool`, optional
+            Only use metrics not marked as "problem" by previous validation
+            [Default: True]
+
         """
-        # Set up the internal dictionaries to hold calibration metadata
-        self.valid_tabls, frame_reports = vs.validate_calibration_metadata(
+        # Load in the filter list for this instrument
+        instrument = self.v_report['flags']["instrument"]
+        try:
+            filter_list = utils.FILTER_LIST[instrument]
+        except KeyError:
+            warnings.warn(
+                f"No filter list set for instrument {instrument} "
+                "in utils.py!  Using 'OPEN'.",
+                utils.DeveloperWarning,
+            )
+            filter_list = ["OPEN"]
+
+        # Load up the internal dictionaries with validated data and reports
+        self.v_tables, frame_reports = vs.validate_calibration_metadata(
             self.meta_tabls,
-            filt_list=utils.FILTER_LIST[self.flags["instrument"]],
+            filt_list=filter_list,
             sigma_thresh=sigma_thresh,
+            no_prob=no_prob,
         )
 
         # Construct the full validation report
-        self.valid_report = {
-            "nightname": self.nightname,
-            "flags": self.flags,
-            "binning": self.binning.replace(" ", "x"),
-            "frame_reports": frame_reports,
-        }
+        self.v_report.update({"frame_reports": frame_reports})
 
         # Convert the validation report in to a problem report; post
         if problem_report := vs.build_problem_report(
-            self.valid_report, sigma_thresh=sigma_thresh
+            self.v_report, sigma_thresh=sigma_thresh
         ):
             sa.post_report(problem_report)
-            sa.post_pngs(self.valid_tabls, self.proc_dir, self.flags)
+            sa.post_pngs(self.v_tables, self.proc_dir, self.v_report['flags'])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -164,21 +184,21 @@ class CalibrationDatabase:
             If testing, don't commit to InfluxDB  [Default: True]
         """
         # Loop through the frame types
-        for ftype, ftype_table in self.valid_tabls.items():
+        for frametype, frametype_table in self.v_tables.items():
 
             # Check that the table is extant, then loop over individual frames
-            if not ftype_table:
+            if not frametype_table:
                 continue
 
             # List of packets to be committed
             pkt_list = []
-            # Loop through the filters, making packets and commit them
-            for filt in ftype_table["filters"]:
-                # Skip filters not used in this data set
-                if not ftype_table[filt]:
+            # Loop through the filters, making packets and committing them
+            for filt in frametype_table["filters"]:
+                # Skip filters not used in this data set (i.e., empty table)
+                if not frametype_table[filt]:
                     continue
                 # Loop over frames
-                for entry in ftype_table[filt]:
+                for entry in frametype_table[filt]:
                     pkt_list.append(
                         neatly_package(entry, measure=self.db_setup.metricname)
                     )
@@ -186,7 +206,7 @@ class CalibrationDatabase:
             # Commit the packet list and print a message
             if not testing:
                 print(
-                    f"Writing {len(pkt_list)} {ftype.upper()} frames to InfluxDB...",
+                    f"Writing {len(pkt_list)} {frametype.upper()} frames to InfluxDB...",
                     end=" ",
                 )
                 j5u.safe_service_connect(
@@ -205,6 +225,10 @@ class ScienceDatabase:
 
     def __init__(self):
         pass
+
+    def bogus_public_method(self):
+        """bogus_public_method Making the linter happy!
+        """
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb _summary_
@@ -302,8 +326,7 @@ class HistoricalData:
 
         # If `results` is empty, assign a (nearly) empty table
         if results == {}:
-            # TODO: Convert this to a warning or send_alert() thing
-            print("Query returned no results!")
+            warnings.warn("The InfluxDB query returned no results!")
             self.results = Table(
                 names=("timestamp", "instrument", "frametype"),
                 dtype=("O", "U12", "U12"),
@@ -314,19 +337,22 @@ class HistoricalData:
         #   one key in the dict, namely `query.metricname`.
 
         # First, extract the "index", which is the timestamp for the measurement
-        timestamp = results[self.query.metricname].index.to_pydatetime()
+        timestamps = results[self.query.metricname].index.to_pydatetime()
 
         # Convert to a single AstroPy Table; add timestamps as additional column
         self.results = Table.from_pandas(results[self.query.metricname])
-        self.results["timestamp"] = timestamp
+        self.results["timestamp"] = timestamps
 
-    def metric_n(self, metric, **kwargs):
-        """metric_n Find the length of the metric
+    def metric_n(self, metric, no_prob=True, **kwargs):
+        """metric_n Find the length of the returned metric
 
         Parameters
         ----------
         metric : `str`
             The InfluxDB field name for which to compute the mean.
+        no_prob : `bool`, optional
+            Only return metrics not marked as "problem" by previous validation
+            [Default: True]
         **kwargs : `str`, optional
             The method also accepts key/value pairs of InfluxDB TAGS to further
             narrow the result table to a specific, say, `filter` or `binning`.
@@ -337,10 +363,10 @@ class HistoricalData:
             The number of frames in the database matching this search
         """
         # Return the number of elements in the table metric
-        return len(self._check_metric_kwargs(metric, **kwargs))
+        return len(self._check_metric_kwargs(metric, no_prob=no_prob, **kwargs))
 
-    def metric_mean(self, metric, **kwargs):
-        """metric_mean Compute the Mean of the Metric
+    def metric_mean(self, metric, no_prob=True, **kwargs):
+        """metric_mean Compute the Mean of the returned Metric
 
         Uses np.nanmean() to produce a NaN-resistant mean of the specified
         metric in the InfluxDB result table.
@@ -349,6 +375,9 @@ class HistoricalData:
         ----------
         metric : `str`
             The InfluxDB field name for which to compute the mean.
+        no_prob : `bool`, optional
+            Only return metrics not marked as "problem" by previous validation
+            [Default: True]
         **kwargs : `str`, optional
             The method also accepts key/value pairs of InfluxDB TAGS to further
             narrow the result table to a specific, say, `filter` or `binning`.
@@ -361,10 +390,10 @@ class HistoricalData:
             `np.nan`.
         """
         # Return the NaN-resistant mean of the table metric
-        return np.nanmean(self._check_metric_kwargs(metric, **kwargs))
+        return np.nanmean(self._check_metric_kwargs(metric, no_prob=no_prob, **kwargs))
 
-    def metric_stddev(self, metric, **kwargs):
-        """metric_mean Compute the Standard Deviation of the Metric
+    def metric_stddev(self, metric, no_prob=True, **kwargs):
+        """metric_mean Compute the Standard Deviation of the returned Metric
 
         Uses np.nanstd() to produce a NaN-resistant standard deviation of the
         specified metric in the InfluxDB result table.
@@ -374,6 +403,9 @@ class HistoricalData:
         metric : `str`
             The InfluxDB field name for which to compute the standard
             deviation.
+        no_prob : `bool`, optional
+            Only return metrics not marked as "problem" by previous validation
+            [Default: True]
         **kwargs : `str`, optional
             The method also accepts key/value pairs of InfluxDB TAGS to further
             narrow the result table to a specific, say, `filter` or `binning`.
@@ -386,7 +418,7 @@ class HistoricalData:
             will return `np.nan`.
         """
         # Return the NaN-resistant standard deviation of the table metric
-        return np.nanstd(self._check_metric_kwargs(metric, **kwargs))
+        return np.nanstd(self._check_metric_kwargs(metric, no_prob=no_prob, **kwargs))
 
     # The following methods are @property methods of the class =====#
     @property
@@ -460,7 +492,7 @@ class HistoricalData:
         return self._sorted_list_set("cropborder")
 
     # Internal-use class methods ===================================#
-    def _check_metric_kwargs(self, metric, **kwargs):
+    def _check_metric_kwargs(self, metric, no_prob=True, **kwargs):
         """_check_metric_kwargs Do QA testing on the input metric & kwargs
 
         _extended_summary_
@@ -469,6 +501,9 @@ class HistoricalData:
         ----------
         metric : `str`
             The InfluxDB field name for which to compute something.
+        no_prob : `bool`, optional
+            Only return metrics not marked as "problem" by previous validation
+            [Default: True]
         **kwargs : `str`, optional
             The method also accepts key/value pairs of InfluxDB TAGS to further
             narrow the result table to a specific, say, `filter` or `binning`.
@@ -498,6 +533,11 @@ class HistoricalData:
             warnings.warn(f"The metric {metric} is not in the results table!")
             return np.nan
 
+        # Trim out rows marked as "PROBLEM"
+        if no_prob:
+            results = results[results["problem"] == 0]
+
+        # Return the desired metric
         return results[metric]
 
     def _sorted_list_set(self, tagname):

@@ -503,4 +503,4 @@ def set_instrument_flags(inst):
         if row["instrument"] == inst:
             return dict(zip(row.colnames, row))
 
-    raise utils.InputError("Developer error... this line should never run.")
+    raise utils.DeveloperWarning("Error: this line should never run.")

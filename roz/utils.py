@@ -109,16 +109,24 @@ class Paths:
 # List of Imager Filters (augment, as needed for other instruments)
 FILTER_LIST = {
     "LMI": list(Table.read(Paths.ecsv_filters)["FITS Header Value"]),
+    "DEVENY": ["OPEN"],
+    "NIHTS": ["OPEN"],
+    "ET1": ["U", "B", "V", "R", "I", "g'", "r'", "i'"],
+    "ET2": ["B", "V", "R", "u'", "g'", "r'", "i'", "z'"],
     "JC": ["U", "B", "V", "R", "I"],
     "SDSS": ["u'", "g'", "r'", "i'", "z'"],
 }
 
 # Fold Mirror Names
-FMS = ["A", "B", "C", "D"]
+LDT_FMS = ["A", "B", "C", "D"]
 
 # Create an error class to use
 class InputError(ValueError):
     """InputError Locally defined error that inherits ValueError"""
+
+
+class DeveloperWarning(UserWarning):
+    """DeveloperWarning Locally defined warning directed at Roz developers"""
 
 
 def load_saved_bias(instrument, binning):
@@ -157,7 +165,7 @@ def load_saved_bias(instrument, binning):
     #       exist.
     except Exception as error:
         print(error)
-        raise FileNotFoundError(f"Developer: Add {fname} to Paths.data") from error
+        raise DeveloperWarning(f"File Not Found!  Add {fname} to Paths.data") from error
 
 
 def write_saved_bias(ccd, instrument, binning):

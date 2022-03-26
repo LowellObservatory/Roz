@@ -252,12 +252,12 @@ def modify_lmi_dynamic_table(
     png_fn = []
     for i, filt in enumerate(lmi_filters):
         # Skip filters not used in this data set (also check for `database.flat`)
-        if not database.valid_tabls["flat"] or not database.valid_tabls["flat"][filt]:
+        if not database.v_tables["flat"] or not database.v_tables["flat"][filt]:
             continue
 
         # But, only update if the DATOBS of this flat is LATER than what's
         #  already in the table.  If OLD > NEW, skip.
-        new_date = database.valid_tabls["flat"][filt]["dateobs"][-1].split("T")[0]
+        new_date = database.v_tables["flat"][filt]["dateobs"][-1].split("T")[0]
         if not isinstance(
             lmi_filt["UT Date of Latest Flat"][i], np.ma.core.MaskedConstant
         ):
@@ -273,7 +273,7 @@ def modify_lmi_dynamic_table(
 
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
         fname = database.proc_dir.joinpath(
-            database.valid_tabls["flat"][filt]["filename"][-1]
+            database.v_tables["flat"][filt]["filename"][-1]
         )
         png_fn.append(gm.make_png_thumbnail(fname, database.flags))
 
@@ -282,7 +282,7 @@ def modify_lmi_dynamic_table(
         lmi_filt["UT Date of Latest Flat"][i] = new_date
         if not png_only:
             lmi_filt["Count Rate (ADU/s)"][i] = (
-                count_rate := np.mean(database.valid_tabls["flat"][filt]["crop_med"])
+                count_rate := np.mean(database.v_tables["flat"][filt]["crop_med"])
             )
             lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
 

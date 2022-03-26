@@ -40,6 +40,7 @@ def main(
     skip_cals=False,
     no_cold=False,
     sigma_thresh=3.0,
+    no_prob=True,
     mem_limit=8.192e9,
 ):
     """main This is the main function.
@@ -64,6 +65,9 @@ def main(
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    no_prob : `bool`, optional
+        Only use metrics not marked as "problem" by previous validation
+        [Default: True]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
     """
@@ -97,7 +101,12 @@ def main(
             dumbwaiter.cold_storage(testing=no_cold)
 
             # Giddy up!
-            run = Run(dumbwaiter, sigma_thresh=sigma_thresh, mem_limit=mem_limit)
+            run = Run(
+                dumbwaiter,
+                sigma_thresh=sigma_thresh,
+                mem_limit=mem_limit,
+                no_prob=no_prob,
+            )
             run.proc()
 
 
@@ -116,14 +125,18 @@ class Run:
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    no_prob : `bool`, optional
+        Only use metrics not marked as "problem" by previous validation
+        [Default: True]
     """
 
-    def __init__(self, waiter, sigma_thresh=3, mem_limit=None):
+    def __init__(self, waiter, sigma_thresh=3, no_prob=True, mem_limit=None):
         # Set instance attributes
         self.waiter = waiter
         self.mem_limit = mem_limit
         self.flags = self.waiter.inst_flags
         self.sigma_thresh = sigma_thresh
+        self.no_prob = no_prob
 
     def proc(self):
         """proc Process the files specified in the Dumbwaiter
@@ -212,7 +225,7 @@ class Run:
                 skyf_meta=skyf_meta,
             )
             # Validate the metadata tables, and write contents to InfluxDB
-            database.validate(sigma_thresh=self.sigma_thresh)
+            database.validate(sigma_thresh=self.sigma_thresh, no_prob=self.no_prob)
             database.write_to_influxdb(testing=False)
 
             if self.flags["instrument"].lower() == "lmi":
@@ -262,6 +275,11 @@ if __name__ == "__main__":
         default=3.0,
         help="Sigma threshold for reporting problematic frames [Default: 3.0]",
     )
+    parser.add_argument(
+        "--use_problems",
+        action="store_true",
+        help="Use historical data marked as problem in the analysis",
+    )
     args = parser.parse_args()
 
     # Giddy Up!
@@ -270,5 +288,6 @@ if __name__ == "__main__":
         do_science=args.science,
         skip_cals=args.nocal,
         sigma_thresh=args.sig_thresh,
+        no_prob=not args.use_problems,
         mem_limit=16.384e9 if args.gb16 else 8.192e9,
     )
