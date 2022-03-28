@@ -254,6 +254,7 @@ def process_skyflat(
     NOTE: Not yet implemented --
           tqdm color should be "red"
     """
+    [flat_cl, bias_frame, dark_frame, binning, instrument, debug]
     return Table()
 
 
@@ -285,7 +286,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     human_readable.pop("typ")
     shape = (hdr["naxis1"], hdr["naxis2"])
 
-    # TODO: Add error checking here to keep InfluxDB happy
+    # TODO: Add error checking here to keep InfluxDB happy -- Maybe this is enough?
     metadict = {
         "dateobs": f"{hdr['DATE-OBS'].strip()}",
         "instrument": f"{hdr['INSTRUME'].strip()}",

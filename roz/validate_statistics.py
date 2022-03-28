@@ -24,41 +24,80 @@ and the internal database objects (`roz.database_manager.HistoricalData` and
 """
 
 # Built-In Libraries
+import warnings
 
 # 3rd Party Libraries
 import numpy as np
 
 # Internal Imports
 from roz import database_manager as dm
+from roz import utils
 
 
+# Calibration Validation Functions ===========================================#
 def validate_calibration_metadata(
-    table_dict, filt_list=None, sigma_thresh=3.0, no_prob=True
+    table_dict, filt_list=None, sigma_thresh=3.0, scheme="simple", **kwargs
 ):
     """validate_metadata_tables Analyze and validate calibration metadata tables
 
-    _extended_summary_
+    For all Tables that contain information, the metadata tables and report
+    dictionaries are constructed the same regardless of frametype.
+
+    The validated metadata tables are constructed thuswise:
+        [frame_type][filter][augmented_meta]
+
+    The report dictionaries are constructed thuswise:
+        [frame_type][filter][frame_collection][frame_info]
+
+    This function forms the narrative structure of the validation with the
+    heavy lifting reserved for a helper function
+    `perform_calibration_validation()`.
 
     Parameters
     ----------
-    table_dict : _type_
-        _description_
+    table_dict : `dict`
+        Dictionary containing the metadata tables, with keys being the
+        different types of frames to consider (e.g., 'bias', 'flat', etc.)
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    scheme : `str`, optional
+        The validation scheme to be used  [Default: simple]
+
+    ---- Various debugging keyword arguments (to be removed later)
     no_prob : `bool`, optional
         Only use metrics not marked as "problem" by previous validation
         [Default: True]
+    all_time : `bool`, optional
+        For validation of current frames, compare against all matches,
+        regardless of the timestamp [Default: False]
 
     Returns
     -------
-    _type_
-        _description_
+    validated_metadata : `dict`
+        Validated metadata tables, as desciebed above
+    validation_report : `dict`
+        Validation report dictionary, as described above
+    scheme_str : `str`
+        The string to be printed in the Problem Report about the
+        validation scheme
     """
-    # Blank output dict; blank report dict; frametype conversion dict
+    # Parse KWARGS -- Debugging options that can be removed when in production
+    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
+    all_time = kwargs["all_time"] if "all_time" in kwargs else False
+
+    # Build the `scheme_str` to return (to be printed in the Problem Report)
+    if scheme == "simple":
+        scheme_str = (
+            f"Statistical deviation threshold: {sigma_thresh}σ from historical values"
+        )
+    else:
+        scheme_str = "Scheme not implemented"
+
+    # Create the blank output dict; blank report dict; frametype conversion dict
     validated_metadata = {}
     validation_report = {}
-    frametypes = {
+    frame_translation = {
         "bias": "bias",
         "dark": "dark",
         "flat": "dome flat",
@@ -67,42 +106,58 @@ def validate_calibration_metadata(
 
     # Loop through tables included in the dictionary (bias, flat, etc.)
     for tabname, meta_table in table_dict.items():
-        out_key = tabname.replace("_meta", "")
+        frame_type = tabname.replace("_meta", "")
 
         # If there is no information (blank Table), insert None into output dicts
         if not meta_table:
-            validated_metadata[out_key] = None
-            validation_report[out_key] = None
+            validated_metadata[frame_type] = None
+            validation_report[frame_type] = None
             continue
 
-        # For all Tables that contain information, build the report dictionary
-        #  in the same fashion: [out_key][filter][framecollection][frameinfo]
-        #  The metadata tables should also be [out_key][filter][augmented_meta]
-
         # Build the basic [filter] steps of the dictionaries:
-        frame_dict = {"filters": filt_list if out_key == "flat" else ["DARK"]}
+        # TODO: Not strictly correct, if we start to consider SKY FLATS
+        frame_dict = {"filters": filt_list if frame_type == "flat" else ["DARK"]}
         frame_report = {}
 
         # Put data from each filter into a subdictionary
         for filt in frame_dict["filters"]:
-            frame_dict[filt], frame_report[filt] = perform_validation(
+            frame_dict[filt], frame_report[filt] = perform_calibration_validation(
                 meta_table[meta_table["filter"] == filt],
-                frametypes[out_key],
+                frame_translation[frame_type],
+                scheme,
                 filt=filt,
                 sigma_thresh=sigma_thresh,
                 no_prob=no_prob,
+                all_time=all_time,
             )
-        validated_metadata[out_key] = frame_dict
-        validation_report[out_key] = frame_report
+        validated_metadata[frame_type] = frame_dict
+        validation_report[frame_type] = frame_report
 
-    return validated_metadata, validation_report
+    return validated_metadata, validation_report, scheme_str
 
 
-def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob=True):
+def perform_calibration_validation(
+    meta_table,
+    frametype,
+    scheme,
+    filt=None,
+    sigma_thresh=3.0,
+    **kwargs,
+):
     """perform_validation Perform the validation on this frametype
 
     This function is the heart of the validation scheme, doing the actual
-    comparison with historical data and
+    comparison with historical data.  This function was pulled out separate
+    to keep the calling function, validate_calibration_metadata(), cleaner
+    and easier to read.
+
+    Currently, the scheme='simple' validation consists of finding whether all
+    the measured statistics fall within `sigma_thresh` sigma of the population
+    mean, as pulled from the InfluxDB database.
+
+    In the future, other validation schemes could be implemented, as desired,
+    based on historical trends or multivariate relationships (e.g., the
+    variation in bias level with mount temperature) or something else entirely.
 
     Parameters
     ----------
@@ -110,15 +165,20 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
         The metadata table to validate
     frametype : `str`
         Frame type (e.g., `bias`, `dome flat`, etc.)
+    scheme : `str`
+        The validation scheme to be used  [NOTE: only 'simple' is supported]
     filt : `str`, optional
         Filter used for flats [Default: None]
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+
+    ---- Various debugging keyword arguments (to be removed later)
     no_prob : `bool`, optional
         Only use metrics not marked as "problem" by previous validation
         [Default: True]
-
+    all_time : `bool`, optional
+        Get all matches, regardless of the timestamp [Default: False]
 
     Returns
     -------
@@ -127,6 +187,20 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
     report : `dict`
         Problem report dictionary
     """
+    # Parse KWARGS -- Debugging options that can be removed when in production
+    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
+    all_time = kwargs["all_time"] if "all_time" in kwargs else False
+
+    # Check `scheme`
+    # TODO: As additional validation schemes are developed, change this
+    if scheme != "simple":
+        warnings.warn(
+            "Only 'simple' validation of calibration frames is available this "
+            f"time.  `{scheme}` not supported.  (Using 'simple'...)",
+            utils.DeveloperWarning,
+        )
+        scheme = "simple"
+
     # Start with a basic report dictionary
     report = {"frametype": frametype, "filter": filt}
 
@@ -148,9 +222,9 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
         metrics.remove(removal)
 
     # Print the banner; pull the Historical Data matching this set
-    fstr = f" : {filt}" if filt != "DARK" else ""
     print(
-        f"==> Validating {frametype.upper()}{fstr} in validate_calibration_metadata_():"
+        f"==> Validating {frametype.upper()}"
+        f"{f' : {filt}' if filt != 'DARK' else ''} frames:"
     )
     hist = dm.HistoricalData(
         sorted(list(set(meta_table["instrument"])))[0].lower(),
@@ -161,7 +235,7 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
         ampid=sorted(list(set(meta_table["ampid"])))[0],
         debug=False,
     )
-    hist.perform_query()
+    hist.perform_query(all_time=all_time)
 
     # Build some quick dictionaries containing the Gaussian statistics
     n_vals = {check: hist.metric_n(check, no_prob=no_prob) for check in metrics}
@@ -173,7 +247,7 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
     o_flag = np.zeros(len(meta_table), dtype=np.int8)
 
     # Loop through the frames one by one
-    frame_status = "GOOD"
+    ftype_status = "GOOD"
     for i, row in enumerate(meta_table):
         report[(tag := f"FRAME_{row['obserno']:03d}")] = {}
 
@@ -203,7 +277,7 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
                     }
                 )
                 # Update the frame_status for the report
-                frame_status = "PROBLEM"
+                ftype_status = "PROBLEM"
                 # Add `p_flag` for this frame
                 p_flag[i] = 1
                 if "pos" in check:
@@ -212,26 +286,39 @@ def perform_validation(meta_table, frametype, filt=None, sigma_thresh=3, no_prob
     meta_table["problem"] = p_flag
     meta_table["obstruction"] = o_flag
 
-    # For now, just print some stats and return the table.
+    # Print some statistics about this frame collection
     print(
         f"  Mean: {np.mean(meta_table['crop_avg']):.2f}  "
         f"  Median: {np.median(meta_table['crop_med']):.2f}  "
         f"  Stddev: {np.mean(meta_table['crop_std']):.2f}"
     )
 
-    # Add logic checks for header datatypes (edge cases)
-    report["status"] = frame_status
+    # Package and return
+    report["status"] = ftype_status
     return meta_table, report
 
 
+# Science Validation Functions ===============================================#
 def validate_science_metadata(table_dict):
     """validate_science_metadata  Analyze and validate science metadata tables
 
     NOTE: Not yet implemented
+          Returns whatever it's passed
     """
+    return perform_science_validation(table_dict)
 
 
-def build_problem_report(report_dict, sigma_thresh=3.0):
+def perform_science_validation(meta_table):
+    """perform_validation Perform the validation on this frametype
+
+    NOTE: Not yet implemented
+          Returns whatever it's passed
+    """
+    return meta_table
+
+
+# Other Functions ============================================================#
+def build_problem_report(report_dict):
     """build_problem_report Construct the Problem Report
 
     Parse through the report dictionary to build a string
@@ -239,16 +326,13 @@ def build_problem_report(report_dict, sigma_thresh=3.0):
     This is the format of the report dictionary, from `vs.perform_validation()`:
         Top-level keys: [nightname, flags, binning, frame_reports]
         Under frame_reports: [bias, flat, (etc.)]
-        Under frame_type: [FILTER, ...]
+        Under frame_type: [filters, FILTER1, ...]
         Under filter: [frametype, filter, status, [FRAME_NNN, ...]]
 
     Parameters
     ----------
     report_dict : `dict`
         The validation report dictionary from `vs.perform_validation()`
-    sigma_thresh : `float`, optional
-        The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
 
     Returns
     -------
@@ -264,7 +348,7 @@ def build_problem_report(report_dict, sigma_thresh=3.0):
         for filt in report_dict["frame_reports"][ftype]:
             status_list.append(report_dict["frame_reports"][ftype][filt]["status"])
 
-    # If everything is happy, return None
+    # If no problems, return None
     if "PROBLEM" not in status_list:
         return None
 
@@ -274,7 +358,7 @@ def build_problem_report(report_dict, sigma_thresh=3.0):
         f"binning {report_dict['binning']}\n"
         f"Site: {report_dict['flags']['site'].upper()}, "
         f"Instrument: {report_dict['flags']['instrument'].upper()}\n"
-        f"Statistical deviation threshold: {sigma_thresh}σ from historical values*.*."
+        f"{report_dict['valid_scheme']}*.*."
     )
     # Loop through frame types first:
     for ftype in report_dict["frame_reports"]:

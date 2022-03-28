@@ -120,14 +120,14 @@ class CalibrationDatabase:
             self.v_tables["bias"]["mnttemp"]
         )
 
-    def validate(self, sigma_thresh=3.0, no_prob=True):
+    def validate(self, sigma_thresh=3.0, scheme="simple", **kwargs):
         """validate Run the validation routines on the tables
 
-        The primary validation is to check the frames against the historical
-        statistics, looking for things that deviate by more than `sigma_thresh`
-        sigma.
+        The primary validation is the 'simple' scheme, whereby frames are
+        checked against the historical statistics, looking for things that
+        deviate by more than `sigma_thresh` sigma.
 
-        Other validation that could happen is:
+        Other validation `schemes` that could happen are:
           * ???
 
         Parameters
@@ -135,40 +135,52 @@ class CalibrationDatabase:
         sigma_thresh : `float`, optional
             The sigma discrepancy threshold for flagging a frame as being
             'problematic'  [Default: 3.0]
-        no_prob : `bool`, optional
+        scheme : `str`, optional
+            The validation scheme to be used  [Default: simple]
+
+        ---- Various debugging keyword arguments (to be removed later)
+            no_prob : `bool`, optional
             Only use metrics not marked as "problem" by previous validation
             [Default: True]
+        all_time : `bool`, optional
+            For validation of current frames, compare against all matches,
+            regardless of the timestamp [Default: False]
 
         """
+        # Parse KWARGS -- Debugging options that can be removed when in production
+        no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
+        all_time = kwargs["all_time"] if "all_time" in kwargs else False
+
         # Load in the filter list for this instrument
-        instrument = self.v_report['flags']["instrument"]
+        instrument = self.v_report["flags"]["instrument"]
         try:
             filter_list = utils.FILTER_LIST[instrument]
         except KeyError:
             warnings.warn(
                 f"No filter list set for instrument {instrument} "
-                "in utils.py!  Using 'OPEN'.",
+                "in utils.py!  Using ['OPEN'].",
                 utils.DeveloperWarning,
             )
             filter_list = ["OPEN"]
 
         # Load up the internal dictionaries with validated data and reports
-        self.v_tables, frame_reports = vs.validate_calibration_metadata(
+        self.v_tables, frame_reports, s_str = vs.validate_calibration_metadata(
             self.meta_tabls,
             filt_list=filter_list,
             sigma_thresh=sigma_thresh,
+            scheme=scheme,
             no_prob=no_prob,
+            all_time=all_time,
         )
 
-        # Construct the full validation report
-        self.v_report.update({"frame_reports": frame_reports})
+        # Add the `frame_reports` and `scheme_string` to the full validation report
+        self.v_report.update({"frame_reports": frame_reports, "valid_scheme": s_str})
 
-        # Convert the validation report in to a problem report; post
-        if problem_report := vs.build_problem_report(
-            self.v_report, sigma_thresh=sigma_thresh
-        ):
+        # Convert the validation report into a problem report; post
+        if problem_report := vs.build_problem_report(self.v_report):
+            print("++++> Posting Problem Report to Slack...")
             sa.post_report(problem_report)
-            sa.post_pngs(self.v_tables, self.proc_dir, self.v_report['flags'])
+            sa.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB
@@ -183,24 +195,24 @@ class CalibrationDatabase:
         testing : `bool`, optional
             If testing, don't commit to InfluxDB  [Default: True]
         """
-        # Loop through the frame types
-        for frametype, frametype_table in self.v_tables.items():
+        # Loop through the frame types, pulling the dictionary of tables
+        for frametype, frametype_ftables in self.v_tables.items():
 
-            # Check that the table is extant, then loop over individual frames
-            if not frametype_table:
+            # Check that the table dictionary is extant
+            if not frametype_ftables:
                 continue
 
             # List of packets to be committed
             pkt_list = []
-            # Loop through the filters, making packets and committing them
-            for filt in frametype_table["filters"]:
+            # Loop through the filters, making packets and accumulating them
+            for filt in frametype_ftables["filters"]:
                 # Skip filters not used in this data set (i.e., empty table)
-                if not frametype_table[filt]:
+                if not frametype_ftables[filt]:
                     continue
-                # Loop over frames
-                for entry in frametype_table[filt]:
+                # Loop over frames (i.e. rows in table)
+                for row in frametype_ftables[filt]:
                     pkt_list.append(
-                        neatly_package(entry, measure=self.db_setup.metricname)
+                        neatly_package(row, measure=self.db_setup.metricname)
                     )
 
             # Commit the packet list and print a message
@@ -227,8 +239,7 @@ class ScienceDatabase:
         pass
 
     def bogus_public_method(self):
-        """bogus_public_method Making the linter happy!
-        """
+        """bogus_public_method Making the linter happy!"""
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb _summary_
@@ -253,24 +264,24 @@ class HistoricalData:
     This class pulls historical data from the InfluxDB for comparison with the
     present frames to alert for changes.
 
-        Parameters
-        ----------
-        instrument : `str`
-            Instrument name for which to pull (REQUIRED)
-        frametype : `str`
-            Frame type for which to pull (REQUIRED)
-        filter : `str, optional
-            Filter for which to pull [Default: None]
-        binning : `str` (of form 'cxr'), optional
-            Binning for which to pull [Default: None]
-        numamp : `int`, optional
-            Number of amplifiers for which to pull [Default: None]
-        ampid : `str`, optional
-            Amplifier ID for which to pull [Default: None]
-        cropborder : `int`, optional
-            Crop border size for which to pull [Default: None]
-        debug : `bool`, optional
-            Print debugging statements?  [Default: False]
+    Parameters
+    ----------
+    instrument : `str`
+        Instrument name for which to pull (REQUIRED)
+    frametype : `str`
+        Frame type for which to pull (REQUIRED)
+    filter : `str, optional
+        Filter for which to pull [Default: None]
+    binning : `str` (of form 'cxr'), optional
+        Binning for which to pull [Default: None]
+    numamp : `int`, optional
+        Number of amplifiers for which to pull [Default: None]
+    ampid : `str`, optional
+        Amplifier ID for which to pull [Default: None]
+    cropborder : `int`, optional
+        Crop border size for which to pull [Default: None]
+    debug : `bool`, optional
+        Print debugging statements?  [Default: False]
     """
 
     def __init__(self, instrument, frametype, debug=False, **kwargs):
@@ -283,7 +294,7 @@ class HistoricalData:
         if debug:
             print(self.tagdict)
 
-        # Parse the configuration file
+        # Parse the database query configuration file
         db_query, db_info = lig_utils.confparsers.parseConfig(
             utils.Paths.dbqueries,
             lig_utils.classes.databaseQuery,
@@ -307,7 +318,7 @@ class HistoricalData:
             database=self.query.tablename,
         )
 
-    def perform_query(self, debug=False):
+    def perform_query(self, all_time=False, debug=False):
         """perform_query Perform the InfluxDB query, saving as a Table
 
         This method is a simplified version of
@@ -315,9 +326,17 @@ class HistoricalData:
         to catch all eventualities.  It also saves the result in an AstroPy
         Table instead of a pandas dataframe, for simplicity of use with the
         rest of Roz.
+
+        Parameters
+        ----------
+        all_time : `bool`, optional
+            Get all matches, regardless of the timestamp (i.e., disegard
+            the value in seldf.query.rangehours)  [Default: False]
         """
-        # Build the query string
-        query_str = build_influxdb_query(self.query, tags=self.tagdict, debug=debug)
+        # Build the InfluxDB query string
+        query_str = build_influxdb_query(
+            self.query, tags=self.tagdict, all_time=all_time, debug=debug
+        )
         if debug:
             print(f"This is the query string:\n{query_str}")
 
@@ -334,7 +353,7 @@ class HistoricalData:
             return
 
         # `results` is a dict of pandas dataframes; but in our case there is only
-        #   one key in the dict, namely `query.metricname`.
+        #   one key in the dict, namely `self.query.metricname`.
 
         # First, extract the "index", which is the timestamp for the measurement
         timestamps = results[self.query.metricname].index.to_pydatetime()
@@ -530,12 +549,12 @@ class HistoricalData:
 
         # If the specifid metric is not in the table, return NaN
         if metric not in results.colnames:
-            warnings.warn(f"The metric {metric} is not in the results table!")
+            warnings.warn(f"The metric `{metric}` is not in the results table!")
             return np.nan
 
         # Trim out rows marked as "PROBLEM"
         if no_prob:
-            results = results[results["problem"] == 0]
+            results = results[results["problem"] != 1]
 
         # Return the desired metric
         return results[metric]
@@ -562,7 +581,7 @@ class HistoricalData:
 
 
 # Non-Class Helper Functions =================================================#
-def build_influxdb_query(dbq, tags=None, debug=False):
+def build_influxdb_query(dbq, tags=None, all_time=False, debug=False):
     """build_influxdb_query Build the query string for InfluxDB
 
     This function builds the (long) query string to be posted to InfluxDB
@@ -576,6 +595,8 @@ def build_influxdb_query(dbq, tags=None, debug=False):
         The database query object, as read from the configuration file
     tags : `dict`, optional
         The tags to which to limit the database search [Default: None]
+    all_time : `bool`, optional
+        Get all matches, regardless of the timestamp [Default: False]
     debug : `bool`, optional
        Print debugging statements? [Default: False]
 
@@ -584,12 +605,6 @@ def build_influxdb_query(dbq, tags=None, debug=False):
     `str`
         The InfluxDB-compliant query string
     """
-    try:
-        dtime = int(dbq.rangehours)
-    except ValueError:
-        print(f"Can't convert {dbq.rangehours} to int... using ~1.5yrs")
-        dtime = 13000
-
     if dbq.database.type.lower() != "influxdb":
         print("Error: Database must be of type `influxdb`!")
         return None
@@ -604,7 +619,13 @@ def build_influxdb_query(dbq, tags=None, debug=False):
     query = f'SELECT * FROM "{dbq.metricname}"'
 
     # Add the Time Range: Namely the most recent `dtime` hours
-    query += f" WHERE time > now() - {dtime}h"
+    if not all_time:
+        try:
+            dtime = int(dbq.rangehours)
+        except ValueError:
+            print(f"Can't convert {dbq.rangehours} to int... using ~1.5yrs")
+            dtime = 13000
+        query += f" WHERE time > now() - {dtime}h"
 
     # Finally, add the tags as the primary constraints on the query
     if tags:
@@ -617,7 +638,7 @@ def build_influxdb_query(dbq, tags=None, debug=False):
         # Strip the trailing ' AND ':
         query = query.rstrip(" AND ")
 
-    # Return the mess
+    # Return the completed string
     return query
 
 

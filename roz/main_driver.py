@@ -35,13 +35,7 @@ from roz import process_calibrations as pc
 
 # The MAIN Attraction ========================================================#
 def main(
-    directories=None,
-    do_science=False,
-    skip_cals=False,
-    no_cold=False,
-    sigma_thresh=3.0,
-    no_prob=True,
-    mem_limit=8.192e9,
+    directories=None, do_science=False, sigma_thresh=3.0, mem_limit=8.192e9, **kwargs
 ):
     """main This is the main function.
 
@@ -58,22 +52,33 @@ def main(
         The directory or directories upon which to operate [Default: None]
     do_science : `bool`, optional
         Also do QA on science frames?  [Default: False]
+    sigma_thresh : `float`, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        'problematic'  [Default: 3.0]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+
+    ---- Various debugging keyword arguments (to be removed later)
     skip_cals : `bool`, optional
         Do not process the calibration frames.  [Default: False]
     no_cold : `bool`, optional
         Pass to `testing` in gf.Dumbwaiter.cold_storage()  [Default: False]
-    sigma_thresh : `float`, optional
-        The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
     no_prob : `bool`, optional
         Only use metrics not marked as "problem" by previous validation
         [Default: True]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    all_time : `bool`, optional
+        For validation of current frames, compare against all matches,
+        regardless of the timestamp [Default: False]
     """
     # Check if the input `directories` is just a string; --> list
     if isinstance(directories, str):
         directories = [directories]
+
+    # Parse KWARGS -- Debugging options that can be removed when in production
+    skip_cals = kwargs["skip_cals"] if "skip_cals" in kwargs else False
+    no_cold = kwargs["no_cold"] if "no_cold" in kwargs else False
+    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
+    all_time = kwargs["all_time"] if "all_time" in kwargs else False
 
     # Loop through the directories prvided
     for directory in directories:
@@ -106,6 +111,7 @@ def main(
                 sigma_thresh=sigma_thresh,
                 mem_limit=mem_limit,
                 no_prob=no_prob,
+                all_time=all_time,
             )
             run.proc()
 
@@ -120,23 +126,32 @@ class Run:
     ----------
     waiter : `roz.gather_frames.Dumbwaiter`
         The dumbwaiter holding the incoming files for processing
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine.  [Default: None]
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine.  [Default: None]
+
+    ---- Various debugging keyword arguments (to be removed later)
     no_prob : `bool`, optional
         Only use metrics not marked as "problem" by previous validation
         [Default: True]
+    all_time : `bool`, optional
+        For validation of current frames, compare against all matches,
+        regardless of the timestamp [Default: False]
+
     """
 
-    def __init__(self, waiter, sigma_thresh=3, no_prob=True, mem_limit=None):
+    def __init__(self, waiter, sigma_thresh=3.0, mem_limit=None, **kwargs):
         # Set instance attributes
         self.waiter = waiter
         self.mem_limit = mem_limit
         self.flags = self.waiter.inst_flags
         self.sigma_thresh = sigma_thresh
-        self.no_prob = no_prob
+
+        # Parse KWARGS -- Debugging options that can be removed when in production
+        self.no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
+        self.all_time = kwargs["all_time"] if "all_time" in kwargs else False
 
     def proc(self):
         """proc Process the files specified in the Dumbwaiter
@@ -225,7 +240,11 @@ class Run:
                 skyf_meta=skyf_meta,
             )
             # Validate the metadata tables, and write contents to InfluxDB
-            database.validate(sigma_thresh=self.sigma_thresh, no_prob=self.no_prob)
+            database.validate(
+                sigma_thresh=self.sigma_thresh,
+                no_prob=self.no_prob,
+                all_time=self.all_time,
+            )
             database.write_to_influxdb(testing=False)
 
             if self.flags["instrument"].lower() == "lmi":
@@ -280,6 +299,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Use historical data marked as problem in the analysis",
     )
+    parser.add_argument(
+        "--all_time",
+        action="store_true",
+        help="Use all historical data, regardless of timestamp (disregard conf file)",
+    )
     args = parser.parse_args()
 
     # Giddy Up!
@@ -289,5 +313,6 @@ if __name__ == "__main__":
         skip_cals=args.nocal,
         sigma_thresh=args.sig_thresh,
         no_prob=not args.use_problems,
+        all_time=args.all_time,
         mem_limit=16.384e9 if args.gb16 else 8.192e9,
     )
