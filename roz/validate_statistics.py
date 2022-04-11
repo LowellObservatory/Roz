@@ -91,6 +91,8 @@ def validate_calibration_metadata(
         scheme_str = (
             f"Statistical deviation threshold: {sigma_thresh}σ from historical values"
         )
+    elif scheme == "none":
+        scheme_str = "No data validation performed"
     else:
         scheme_str = "Scheme not implemented"
 
@@ -166,7 +168,8 @@ def perform_calibration_validation(
     frametype : `str`
         Frame type (e.g., `bias`, `dome flat`, etc.)
     scheme : `str`
-        The validation scheme to be used  [NOTE: only 'simple' is supported]
+        The validation scheme to be used
+        [NOTE: only 'simple' and 'none' are supported]
     filt : `str`, optional
         Filter used for flats [Default: None]
     sigma_thresh : `float`, optional
@@ -193,10 +196,11 @@ def perform_calibration_validation(
 
     # Check `scheme`
     # TODO: As additional validation schemes are developed, change this
-    if scheme != "simple":
+    if scheme not in ["simple", "none"]:
         warnings.warn(
-            "Only 'simple' validation of calibration frames is available this "
-            f"time.  `{scheme}` not supported.  (Using 'simple'...)",
+            "Only 'simple' and 'none' validation of calibration frames is "
+            f"available this time.  `{scheme}` not supported.  "
+            "(Using 'simple'...)",
             utils.DeveloperWarning,
         )
         scheme = "simple"
@@ -208,6 +212,34 @@ def perform_calibration_validation(
     if not meta_table:
         report["status"] = "EMPTY"
         return None, report
+
+    # Print the banner
+    print(
+        f"==> Validating {frametype.upper()}"
+        f"{f' : {filt}' if filt != 'DARK' else ''} frames:"
+    )
+
+    ###################
+    # NONE VALIDATION #
+    ###################
+
+    if scheme == "none":
+
+        # Check that values for mechanical positions are sensical, if not -> NaN
+        for col in [colname for colname in meta_table.colnames if "pos" in colname]:
+            meta_table[col][np.where(np.abs(meta_table[col]) > 500.0)] = np.nan
+
+        # Add "ALL GOOD" flag columns
+        meta_table["problem"] = np.zeros(len(meta_table), dtype=np.int8)
+        meta_table["obstruction"] = np.zeros(len(meta_table), dtype=np.int8)
+
+        # Package and return
+        report["status"] = "GOOD"
+        return meta_table, report
+
+    #####################
+    # SIMPLE VALIDATION #
+    #####################
 
     # These are the metrics we will validate for this frametype, namely
     #   Quadric Surface, frame and crop stats, flatness statistics,
@@ -221,11 +253,7 @@ def perform_calibration_validation(
     for removal in ["qs_maj", "qs_bma", "qs_open", "qs_rot"]:
         metrics.remove(removal)
 
-    # Print the banner; pull the Historical Data matching this set
-    print(
-        f"==> Validating {frametype.upper()}"
-        f"{f' : {filt}' if filt != 'DARK' else ''} frames:"
-    )
+    # Pull the Historical Data matching this set
     hist = dm.HistoricalData(
         sorted(list(set(meta_table["instrument"])))[0].lower(),
         frametype,

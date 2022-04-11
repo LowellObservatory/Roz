@@ -35,7 +35,12 @@ from roz import process_calibrations as pc
 
 # The MAIN Attraction ========================================================#
 def main(
-    directories=None, do_science=False, sigma_thresh=3.0, mem_limit=8.192e9, **kwargs
+    directories=None,
+    do_science=False,
+    sigma_thresh=3.0,
+    validation_scheme="simple",
+    mem_limit=8.192e9,
+    **kwargs,
 ):
     """main This is the main function.
 
@@ -55,6 +60,8 @@ def main(
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    validation_scheme : `str`, optional
+        The frame validation scheme to use  [Default: simple]
     mem_limit : `float`, optional
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
 
@@ -109,6 +116,7 @@ def main(
             run = Run(
                 dumbwaiter,
                 sigma_thresh=sigma_thresh,
+                validation_scheme=validation_scheme,
                 mem_limit=mem_limit,
                 no_prob=no_prob,
                 all_time=all_time,
@@ -129,6 +137,8 @@ class Run:
     sigma_thresh : `float`, optional
         The sigma discrepancy threshold for flagging a frame as being
         'problematic'  [Default: 3.0]
+    validation_scheme : `str`, optional
+        The frame validation scheme to use  [Default: simple]
     mem_limit : `float`, optional
         Memory limit for the image combination routine.  [Default: None]
 
@@ -142,12 +152,20 @@ class Run:
 
     """
 
-    def __init__(self, waiter, sigma_thresh=3.0, mem_limit=None, **kwargs):
+    def __init__(
+        self,
+        waiter,
+        sigma_thresh=3.0,
+        validation_scheme="simple",
+        mem_limit=None,
+        **kwargs,
+    ):
         # Set instance attributes
         self.waiter = waiter
         self.mem_limit = mem_limit
         self.flags = self.waiter.inst_flags
         self.sigma_thresh = sigma_thresh
+        self.scheme = validation_scheme
 
         # Parse KWARGS -- Debugging options that can be removed when in production
         self.no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
@@ -244,6 +262,7 @@ class Run:
                 sigma_thresh=self.sigma_thresh,
                 no_prob=self.no_prob,
                 all_time=self.all_time,
+                scheme=self.scheme,
             )
             database.write_to_influxdb(testing=False)
 
@@ -304,6 +323,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Use all historical data, regardless of timestamp (disregard conf file)",
     )
+    parser.add_argument(
+        "--scheme",
+        type=str,
+        default="simple",
+        help="Validation scheme to use [*simple*,none]",
+    )
     args = parser.parse_args()
 
     # Giddy Up!
@@ -312,6 +337,7 @@ if __name__ == "__main__":
         do_science=args.science,
         skip_cals=args.nocal,
         sigma_thresh=args.sig_thresh,
+        validation_scheme=args.scheme,
         no_prob=not args.use_problems,
         all_time=args.all_time,
         mem_limit=16.384e9 if args.gb16 else 8.192e9,
