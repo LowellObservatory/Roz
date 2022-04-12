@@ -74,30 +74,38 @@ class Dumbwaiter:
             sa.send_alert("Incorrect frameclass specified", "Dumbwaiter.__init__()")
             return
 
-        # Recheck that the `data_dir` is, in fact, okay, just to be sure
-        if not check_directory_okay(data_dir, "Dumbwaiter.__init__()"):
-            return
+        locations = utils.read_ligmos_conffiles("rozSetup")
 
         # Initialize attributes
         self.frameclass = frameclass
-        self.locations = utils.read_ligmos_conffiles("rozSetup")
-        self.data_dir = pathlib.Path(data_dir).resolve()
-        self.proc_dir = pathlib.Path(self.locations.processing_dir).resolve()
-        self.instrument = divine_instrument(self.data_dir)
+        self.dirs = {
+            "data": pathlib.Path(data_dir).resolve(),
+            "proc": pathlib.Path(locations.processing_dir).resolve(),
+            "cold": pathlib.Path(locations.coldstorage_dir).resolve(),
+        }
         # e.g., `lmi/20210107b` or `deveny/20220221a`
-        self.nightname = os.sep.join(self.data_dir.parts[-2:])
+        self.nightname = os.sep.join(self.dirs["data"].parts[-2:])
 
-        # If the directory is completely empty: set empty, return
-        if not self.instrument:
+        # If no FITS files, return now
+        if not (fitsfiles := get_sequential_fitsfiles(self.dirs["data"])):
             self.empty = True
             return
 
+        # If can't find the instrument: set empty and return
+        if not (instrument := divine_instrument(fits_files=fitsfiles)):
+            self.empty = True
+            return
+
+        self.instrument = instrument
         self.inst_flags = set_instrument_flags(self.instrument)
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
         if self.frameclass == "calibration":
             self.frames = gather_cal_frames(
-                self.data_dir, self.inst_flags, fnames_only=True
+                self.dirs["data"],
+                self.inst_flags,
+                fitsfiles=fitsfiles,
+                fnames_only=True,
             )
         else:
             sa.send_alert(
@@ -129,18 +137,20 @@ class Dumbwaiter:
             return
 
         if not keep_existing:
-            print("Clearing cruft from processing directory " f"{self.proc_dir}")
-            for entry in os.scandir(self.proc_dir):
+            print(f"Clearing cruft from processing directory {self.dirs['proc']}")
+            for entry in self.dirs["proc"].glob("*"):
                 if entry.is_file():
-                    os.remove(self.proc_dir.joinpath(entry))
+                    self.dirs["proc"].joinpath(entry).unlink()
 
-        print(f"Copying data from {self.data_dir} to {self.proc_dir} for processing...")
+        print(
+            f"Copying data from {self.dirs['data']} to {self.dirs['proc']} for processing..."
+        )
         # Show progress bar for copying files
         progress_bar = tqdm(
             total=len(self.frames), unit="file", unit_scale=False, colour="#2a52be"
         )
         for frame in self.frames:
-            shutil.copy2(self.data_dir.joinpath(frame), self.proc_dir)
+            shutil.copy2(self.dirs["data"].joinpath(frame), self.dirs["proc"])
             progress_bar.update(1)
         progress_bar.close()
 
@@ -167,48 +177,46 @@ class Dumbwaiter:
         # First, check to see if the UT Date is encoded in the source `data_dir`
         #  (8 consecutive digits) using regex negative lookbehind / lookahead
         #  but also includes the lowercase letter sub-night designation
-        if result := re.search(r"(?<!\d)\d{8}[a-z](?!\d)", str(self.data_dir)):
+        if result := re.search(r"(?<!\d)\d{8}[a-z](?!\d)", str(self.dirs["data"])):
             utdate = result.group(0)
 
         # Otherwise, grab the header of the LAST file in self.frames (as this
         #  is most likely to be taken AFTER 00:00UT) and extract from DATE-OBS
         else:
             utdate = (
-                getheader(self.proc_dir.joinpath(self.frames[-1]))["DATE-OBS"]
+                getheader(self.dirs["proc"].joinpath(self.frames[-1]))["DATE-OBS"]
                 .split("T")[0]
                 .replace("-", "")
             )
 
         # Build the tar filename
         tarbase = f"{self.instrument}_{utdate}_{self.frameclass}.tar.bz2"
-        tarname = self.proc_dir.joinpath(tarbase)
+        tarname = self.dirs["proc"].joinpath(tarbase)
 
         # Just return now
         if testing:
             return
 
-        # Create a summary table to include in the tarball
+        # Create a summary table (README.txt) to include in the tarball
         self._make_summary_table()
 
         # Tar up the files!
         print("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
-            tar.add(self.proc_dir.joinpath("README.txt"), arcname="README.txt")
+            tar.add(self.dirs["proc"].joinpath("README.txt"), arcname="README.txt")
             # Show progress bar for processing the tarball
             progress_bar = tqdm(
                 total=len(self.frames), unit="file", unit_scale=False, colour="#00ff7f"
             )
             for name in self.frames:
-                tar.add(self.proc_dir.joinpath(name), arcname=name)
+                tar.add(self.dirs["proc"].joinpath(name), arcname=name)
                 progress_bar.update(1)
             progress_bar.close()
 
         # Next, set up for copying the tarball over to cold storage
         # The requisite cold storage directories will be mounted locally and
         #  be of form ".../dataquality/{site}/{instrument}"
-        cold_dir = pathlib.Path(self.locations.coldstorage_dir).joinpath(
-            self.inst_flags["site"], self.instrument
-        )
+        cold_dir = self.dirs["cold"].joinpath(self.inst_flags["site"], self.instrument)
         if not cold_dir.is_dir():
             sa.send_alert(
                 f"Cold storage directory not available at `{cold_dir}`",
@@ -225,7 +233,9 @@ class Dumbwaiter:
         Add summary table to the tarball for future reference
         Tags: obserno, frametype, filter, binning, numamp, ampid
         """
-        icl = ccdp.ImageFileCollection(location=self.proc_dir, filenames=self.frames)
+        icl = ccdp.ImageFileCollection(
+            location=self.dirs["proc"], filenames=self.frames
+        )
         # Pull the subtable based on FITS header keywords
         summary = icl.summary[
             "obserno", "imagetyp", "filters", "ccdsum", "numamp", "ampid"
@@ -235,52 +245,15 @@ class Dumbwaiter:
             ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
         )
         # Write it out!
-        summary.write(self.proc_dir.joinpath("README.txt"), format="ascii.fixed_width")
+        summary.write(
+            self.dirs["proc"].joinpath("README.txt"), format="ascii.fixed_width"
+        )
         if debug:
             summary.pprint()
 
 
 # Non-Class Functions ========================================================#
-def check_directory_okay(directory, caller=None):
-    """check_directory_okay Check `directory` is okay to proceed
-
-    Check that directory is, indeed, a directory and contains FITS files
-
-    NOTE: This is the first function called, and should have robust alerting if
-          things aren't up to snuff!
-
-    Parameters
-    ----------
-    directory : `str` or `Pathlib.path`
-        The directory to check
-    caller : `str`, optional
-        The name of the calling function, to be printed in the alert  [Default: None]
-
-    Returns
-    -------
-    `bool`
-        True if OK, False otherwise
-    """
-    # Check that `directory` is, in fact, a directory
-    if not os.path.isdir(directory):
-        sa.send_alert(
-            f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
-            caller,
-        )
-        return False
-
-    # Get the list of normal FITS files in the directory
-    fits_files = get_sequential_fitsfiles(directory)
-
-    # Check if there's anything useful
-    if not fits_files:
-        return False
-
-    # If we get here, we're clear to proceed!
-    return True
-
-
-def divine_instrument(directory):
+def divine_instrument(directory=None, fits_files=None):
     """divine_instrument Divine the instrument whose data is in this directory
 
     This function emulates Carnac the Magnificent, where it holds a sealed
@@ -296,16 +269,23 @@ def divine_instrument(directory):
 
     Parameters
     ----------
-    directory : `str` or `pathlib.Path`
+    directory : `str` or `pathlib.Path`, optional
         The directory for which to divine the instrument
+    fits_files : `list`, optional
+        The list of FITS files from which to divine the instrument
+        This parameter has priority over `directory`
 
     Returns
     -------
     `str`
         Lowercase string of the contents of the FITS `INSTRUME` keyword
     """
-    # Get the list of normal FITS files in the directory
-    fits_files = get_sequential_fitsfiles(directory)
+    if not any([directory, fits_files]):
+        raise utils.InputError("Either `directory` or `fits_files` is required.")
+
+    if directory and not fits_files:
+        # Get the list of normal FITS files in the directory
+        fits_files = get_sequential_fitsfiles(directory)
 
     # Loop through the files, looking for a valid INSTRUME keyword
     for fitsfile in fits_files:
@@ -315,14 +295,16 @@ def divine_instrument(directory):
                 return getheader(fitsfile)["instrume"].lower()
         except KeyError:
             continue
+
     # Otherwise...
     sa.send_alert(
-        f"No Instrument found in {utils.subpath(directory)}", "divine_instrument()"
+        f"No Instrument found in {utils.subpath(directory) if directory else 'this directory'}",
+        "divine_instrument()",
     )
     return None
 
 
-def gather_cal_frames(directory, inst_flag, fnames_only=False):
+def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     """gather_cal_frames Gather calibration frames from specified directory
 
     [extended_summary]
@@ -333,6 +315,8 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         Directory name to search for calibration files
     inst_flag : `dict`
         Dictionary of instrument flags
+    fitsfiles : `list`, optional
+        The list of FITS files in this directory  [Default: None]
     fnames_only : `bool`, optional
         Only return a concatenated list of filenames instead of the IFCs
         [Default: False]
@@ -353,11 +337,9 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     print(f"Reading the files in {directory}...")
 
     # Create an ImageFileCollection for the specified directory
-    icl = ccdp.ImageFileCollection(
-        location=directory,
-        glob_include=f"{inst_flag['prefix']}*.fits",
-        glob_exclude="test.fits",
-    )
+    if not fitsfiles:
+        fitsfiles = get_sequential_fitsfiles(directory)
+    icl = ccdp.ImageFileCollection(location=directory, filenames=fitsfiles)
 
     if not icl.files:
         return None
@@ -368,12 +350,13 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     #  but not the others
     if inst_flag["get_bias"]:
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0) FULL FRAME ONLY
-        bias_fns = icl.files_filtered(obstype="bias", subarrno=0)
-        zero_fns = icl.files_filtered(exptime=0, subarrno=0)
-        biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
+        fn_list = []
+        fn_list.append(icl.files_filtered(obstype="bias", subarrno=0))
+        fn_list.append(icl.files_filtered(exptime=0, subarrno=0))
+        fn_list = list(np.unique(np.concatenate(fn_list)))
         # Do this `location` thing to work around how IFC deals with empty lists
         bias_cl = ccdp.ImageFileCollection(
-            location=directory if biases else None, filenames=biases
+            location=directory if fn_list else None, filenames=fn_list
         )
         return_object["bias_fn"] = bias_cl.files
         return_object["bias_cl"] = bias_cl
@@ -389,7 +372,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         domeflat_cl = icl.filter(obstype="dome flat", subarrno=0)
         return_object["domeflat_fn"] = domeflat_cl.files
         return_object["domeflat_cl"] = domeflat_cl
-        # TODO: SKY FLATs returned separately -- will need to deal with them elswehere
+        # Gather SKY FLAT frames; FULL FRAME ONLY
         skyflat_cl = icl.filter(obstype="sky flat", subarrno=0)
         return_object["skyflat_fn"] = skyflat_cl.files
         return_object["skyflat_cl"] = skyflat_cl
@@ -403,7 +386,7 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     # ===============================================================#
     # If we only want the filenames, flatten out the fn lists and return
     if fnames_only:
-        # Append all the filename lists onto `fn_list`
+        # Append all the filename lists onto `fn_list`; Print out Frame Summary
         fn_list = []
         print(f"{'*'*19}\n* -Frame Summary- *")
         for key, val in return_object.items():
@@ -440,22 +423,24 @@ def get_sequential_fitsfiles(directory):
     Returns
     -------
     `list`
-        List of the non-test (i.e. sequential) FITS files in `directory`
+        List of the sequentially numbered FITS files in `directory`
     """
     # Make sure directory is a pathlib.Path
     if isinstance(directory, str):
         directory = pathlib.Path(directory)
 
+    # Check that `directory` is, in fact, a directory
+    if not directory.is_dir():
+        sa.send_alert(
+            f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
+        )
+        return None
+
     # Get a sorted list of all the FITS files
     fits_files = sorted(directory.glob("*.fits"))
 
     # Remove `test.fits` because we just don't care about it.
-    try:
-        fits_files.remove(directory.joinpath("test.fits"))
-    except ValueError:
-        pass
-
-    return fits_files
+    return [file for file in fits_files if file.name != "test.fits"]
 
 
 def set_instrument_flags(inst):

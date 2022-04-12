@@ -92,10 +92,6 @@ def main(
     # Loop through the directories prvided
     for directory in directories:
 
-        # If this directory is not extant and full of FITS files, move along
-        if not gf.check_directory_okay(directory, "main()"):
-            continue
-
         # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
         waiters = []
         if not skip_cals:
@@ -109,7 +105,7 @@ def main(
             # If empty, send notification and move along
             if dumbwaiter.empty:
                 sa.send_alert(
-                    f"Empty Directory: `{utils.subpath(dumbwaiter.data_dir)}` "
+                    f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
                     f"does not contain any sequential {dumbwaiter.frameclass} "
                     "FITS files",
                     "main()",
@@ -202,7 +198,7 @@ class Run:
         specified in the instrument flags.
         """
         # Collect the calibration frames for the processing directory
-        cframes = gf.gather_cal_frames(self.waiter.proc_dir, self.flags)
+        cframes = gf.gather_cal_frames(self.waiter.dirs["proc"], self.flags)
 
         # Copy over `bin_list`, if returned from the above routine
         if "bin_list" in cframes:
@@ -257,7 +253,7 @@ class Run:
             # Take the metadata from the calibration frames and produce DATABASE
             database = dm.CalibrationDatabase(
                 self.flags,
-                self.waiter.proc_dir,
+                self.waiter.dirs["proc"],
                 self.waiter.nightname,
                 binning,
                 bias_meta=bias_meta,
