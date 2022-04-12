@@ -229,6 +229,10 @@ def perform_calibration_validation(
         for col in [colname for colname in meta_table.colnames if "pos" in colname]:
             meta_table[col][np.where(np.abs(meta_table[col]) > 500.0)] = np.nan
 
+        # Check that the temperature values are sensible, if not -> NaN
+        for col in [colname for colname in meta_table.colnames if "temp" in colname]:
+            meta_table[col][np.where(np.abs(meta_table[col]) > 40)] = np.nan
+
         # Add "ALL GOOD" flag columns
         meta_table["problem"] = np.zeros(len(meta_table), dtype=np.int8)
         meta_table["obstruction"] = np.zeros(len(meta_table), dtype=np.int8)
@@ -274,6 +278,14 @@ def perform_calibration_validation(
     p_flag = np.zeros(len(meta_table), dtype=np.int8)
     o_flag = np.zeros(len(meta_table), dtype=np.int8)
 
+    # Check that values for mechanical positions are sensical, if not -> NaN
+    for col in [colname for colname in meta_table.colnames if "pos" in colname]:
+        meta_table[col][np.where(np.abs(meta_table[col]) > 500.0)] = np.nan
+
+    # Check that the temperature values are sensible, if not -> NaN
+    for col in [colname for colname in meta_table.colnames if "temp" in colname]:
+        meta_table[col][np.where(np.abs(meta_table[col]) > 40)] = np.nan
+
     # Loop through the frames one by one
     ftype_status = "GOOD"
     for i, row in enumerate(meta_table):
@@ -284,15 +296,6 @@ def perform_calibration_validation(
             # If fewer than 30 comparison frames in the DB, skip
             if n_vals[check] < 30:
                 continue
-
-            # Check for RC/IC positions -- if nonsensical, then set to NaN
-            #   If the mean value is nonsensical, just move on
-            if "pos" in check:
-                if np.abs(row[check]) > 500:
-                    meta_table[check][i] = np.nan
-                    continue
-                if np.abs(mu[check]) > 500:
-                    continue
 
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
             deviation = np.abs(row[check] - mu[check]) / np.max([sig[check], 1e-3])

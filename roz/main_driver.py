@@ -31,6 +31,8 @@ from roz import confluence_updater as cu
 from roz import database_manager as dm
 from roz import gather_frames as gf
 from roz import process_calibrations as pc
+from roz import send_alerts as sa
+from roz import utils
 
 
 # The MAIN Attraction ========================================================#
@@ -104,8 +106,14 @@ def main(
         # Loop over appropriate Dumbwaiter(s):
         for dumbwaiter in waiters:
 
-            # If empty, move along
+            # If empty, send notification and move along
             if dumbwaiter.empty:
+                sa.send_alert(
+                    f"Empty Directory: `{utils.subpath(dumbwaiter.data_dir)}` "
+                    f"does not contain any sequential {dumbwaiter.frameclass} "
+                    "FITS files",
+                    "main()",
+                )
                 continue
 
             # Copy over the sorted frames to processing, and package for cold storage

@@ -244,7 +244,9 @@ def subpath(path_to_dir):
     `str`
         The `instrument/date` portion of the full path
     """
-    return os.sep.join(path_to_dir.split(os.sep)[-2:])
+    if isinstance(path_to_dir, str):
+        path_to_dir = pathlib.Path(path_to_dir)
+    return os.sep.join(path_to_dir.parts[-2:])
 
 
 def table_sort_on_list(table, colname, sort_list):

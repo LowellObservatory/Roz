@@ -87,11 +87,8 @@ class Dumbwaiter:
         # e.g., `lmi/20210107b` or `deveny/20220221a`
         self.nightname = os.sep.join(self.data_dir.parts[-2:])
 
-        # If the directory is completely empty: send alert, set empty, return
+        # If the directory is completely empty: set empty, return
         if not self.instrument:
-            sa.send_alert(
-                f"Directory {self.data_dir} is empty", "Dumbwaiter.__init__()"
-            )
             self.empty = True
             return
 
@@ -104,7 +101,8 @@ class Dumbwaiter:
             )
         else:
             sa.send_alert(
-                f"Unsupported frameclass {self.frameclass}", "Dumbwaiter.__init__()"
+                f"Valid but unsupported frameclass {self.frameclass}",
+                "Dumbwaiter.__init__()",
             )
 
         # Make an attribute specifying whether the dumbwaiter is empty
@@ -213,7 +211,7 @@ class Dumbwaiter:
         )
         if not cold_dir.is_dir():
             sa.send_alert(
-                f"Woah!  No cold storage directory at {cold_dir} on `{sa.MACHINE}`",
+                f"Cold storage directory not available at `{cold_dir}`",
                 "Dumbwaiter.cold_storage()",
             )
             return
@@ -276,11 +274,6 @@ def check_directory_okay(directory, caller=None):
 
     # Check if there's anything useful
     if not fits_files:
-        sa.send_alert(
-            f"Empty Directory: `{utils.subpath(directory)}` does not contain "
-            "any sequential FITS files",
-            caller,
-        )
         return False
 
     # If we get here, we're clear to proceed!
@@ -367,11 +360,6 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
     )
 
     if not icl.files:
-        print("There ain't nothin' here that meets my needs!")
-        sa.send_alert(
-            f"Empty Directory: No matching files in {utils.subpath(directory)}",
-            "gather_cal_frames()",
-        )
         return None
 
     return_object = {}
@@ -383,8 +371,10 @@ def gather_cal_frames(directory, inst_flag, fnames_only=False):
         bias_fns = icl.files_filtered(obstype="bias", subarrno=0)
         zero_fns = icl.files_filtered(exptime=0, subarrno=0)
         biases = list(np.unique(np.concatenate([bias_fns, zero_fns])))
-        # NOTE: We sometimes get weird IFC cant' find file warnings with this line:
-        bias_cl = ccdp.ImageFileCollection(location=directory, filenames=biases)
+        # Do this `location` thing to work around how IFC deals with empty lists
+        bias_cl = ccdp.ImageFileCollection(
+            location=directory if biases else None, filenames=biases
+        )
         return_object["bias_fn"] = bias_cl.files
         return_object["bias_cl"] = bias_cl
 
