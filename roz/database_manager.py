@@ -687,8 +687,8 @@ def neatly_package(table_row, measure):
     # Strip off the filename, as it can be reconstructed from obserno
     row_as_dict.pop("filename")
 
-    # Remove any NaN fields
-    row_as_dict = {k:v for k,v in row_as_dict.items() if not np.isnan(v)}
+    # Remove any NaN / inf fields
+    row_as_dict = {k: v for k, v in row_as_dict.items() if np.isfinite(v)}
 
     # Build & return the packet as a dictionary with the proper InfluxDB keys
     return {

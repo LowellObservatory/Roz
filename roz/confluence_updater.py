@@ -275,7 +275,7 @@ def modify_lmi_dynamic_table(
         fname = database.proc_dir.joinpath(
             database.v_tables["flat"][filt]["filename"][-1]
         )
-        png_fn.append(gm.make_png_thumbnail(fname, database.flags))
+        png_fn.append(gm.make_png_thumbnail(fname, database.v_report["flags"]))
 
         # Update the dynamic columns
         lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"

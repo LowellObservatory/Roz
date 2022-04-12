@@ -646,8 +646,11 @@ def compute_human_readable_surface(coefficients):
         # Check orientation (s.t. semimajor axis is larger than semiminor)
         if semimaj > semimin:
             good_orient = True
-        else:
+        elif all(np.isfinite([semimaj, semimin])):
             theta += np.pi / 2.0
+        else:
+            # If either of the above is non-finite, just move on.
+            break
 
     # Along the native axes, the coefficient on x'y' == 0
     #  Compute as a check
