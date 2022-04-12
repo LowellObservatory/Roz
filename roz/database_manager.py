@@ -688,9 +688,7 @@ def neatly_package(table_row, measure):
     row_as_dict.pop("filename")
 
     # Remove any NaN fields
-    for key, val in row_as_dict.items():
-        if np.isnan(val):
-            row_as_dict.pop(key)
+    row_as_dict = {k:v for k,v in row_as_dict.items() if not np.isnan(v)}
 
     # Build & return the packet as a dictionary with the proper InfluxDB keys
     return {
