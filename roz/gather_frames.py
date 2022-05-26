@@ -31,7 +31,6 @@ import warnings
 
 # 3rd Party Libraries
 from astropy.io.fits import getheader
-from astropy.table import Table
 from astropy.utils.exceptions import AstropyUserWarning
 import ccdproc as ccdp
 import numpy as np
@@ -466,13 +465,13 @@ def set_instrument_flags(inst):
         Dictionary of instrument flags.
     """
     # Read in the instrument flag table
-    instrument_table = Table.read(utils.Paths.data.joinpath("instrument_flags.ecsv"))
+    instrument_table = utils.read_instrument_table()
 
     # Check that the instrument is in the table
     if (inst := inst.upper()) not in instrument_table["instrument"]:
         sa.send_alert(
             f"Instrument {inst} not yet supported; update instrument_flags.ecsv",
-            "set_instrument_flags()",
+            "gather_frames.set_instrument_flags()",
         )
         return None
 

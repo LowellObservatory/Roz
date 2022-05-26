@@ -227,6 +227,17 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
     return ligconf
 
 
+def read_instrument_table():
+    """read_instrument_table Read in the instrument table
+
+    Returns
+    -------
+    `astropy.table.Table`
+        The instrument flags table
+    """
+    return Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
+
+
 def subpath(path_to_dir):
     """subpath Simple function to return the instrument/date part of the path
 
