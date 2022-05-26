@@ -284,7 +284,8 @@ class Run:
         _extended_summary_
         """
         sa.send_alert(
-            "Warning: `run_sci` is not yet implemented", "main_driver.Run.run_sci()"
+            f"Warning: `run_sci` is not yet implemented; `{self.waiter.nightname}`",
+            "main_driver.Run.run_sci()",
         )
 
 
