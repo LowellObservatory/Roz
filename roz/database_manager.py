@@ -116,8 +116,9 @@ class CalibrationDatabase:
         # If the bias table is empty, return zeros
         if "bias" not in self.v_tables or not self.v_tables["bias"]:
             return np.asarray([0]), np.asarray([0])
-        return np.asarray(self.v_tables["bias"]["crop_avg"]), np.asarray(
-            self.v_tables["bias"]["mnttemp"]
+        return (
+            np.asarray(self.v_tables["bias"]["crop_avg"]),
+            np.asarray(self.v_tables["bias"]["mnttemp"]),
         )
 
     def validate(self, sigma_thresh=3.0, scheme="simple", **kwargs):

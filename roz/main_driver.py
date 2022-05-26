@@ -23,6 +23,7 @@ This module primarily trades in... driving?
 """
 
 # Built-In Libraries
+import argparse
 
 # 3rd Party Libraries
 
@@ -284,13 +285,20 @@ class Run:
         """
 
 
-# ============================================================================#
-if __name__ == "__main__":
-    # Set up the environment to import the program
-    import argparse
+# Console Script Entry Point =================================================#
+def entry_point():
+    """entry_point Command-line script entry point
 
+    Parameters
+    ----------
+    args : `Any`, optional
+        Command-line arguments passed in [Default: None]
+    """
     # Parse command line arguments
-    parser = argparse.ArgumentParser(prog="main_driver", description="Roz main driver")
+    parser = argparse.ArgumentParser(
+        prog="roz",
+        description="Lowell Observatory quality assurance of instrument data",
+    )
     parser.add_argument(
         "directory",
         metavar="dir",
@@ -299,23 +307,35 @@ if __name__ == "__main__":
         help="The directory or directories on which to run Roz",
     )
     parser.add_argument(
-        "--science",
+        "-a",
+        "--all_time",
         action="store_true",
-        help="Process the science frames, too?",
+        help="Use all historical data, regardless of timestamp (disregard conf file)",
     )
     parser.add_argument(
-        "--nocal",
-        action="store_true",
-        help="Do not process the calibration frames",
+        "-r",
+        "--ram",
+        type=int,
+        default=8,
+        help="Gigabytes of RAM to use for image combining (default: 8)",
     )
     parser.add_argument(
-        "--gb16", action="store_true", help="Allow 16GB RAM for image combining"
+        "--scheme",
+        type=str,
+        default="SIMPLE",
+        help="Validation scheme to use [*SIMPLE*, NONE]",
     )
     parser.add_argument(
-        "--sig_thresh",
+        "--sigma",
         type=float,
         default=3.0,
-        help="Sigma threshold for reporting problematic frames [Default: 3.0]",
+        help=(
+            "Sigma threshold for reporting problematic frames for SIMPLE "
+            "validation (default: 3.0)"
+        ),
+    )
+    parser.add_argument(
+        "--no_cold", action="store_true", help="Do not copy to cold storage"
     )
     parser.add_argument(
         "--use_problems",
@@ -323,26 +343,26 @@ if __name__ == "__main__":
         help="Use historical data marked as problem in the analysis",
     )
     parser.add_argument(
-        "--all_time",
+        "--nocal",
         action="store_true",
-        help="Use all historical data, regardless of timestamp (disregard conf file)",
+        help="Do not process the calibration frames",
     )
     parser.add_argument(
-        "--scheme",
-        type=str,
-        default="simple",
-        help="Validation scheme to use [*simple*,none]",
+        "--sci",
+        action="store_true",
+        help="Process the science frames, too?  (Not yet implemented)",
     )
-    args = parser.parse_args()
+    pargs = parser.parse_args()
 
     # Giddy Up!
     main(
-        args.directory,
-        do_science=args.science,
-        skip_cals=args.nocal,
-        sigma_thresh=args.sig_thresh,
-        validation_scheme=args.scheme,
-        no_prob=not args.use_problems,
-        all_time=args.all_time,
-        mem_limit=16.384e9 if args.gb16 else 8.192e9,
+        pargs.directory,
+        do_science=pargs.sci,
+        skip_cals=pargs.nocal,
+        validation_scheme=pargs.scheme.lower(),
+        sigma_thresh=pargs.sigma,
+        no_prob=not pargs.use_problems,
+        all_time=pargs.all_time,
+        no_cold=pargs.no_cold,
+        mem_limit=1.024e9 * pargs.ram,
     )

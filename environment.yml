@@ -1,24 +1,24 @@
 name: roz
 channels:
-  - conda-forge
   - default
 dependencies:
   - python>=3.8,<3.10
-  - pyyaml>=5.4
-  - requests>=2.26
-  - packaging>=21.0
   - numpy>=1.21
-  - scipy>=1.7
-  - astropy>=4.3
-  - setuptools>=46.4
-  - setuptools_scm
   - matplotlib>=3.4
   - pytest>=6.2
   - tqdm
   - beautifulsoup4
-  - ccdproc
-  - black
-  - pylint
+  # Astropy Channel
+  - astropy::astropy>=4.3
+  - astropy::ccdproc
+  # Conda-Forge Channel
+  - conda-forge::atlassian-python-api
+  - conda-forge::setuptools>=59.7
+  - conda-forge::setuptools_scm
+  - conda-forge::black
+  - conda-forge::pylint
+  # Via pip
   - pip
   - pip:
+    - git+https://github.com/LowellObservatory/ligmos
     - git+https://github.com/LowellObservatory/JohnnyFive
