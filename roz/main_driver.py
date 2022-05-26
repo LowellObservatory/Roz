@@ -72,7 +72,7 @@ def main(
     skip_cals : `bool`, optional
         Do not process the calibration frames.  [Default: False]
     no_cold : `bool`, optional
-        Pass to `testing` in gf.Dumbwaiter.cold_storage()  [Default: False]
+        Pass to `skip_cold` in gf.Dumbwaiter.cold_storage()  [Default: False]
     no_prob : `bool`, optional
         Only use metrics not marked as "problem" by previous validation
         [Default: True]
@@ -85,12 +85,12 @@ def main(
         directories = [directories]
 
     # Parse KWARGS -- Debugging options that can be removed when in production
-    skip_cals = kwargs["skip_cals"] if "skip_cals" in kwargs else False
-    no_cold = kwargs["no_cold"] if "no_cold" in kwargs else False
-    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
-    all_time = kwargs["all_time"] if "all_time" in kwargs else False
+    skip_cals = kwargs.get("skip_cals", False)
+    no_cold = kwargs.get("no_cold", False)
+    no_prob = kwargs.get("no_prob", True)
+    all_time = kwargs.get("all_time", False)
 
-    # Loop through the directories prvided
+    # Loop through the directories provided
     for directory in directories:
 
         # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
@@ -109,13 +109,13 @@ def main(
                     f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
                     f"does not contain any sequential {dumbwaiter.frameclass} "
                     "FITS files",
-                    "main()",
+                    "main_driver.main()",
                 )
                 continue
 
             # Copy over the sorted frames to processing, and package for cold storage
             dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(testing=no_cold)
+            dumbwaiter.cold_storage(skip_cold=no_cold)
 
             # Giddy up!
             run = Run(
@@ -173,8 +173,8 @@ class Run:
         self.scheme = validation_scheme
 
         # Parse KWARGS -- Debugging options that can be removed when in production
-        self.no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
-        self.all_time = kwargs["all_time"] if "all_time" in kwargs else False
+        self.no_prob = kwargs.get("no_prob", True)
+        self.all_time = kwargs.get("all_time", False)
 
     def proc(self):
         """proc Process the files specified in the Dumbwaiter
@@ -283,6 +283,9 @@ class Run:
 
         _extended_summary_
         """
+        sa.send_alert(
+            "Warning: `run_sci` is not yet implemented", "main_driver.Run.run_sci()"
+        )
 
 
 # Console Script Entry Point =================================================#

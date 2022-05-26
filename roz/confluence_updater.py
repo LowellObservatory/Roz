@@ -79,7 +79,10 @@ def update_filter_characterization(
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
     if not lmi_filter_info.exists:
-        sa.send_alert("ConfluenceAlert : update_filter_characterization()")
+        sa.send_alert(
+            "LMI Filter Information does not exist in the expected location",
+            "confluence_updater.update_filter_characterization()",
+        )
         return
 
     if debug:

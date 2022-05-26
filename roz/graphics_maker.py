@@ -90,7 +90,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
         ccd = CCDData.read(img_fn)
     except OSError as exception:
         sa.send_alert(
-            f"Could not open {img_fn} because of {exception}.", "make_png_thumbnail()"
+            f"Could not open {img_fn} because of {exception}.",
+            "graphics_maker.make_png_thumbnail()",
         )
         return None
 

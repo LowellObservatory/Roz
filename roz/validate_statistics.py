@@ -83,8 +83,8 @@ def validate_calibration_metadata(
         validation scheme
     """
     # Parse KWARGS -- Debugging options that can be removed when in production
-    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
-    all_time = kwargs["all_time"] if "all_time" in kwargs else False
+    no_prob = kwargs.get("no_prob", True)
+    all_time = kwargs.get("all_time", False)
 
     # Build the `scheme_str` to return (to be printed in the Problem Report)
     if scheme == "simple":
@@ -191,8 +191,8 @@ def perform_calibration_validation(
         Problem report dictionary
     """
     # Parse KWARGS -- Debugging options that can be removed when in production
-    no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
-    all_time = kwargs["all_time"] if "all_time" in kwargs else False
+    no_prob = kwargs.get("no_prob", True)
+    all_time = kwargs.get("all_time", False)
 
     # Check `scheme`
     # TODO: As additional validation schemes are developed, change this

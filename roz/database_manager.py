@@ -149,8 +149,8 @@ class CalibrationDatabase:
 
         """
         # Parse KWARGS -- Debugging options that can be removed when in production
-        no_prob = kwargs["no_prob"] if "no_prob" in kwargs else True
-        all_time = kwargs["all_time"] if "all_time" in kwargs else False
+        no_prob = kwargs.get("no_prob", True)
+        all_time = kwargs.get("all_time", False)
 
         # Load in the filter list for this instrument
         instrument = self.v_report["flags"]["instrument"]

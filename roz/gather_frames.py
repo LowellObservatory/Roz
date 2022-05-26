@@ -71,7 +71,9 @@ class Dumbwaiter:
 
         # Check that `frameclass` is the currently supported
         if frameclass not in FRAMECLASSES:
-            sa.send_alert("Incorrect frameclass specified", "Dumbwaiter.__init__()")
+            sa.send_alert(
+                "Incorrect frameclass specified", "gather_frames.Dumbwaiter.__init__()"
+            )
             return
 
         locations = utils.read_ligmos_conffiles("rozSetup")
@@ -110,7 +112,7 @@ class Dumbwaiter:
         else:
             sa.send_alert(
                 f"Valid but unsupported frameclass {self.frameclass}",
-                "Dumbwaiter.__init__()",
+                "gather_frames.Dumbwaiter.__init__()",
             )
 
         # Make an attribute specifying whether the dumbwaiter is empty
@@ -154,7 +156,7 @@ class Dumbwaiter:
             progress_bar.update(1)
         progress_bar.close()
 
-    def cold_storage(self, testing=True):
+    def cold_storage(self, skip_cold=False):
         """cold_storage Put the dumbwaited frames into cold strage
 
         This method takes the frames contained internally and packages them up
@@ -167,8 +169,8 @@ class Dumbwaiter:
 
         Parameters
         ----------
-        testing : `bool`, optional
-            If testing, don't commit to cold storage  [Default: True]
+        skip_cold : `bool`, optional
+            Don't commit to cold storage  [Default: False]
         """
         # If empty, dont' do anything
         if self.empty:
@@ -194,7 +196,7 @@ class Dumbwaiter:
         tarname = self.dirs["proc"].joinpath(tarbase)
 
         # Just return now
-        if testing:
+        if skip_cold:
             return
 
         # Create a summary table (README.txt) to include in the tarball
@@ -220,7 +222,7 @@ class Dumbwaiter:
         if not cold_dir.is_dir():
             sa.send_alert(
                 f"Cold storage directory not available at `{cold_dir}`",
-                "Dumbwaiter.cold_storage()",
+                "gather_frames.Dumbwaiter.cold_storage()",
             )
             return
         print(f"Copying {tarbase} to {cold_dir}...")
@@ -299,7 +301,7 @@ def divine_instrument(directory=None, fits_files=None):
     # Otherwise...
     sa.send_alert(
         f"No Instrument found in {utils.subpath(directory) if directory else 'this directory'}",
-        "divine_instrument()",
+        "gather_frames.divine_instrument()",
     )
     return None
 
@@ -433,6 +435,7 @@ def get_sequential_fitsfiles(directory):
     if not directory.is_dir():
         sa.send_alert(
             f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
+            "gather_frames.get_sequential_fitsfiles()",
         )
         return None
 
