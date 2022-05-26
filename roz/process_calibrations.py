@@ -45,7 +45,12 @@ warnings.simplefilter("ignore", FITSFixedWarning)
 
 # Narrative Functions ========================================================#
 def process_bias(
-    bias_cl, binning=None, debug=True, mem_limit=8.192e9, produce_combined=True
+    bias_cl,
+    binning=None,
+    debug=True,
+    mem_limit=8.192e9,
+    produce_combined=True,
+    combine_method="average",
 ):
     """process_bias Process and combine available bias frames
 
@@ -63,6 +68,8 @@ def process_bias(
         Memory limit for the image combination routine [Default: 8.192e9 bytes]
     produce_combined : `bool`, optional
         Produce and return a combined bais image?  [Default: True]
+    combine_method : `str`, optional
+        Combination method to pass to `ccdp.combine()`  [Default: average]
 
     Returns
     -------
@@ -108,14 +115,11 @@ def process_bias(
     combined = None
     if produce_combined:
         if debug:
-            print("Doing median combine of biases now...")
+            print(f"Doing {combine_method} combine of biases now...")
         combined = ccdp.combine(
             bias_ccds,
-            method="median",
+            method=combine_method,
             sigma_clip=True,
-            sigma_clip_low_thresh=5,
-            sigma_clip_high_thresh=5,
-            sigma_clip_func=np.ma.median,
             mem_limit=mem_limit,
             sigma_clip_dev_func=mad_std,
         )
@@ -123,7 +127,12 @@ def process_bias(
 
 
 def process_dark(
-    dark_cl, binning=None, debug=True, mem_limit=8.192e9, produce_combined=True
+    dark_cl,
+    binning=None,
+    debug=True,
+    mem_limit=8.192e9,
+    produce_combined=True,
+    combine_method="average",
 ):
     """process_dark Process and combine available dark frames
 
@@ -136,14 +145,11 @@ def process_dark(
     combined = None
     if produce_combined:
         if debug:
-            print("Doing median combine of darks now...")
+            print(f"Doing {combine_method} combine of darks now...")
         combined = ccdp.combine(
             dark_ccds,
-            method="median",
+            method=combine_method,
             sigma_clip=True,
-            sigma_clip_low_thresh=5,
-            sigma_clip_high_thresh=5,
-            sigma_clip_func=np.ma.median,
             mem_limit=mem_limit,
             sigma_clip_dev_func=mad_std,
         )
