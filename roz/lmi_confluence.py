@@ -39,6 +39,7 @@ from johnnyfive.utils import PermissionWarning
 # Internal Imports
 from roz import graphics_maker
 from roz import messaging
+from roz import msgs
 from roz import utils
 from roz import validate_statistics
 
@@ -88,7 +89,7 @@ def update_filter_characterization(
 
     if debug:
         # Get the `page_id` needed for intracting with the page we want to update
-        print(f"This is the page_id: {lmi_filter_info.page_id}")
+        msgs.info(f"This is the page_id: {lmi_filter_info.page_id}")
 
     # Update the HTML table attached to the Confluence page
     png_fn = update_lmi_filter_table(
@@ -121,10 +122,10 @@ def update_filter_characterization(
             content_type="image/png",
             comment="Flat Field Image",
         )
-        print(f"Uploaded: {png}")
+        msgs.info(f"Uploaded: {png}")
 
     # Print a happy little message
-    print(f"Successfully updated the Confluence page `{page_info.page_title}`")
+    msgs.info(f"Successfully updated the Confluence page `{page_info.page_title}`")
 
 
 # Descriptive, high-level functions ==========================================#
@@ -413,7 +414,7 @@ def construct_lmi_html_table(
     # Place the italicized date string ahead of the table
     soup.find("table").insert_before(itdate)
     if debug:
-        print(f"HTML table timestamp: {timestr}")
+        msgs.info(f"HTML table timestamp: {timestr}")
 
     # Add the section headings for the different filter groups:
     for i, row in enumerate(soup.find_all("tr")):

@@ -38,6 +38,7 @@ from tqdm import tqdm
 
 # Internal Imports
 from roz import messaging
+from roz import msgs
 from roz import utils
 
 # Currently Supported Frameclasses
@@ -138,12 +139,12 @@ class Dumbwaiter:
             return
 
         if not keep_existing:
-            print(f"Clearing cruft from processing directory {self.dirs['proc']}")
+            msgs.info(f"Clearing cruft from processing directory {self.dirs['proc']}")
             for entry in self.dirs["proc"].glob("*"):
                 if entry.is_file():
                     self.dirs["proc"].joinpath(entry).unlink()
 
-        print(
+        msgs.info(
             f"Copying data from {self.dirs['data']} to {self.dirs['proc']} for processing..."
         )
         # Show progress bar for copying files
@@ -202,7 +203,7 @@ class Dumbwaiter:
         self._make_summary_table()
 
         # Tar up the files!
-        print("Creating the compressed tar file for cold storage...")
+        msgs.info("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
             tar.add(self.dirs["proc"].joinpath("README.txt"), arcname="README.txt")
             # Show progress bar for processing the tarball
@@ -224,7 +225,7 @@ class Dumbwaiter:
                 "gather_frames.Dumbwaiter.cold_storage()",
             )
             return
-        print(f"Copying {tarbase} to {cold_dir}...")
+        msgs.info(f"Copying {tarbase} to {cold_dir}...")
         # NOTE: Using this lower-level function to avoid chmod() errors
         shutil.copyfile(tarname, cold_dir.joinpath(tarbase))
 
@@ -335,7 +336,7 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     warnings.simplefilter("ignore", AstropyUserWarning)
 
     # Because over-the-network reads can take a while, say something!
-    print(f"Reading the files in {directory}...")
+    msgs.info(f"Reading the files in {directory}...")
 
     # Create an ImageFileCollection for the specified directory
     if not fitsfiles:
@@ -389,12 +390,13 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     if fnames_only:
         # Append all the filename lists onto `fn_list`; Print out Frame Summary
         fn_list = []
-        print(f"{'*'*19}\n* -Frame Summary- *")
+        msgs.table(f"{'*'*19}")
+        msgs.table("* -Frame Summary- *")
         for key, val in return_object.items():
             if key.find("_fn") != -1:
-                print(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
+                msgs.table(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
                 fn_list.append(val)
-        print("*" * 19)
+        msgs.table("*" * 19)
         # Flatten and return the BASENAME only
         return [os.path.basename(fn) for fn in list(np.concatenate(fn_list).flat)]
 

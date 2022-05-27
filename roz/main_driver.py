@@ -32,6 +32,7 @@ from roz import lmi_confluence
 from roz import database_manager
 from roz import gather_frames
 from roz import messaging
+from roz import msgs
 from roz import process_calibrations
 from roz import utils
 
@@ -212,8 +213,8 @@ class Run:
         for ccd_bin in bin_list:
 
             # Print out a nice status message for those interested
-            print(
-                f"\nProcessing the database for {ccd_bin.replace(' ', 'x')} binning..."
+            msgs.info(
+                f"Processing the database for {ccd_bin.replace(' ', 'x')} binning..."
             )
 
             # Set default meta and combined frames to `NoneType`

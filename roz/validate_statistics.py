@@ -31,6 +31,7 @@ import numpy as np
 
 # Internal Imports
 from roz import database_manager
+from roz import msgs
 from roz import utils
 
 
@@ -209,7 +210,7 @@ def perform_calibration_validation(
         return None, report
 
     # Print the banner
-    print(
+    msgs.validate(
         f"==> Validating {frametype.upper()}"
         f"{f' : {filt}' if filt != 'DARK' else ''} frames:"
     )
@@ -313,7 +314,7 @@ def perform_calibration_validation(
     meta_table["obstruction"] = o_flag
 
     # Print some statistics about this frame collection
-    print(
+    msgs.validate(
         f"  Mean: {np.mean(meta_table['crop_avg']):.2f}  "
         f"  Median: {np.median(meta_table['crop_med']):.2f}  "
         f"  Stddev: {np.mean(meta_table['crop_std']):.2f}"

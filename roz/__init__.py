@@ -14,8 +14,12 @@
 
 # Imports for signal and log handling
 import os
+import signal
+import sys
 import warnings
 
+# Local Imports
+from roz import messaging
 from .version import version
 
 
@@ -31,3 +35,21 @@ warnings.formatwarning = short_warning
 
 # Set version
 __version__ = version
+
+
+# Import and instantiate the logger
+msgs = messaging.Messages()
+
+
+# Send all signals to messages to be dealt with (i.e. someone hits ctrl+c)
+def signal_handler(signalnum, handler):
+    """
+    Handle signals sent by the keyboard during code execution
+    """
+    if signalnum == 2:
+        msgs.info("Ctrl+C was pressed. Ending processes...")
+        msgs.close()
+        sys.exit()
+
+
+signal.signal(signal.SIGINT, signal_handler)

@@ -38,6 +38,7 @@ from tqdm import tqdm
 
 # Internal Imports
 from roz import gather_frames
+from roz import msgs
 from roz import utils
 
 # Silence Superflous AstroPy FITS Header Warnings
@@ -107,7 +108,7 @@ class CalibContainer:
         if not bias_cl.files:
             return (Table(), None) if produce_combined else Table()
         if self.debug:
-            print("Processing bias frames...")
+            msgs.info("Processing bias frames...")
 
         # Show progress bar for processing bias frames
         progress_bar = tqdm(
@@ -139,7 +140,7 @@ class CalibContainer:
         combined = None
         if produce_combined:
             if self.debug:
-                print(f"Doing {combine_method} combine of biases now...")
+                msgs.info(f"Doing {combine_method} combine of biases now...")
             # Silence RuntimeWarning issued related to means of empty slices
             warnings.simplefilter("ignore", RuntimeWarning)
             combined = ccdp.combine(
@@ -166,14 +167,14 @@ class CalibContainer:
         if not dark_cl.files:
             return (Table(), None) if produce_combined else Table()
         if self.debug:
-            print("Processing dark frames...")
+            msgs.info("Processing dark frames...")
 
         dark_ccds, metadata, _ = [], [], None
         # Convert the list of dicts into a Table and return, plus combined bias
         combined = None
         if produce_combined:
             if self.debug:
-                print(f"Doing {combine_method} combine of darks now...")
+                msgs.info(f"Doing {combine_method} combine of darks now...")
             # Silence RuntimeWarning issued related to means of empty slices
             warnings.simplefilter("ignore", RuntimeWarning)
             combined = ccdp.combine(
@@ -215,14 +216,14 @@ class CalibContainer:
 
         # Check for actual bias frame, else make something up
         if not bias_frame:
-            print("No appropriate bias frames passed; loading saved BIAS...")
+            msgs.info("No appropriate bias frames passed; loading saved BIAS...")
             bias_frame = utils.load_saved_bias(self.flags["instrument"], ccd_bin)
         else:
             # Write this bias to disk for future use
             utils.write_saved_bias(bias_frame, self.flags["instrument"], ccd_bin)
 
         if self.debug:
-            print("Processing flat frames...")
+            msgs.info("Processing flat frames...")
 
         # Show progress bar for processing flat frames
         progress_bar = tqdm(
@@ -282,7 +283,7 @@ class CalibContainer:
         NOTE: Not yet implemented --
             tqdm color should be "red"
         """
-        print(ccd_bin, bias_frame, dark_frame, self.debug)
+        [ccd_bin, bias_frame, dark_frame, self.debug]
         return Table()
 
     def _check_ifc(self, frametype, ccd_bin):
