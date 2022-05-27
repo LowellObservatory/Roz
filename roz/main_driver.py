@@ -28,11 +28,11 @@ import argparse
 # 3rd Party Libraries
 
 # Internal Imports
-from roz import confluence_updater as cu
-from roz import database_manager as dm
-from roz import gather_frames as gf
-from roz import process_calibrations as pc
-from roz import send_alerts as sa
+import roz.confluence_updater as cu
+import roz.database_manager as dm
+import roz.gather_frames as gf
+import roz.process_calibrations as pc
+import roz.send_alerts as sa
 from roz import utils
 
 
@@ -84,18 +84,15 @@ def main(
     if isinstance(directories, str):
         directories = [directories]
 
-    # Parse KWARGS -- Debugging options that can be removed when in production
-    skip_cals = kwargs.get("skip_cals", False)
-    no_cold = kwargs.get("no_cold", False)
-    no_prob = kwargs.get("no_prob", True)
-    all_time = kwargs.get("all_time", False)
-
     # Loop through the directories provided
     for directory in directories:
 
+        # Give some visual space between directories being processed
+        print(f"\n{'-'*30}\n")
+
         # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
         waiters = []
-        if not skip_cals:
+        if not kwargs.get("skip_cals", False):
             waiters.append(gf.Dumbwaiter(directory, frameclass="calibration"))
         if do_science:
             waiters.append(gf.Dumbwaiter(directory, frameclass="science"))
@@ -115,7 +112,7 @@ def main(
 
             # Copy over the sorted frames to processing, and package for cold storage
             dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(skip_cold=no_cold)
+            dumbwaiter.cold_storage(skip_cold=kwargs.get("no_cold", False))
 
             # Giddy up!
             run = Run(
@@ -123,8 +120,7 @@ def main(
                 sigma_thresh=sigma_thresh,
                 validation_scheme=validation_scheme,
                 mem_limit=mem_limit,
-                no_prob=no_prob,
-                all_time=all_time,
+                **kwargs,
             )
             run.proc()
 
@@ -173,8 +169,8 @@ class Run:
         self.scheme = validation_scheme
 
         # Parse KWARGS -- Debugging options that can be removed when in production
-        self.no_prob = kwargs.get("no_prob", True)
-        self.all_time = kwargs.get("all_time", False)
+        self.kwargs = kwargs
+        self.skip_db_write = kwargs.get("skip_db_write", False)
 
     def proc(self):
         """proc Process the files specified in the Dumbwaiter
@@ -265,11 +261,12 @@ class Run:
             # Validate the metadata tables, and write contents to InfluxDB
             database.validate(
                 sigma_thresh=self.sigma_thresh,
-                no_prob=self.no_prob,
-                all_time=self.all_time,
+                # no_prob=self.no_prob,
+                # all_time=self.all_time,
                 scheme=self.scheme,
+                **self.kwargs,
             )
-            database.write_to_influxdb(testing=False)
+            database.write_to_influxdb(testing=self.skip_db_write)
 
             if self.flags["instrument"].lower() == "lmi":
                 # Update the LMI Filter Information page on Confluence
@@ -347,6 +344,11 @@ def entry_point():
         help="Use historical data marked as problem in the analysis",
     )
     parser.add_argument(
+        "--skip_db",
+        action="store_true",
+        help="Skip writing to the InfluxDB",
+    )
+    parser.add_argument(
         "--nocal",
         action="store_true",
         help="Do not process the calibration frames",
@@ -368,5 +370,6 @@ def entry_point():
         no_prob=not pargs.use_problems,
         all_time=pargs.all_time,
         no_cold=pargs.no_cold,
+        skip_db_write=pargs.skip_db,
         mem_limit=1.024e9 * pargs.ram,
     )

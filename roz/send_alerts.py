@@ -28,7 +28,7 @@ from astropy.table import Table
 from johnnyfive import slack as j5s
 
 # Internal Imports
-from roz import graphics_maker as gm
+import roz.graphics_maker as gm
 from roz import utils
 
 # Constants

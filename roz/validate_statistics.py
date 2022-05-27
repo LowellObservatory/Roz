@@ -30,7 +30,7 @@ import warnings
 import numpy as np
 
 # Internal Imports
-from roz import database_manager as dm
+import roz.database_manager as dm
 from roz import utils
 
 
@@ -82,10 +82,6 @@ def validate_calibration_metadata(
         The string to be printed in the Problem Report about the
         validation scheme
     """
-    # Parse KWARGS -- Debugging options that can be removed when in production
-    no_prob = kwargs.get("no_prob", True)
-    all_time = kwargs.get("all_time", False)
-
     # Build the `scheme_str` to return (to be printed in the Problem Report)
     if scheme == "simple":
         scheme_str = (
@@ -129,8 +125,7 @@ def validate_calibration_metadata(
                 scheme,
                 filt=filt,
                 sigma_thresh=sigma_thresh,
-                no_prob=no_prob,
-                all_time=all_time,
+                **kwargs,
             )
         validated_metadata[frame_type] = frame_dict
         validation_report[frame_type] = frame_report
@@ -198,7 +193,7 @@ def perform_calibration_validation(
     # TODO: As additional validation schemes are developed, change this
     if scheme not in ["simple", "none"]:
         warnings.warn(
-            "Only 'simple' and 'none' validation of calibration frames is "
+            "Only 'simple' and 'none' validation of calibration frames are "
             f"available this time.  `{scheme}` not supported.  "
             "(Using 'simple'...)",
             utils.DeveloperWarning,
@@ -432,3 +427,20 @@ def build_problem_report(report_dict):
             report += "*.*."
 
     return report
+
+
+def check_lamp_countrates(table):
+    """check_lamp_countrates _summary_
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    table : _type_
+        _description_
+    """
+    print("Colnames:")
+    print(table.colnames)
+    print(f"This is the crop median: {table['crop_med']}")
+    # TODO: This function needs to check that the count rates are reasonable (> 500 ct/s ?)
+    return np.ones(len(table), dtype=bool)

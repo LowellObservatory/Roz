@@ -116,6 +116,8 @@ def process_bias(
     if produce_combined:
         if debug:
             print(f"Doing {combine_method} combine of biases now...")
+        # Silence RuntimeWarning issued related to means of empty slices
+        warnings.simplefilter("ignore", RuntimeWarning)
         combined = ccdp.combine(
             bias_ccds,
             method=combine_method,
@@ -123,6 +125,8 @@ def process_bias(
             mem_limit=mem_limit,
             sigma_clip_dev_func=mad_std,
         )
+        # Reinstate RuntimeWarning
+        warnings.simplefilter("default", RuntimeWarning)
     return Table(metadata), combined
 
 
@@ -146,6 +150,8 @@ def process_dark(
     if produce_combined:
         if debug:
             print(f"Doing {combine_method} combine of darks now...")
+        # Silence RuntimeWarning issued related to means of empty slices
+        warnings.simplefilter("ignore", RuntimeWarning)
         combined = ccdp.combine(
             dark_ccds,
             method=combine_method,
@@ -153,6 +159,8 @@ def process_dark(
             mem_limit=mem_limit,
             sigma_clip_dev_func=mad_std,
         )
+        # Reinstate RuntimeWarning
+        warnings.simplefilter("default", RuntimeWarning)
     return Table(metadata), combined
 
 

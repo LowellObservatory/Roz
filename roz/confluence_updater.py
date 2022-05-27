@@ -37,8 +37,9 @@ from johnnyfive import confluence as j5c
 from johnnyfive.utils import PermissionWarning
 
 # Internal Imports
-from roz import graphics_maker as gm
-from roz import send_alerts as sa
+import roz.graphics_maker as gm
+import roz.send_alerts as sa
+import roz.validate_statistics as vs
 from roz import utils
 
 
@@ -112,6 +113,7 @@ def update_filter_characterization(
     )
 
     # Attach any PNGs created
+    # TODO: If replacing an existing PNG, remove the old one to save space on Confluence
     for png in png_fn:
         lmi_filter_info.attach_file(
             utils.Paths.thumbnail.joinpath(png),
@@ -122,7 +124,7 @@ def update_filter_characterization(
         print(f"Uploaded: {png}")
 
     # Print a happy little message
-    print(f"Successfully updated the Confluence page {page_info.page_title}")
+    print(f"Successfully updated the Confluence page `{page_info.page_title}`")
 
 
 # Descriptive, high-level functions ==========================================#
@@ -273,7 +275,8 @@ def modify_lmi_dynamic_table(
         # TODO: Add a check here for whether the correct lamps were used.  This
         #       can be determined by checking that the count rate is within
         #       some nominal range.
-
+        good_lamps = vs.check_lamp_countrates(database.v_tables["flat"][filt])
+        print(good_lamps)
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
         fname = database.proc_dir.joinpath(
             database.v_tables["flat"][filt]["filename"][-1]

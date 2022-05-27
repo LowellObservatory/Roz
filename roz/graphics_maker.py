@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Internal Imports
-from roz import send_alerts as sa
+import roz.send_alerts as sa
 from roz import utils
 
 
@@ -129,6 +129,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
         "*Problem*" if problem else "*Latest*" if latest else "*Nominal*",
         hdr["INSTRUME"].upper(),
         hdr["OBSTYPE"],
+        hdr["CCDSUM"].strip().replace(" ",'x'),
         filt,
         hdr["DATE-OBS"].split("T")[0],
         img_fn,

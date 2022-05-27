@@ -37,7 +37,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from roz import send_alerts as sa
+import roz.send_alerts as sa
 from roz import utils
 
 # Currently Supported Frameclasses

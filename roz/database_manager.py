@@ -38,8 +38,8 @@ from ligmos import workers as lig_workers
 from johnnyfive import utils as j5u
 
 # Internal Imports
-from roz import send_alerts as sa
-from roz import validate_statistics as vs
+import roz.send_alerts as sa
+import roz.validate_statistics as vs
 from roz import utils
 
 # Set API Components
@@ -148,10 +148,6 @@ class CalibrationDatabase:
             regardless of the timestamp [Default: False]
 
         """
-        # Parse KWARGS -- Debugging options that can be removed when in production
-        no_prob = kwargs.get("no_prob", True)
-        all_time = kwargs.get("all_time", False)
-
         # Load in the filter list for this instrument
         instrument = self.v_report["flags"]["instrument"]
         try:
@@ -170,8 +166,7 @@ class CalibrationDatabase:
             filt_list=filter_list,
             sigma_thresh=sigma_thresh,
             scheme=scheme,
-            no_prob=no_prob,
-            all_time=all_time,
+            **kwargs,
         )
 
         # Add the `frame_reports` and `scheme_string` to the full validation report
