@@ -30,7 +30,7 @@ import warnings
 import numpy as np
 
 # Internal Imports
-import roz.database_manager as dm
+from roz import database_manager
 from roz import utils
 
 
@@ -253,7 +253,7 @@ def perform_calibration_validation(
         metrics.remove(removal)
 
     # Pull the Historical Data matching this set
-    hist = dm.HistoricalData(
+    hist = database_manager.HistoricalData(
         sorted(list(set(meta_table["instrument"])))[0].lower(),
         frametype,
         filter=sorted(list(set(meta_table["filter"])))[0],

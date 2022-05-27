@@ -37,9 +37,9 @@ from johnnyfive import confluence as j5c
 from johnnyfive.utils import PermissionWarning
 
 # Internal Imports
-import roz.graphics_maker as gm
-import roz.send_alerts as sa
-import roz.validate_statistics as vs
+from roz import graphics_maker
+from roz import send_alerts
+from roz import validate_statistics
 from roz import utils
 
 
@@ -80,7 +80,7 @@ def update_filter_characterization(
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
     if not lmi_filter_info.exists:
-        sa.send_alert(
+        send_alerts.send_alert(
             "LMI Filter Information does not exist in the expected location",
             "confluence_updater.update_filter_characterization()",
         )
@@ -275,13 +275,17 @@ def modify_lmi_dynamic_table(
         # TODO: Add a check here for whether the correct lamps were used.  This
         #       can be determined by checking that the count rate is within
         #       some nominal range.
-        good_lamps = vs.check_lamp_countrates(database.v_tables["flat"][filt])
+        good_lamps = validate_statistics.check_lamp_countrates(
+            database.v_tables["flat"][filt]
+        )
         print(good_lamps)
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
         fname = database.proc_dir.joinpath(
             database.v_tables["flat"][filt]["filename"][-1]
         )
-        png_fn.append(gm.make_png_thumbnail(fname, database.v_report["flags"]))
+        png_fn.append(
+            graphics_maker.make_png_thumbnail(fname, database.v_report["flags"])
+        )
 
         # Update the dynamic columns
         lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"

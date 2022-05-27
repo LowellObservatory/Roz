@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Internal Imports
-import roz.send_alerts as sa
+from roz import send_alerts
 from roz import utils
 
 
@@ -89,7 +89,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     try:
         ccd = CCDData.read(img_fn)
     except OSError as exception:
-        sa.send_alert(
+        send_alerts.send_alert(
             f"Could not open {img_fn} because of {exception}.",
             "graphics_maker.make_png_thumbnail()",
         )
@@ -129,7 +129,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
         "*Problem*" if problem else "*Latest*" if latest else "*Nominal*",
         hdr["INSTRUME"].upper(),
         hdr["OBSTYPE"],
-        hdr["CCDSUM"].strip().replace(" ",'x'),
+        hdr["CCDSUM"].strip().replace(" ", "x"),
         filt,
         hdr["DATE-OBS"].split("T")[0],
         img_fn,

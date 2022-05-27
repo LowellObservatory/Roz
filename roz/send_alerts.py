@@ -28,7 +28,7 @@ from astropy.table import Table
 from johnnyfive import slack as j5s
 
 # Internal Imports
-import roz.graphics_maker as gm
+from roz import graphics_maker
 from roz import utils
 
 # Constants
@@ -107,7 +107,7 @@ def post_pngs(metadata_tables, directory, inst_flags):
 
                     # Go through the files one by one, make PNGs, and upload
                     for png in pngs:
-                        png_fn = gm.make_png_thumbnail(
+                        png_fn = graphics_maker.make_png_thumbnail(
                             directory.joinpath(png),
                             inst_flags,
                             problem=True,

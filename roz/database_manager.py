@@ -38,8 +38,8 @@ from ligmos import workers as lig_workers
 from johnnyfive import utils as j5u
 
 # Internal Imports
-import roz.send_alerts as sa
-import roz.validate_statistics as vs
+from roz import send_alerts
+from roz import validate_statistics
 from roz import utils
 
 # Set API Components
@@ -161,7 +161,11 @@ class CalibrationDatabase:
             filter_list = ["OPEN"]
 
         # Load up the internal dictionaries with validated data and reports
-        self.v_tables, frame_reports, s_str = vs.validate_calibration_metadata(
+        (
+            self.v_tables,
+            frame_reports,
+            s_str,
+        ) = validate_statistics.validate_calibration_metadata(
             self.meta_tabls,
             filt_list=filter_list,
             sigma_thresh=sigma_thresh,
@@ -173,10 +177,10 @@ class CalibrationDatabase:
         self.v_report.update({"frame_reports": frame_reports, "valid_scheme": s_str})
 
         # Convert the validation report into a problem report; post
-        if problem_report := vs.build_problem_report(self.v_report):
+        if problem_report := validate_statistics.build_problem_report(self.v_report):
             print("++++> Posting Problem Report to Slack...")
-            sa.post_report(problem_report)
-            sa.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
+            send_alerts.post_report(problem_report)
+            send_alerts.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB

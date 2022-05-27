@@ -28,11 +28,11 @@ import argparse
 # 3rd Party Libraries
 
 # Internal Imports
-import roz.confluence_updater as cu
-import roz.database_manager as dm
-import roz.gather_frames as gf
-import roz.process_calibrations as pc
-import roz.send_alerts as sa
+from roz import lmi_confluence
+from roz import database_manager
+from roz import gather_frames
+from roz import process_calibrations
+from roz import send_alerts
 from roz import utils
 
 
@@ -93,16 +93,18 @@ def main(
         # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
         waiters = []
         if not kwargs.get("skip_cals", False):
-            waiters.append(gf.Dumbwaiter(directory, frameclass="calibration"))
+            waiters.append(
+                gather_frames.Dumbwaiter(directory, frameclass="calibration")
+            )
         if do_science:
-            waiters.append(gf.Dumbwaiter(directory, frameclass="science"))
+            waiters.append(gather_frames.Dumbwaiter(directory, frameclass="science"))
 
         # Loop over appropriate Dumbwaiter(s):
         for dumbwaiter in waiters:
 
             # If empty, send notification and move along
             if dumbwaiter.empty:
-                sa.send_alert(
+                send_alerts.send_alert(
                     f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
                     f"does not contain any sequential {dumbwaiter.frameclass} "
                     "FITS files",
@@ -114,7 +116,7 @@ def main(
             dumbwaiter.copy_frames_to_processing()
             dumbwaiter.cold_storage(skip_cold=kwargs.get("no_cold", False))
 
-            # Giddy up!
+            # Set up the Run() class, then Giddy Up!
             run = Run(
                 dumbwaiter,
                 sigma_thresh=sigma_thresh,
@@ -122,7 +124,7 @@ def main(
                 mem_limit=mem_limit,
                 **kwargs,
             )
-            run.proc()
+            run.process()
 
 
 # Run Functions ==============================================================#
@@ -155,16 +157,16 @@ class Run:
 
     def __init__(
         self,
-        waiter,
+        dumbwaiter,
         sigma_thresh=3.0,
         validation_scheme="simple",
         mem_limit=None,
         **kwargs,
     ):
         # Set instance attributes
-        self.waiter = waiter
+        self.dumbwaiter = dumbwaiter
         self.mem_limit = mem_limit
-        self.flags = self.waiter.inst_flags
+        self.flags = self.dumbwaiter.inst_flags
         self.sigma_thresh = sigma_thresh
         self.scheme = validation_scheme
 
@@ -172,12 +174,12 @@ class Run:
         self.kwargs = kwargs
         self.skip_db_write = kwargs.get("skip_db_write", False)
 
-    def proc(self):
+    def process(self):
         """proc Process the files specified in the Dumbwaiter
 
         Chooses which run_* method to call based on the `frameclass`
         """
-        method = f"run_{self.waiter.frameclass[:3]}"
+        method = f"run_{self.dumbwaiter.frameclass[:3]}"
         if hasattr(self, method) and callable(func := getattr(self, method)):
             func()
 
@@ -195,17 +197,20 @@ class Run:
         specified in the instrument flags.
         """
         # Collect the calibration frames for the processing directory
-        cframes = gf.gather_cal_frames(self.waiter.dirs["proc"], self.flags)
+        calib_frames = gather_frames.gather_cal_frames(
+            self.dumbwaiter.dirs["proc"], self.flags
+        )
 
         # Copy over `bin_list`, if returned from the above routine
-        if "bin_list" in cframes:
-            bin_list = cframes["bin_list"]
+        if isinstance(bin_list, str):
+            bin_list = [bin_list]
+        bin_list = calib_frames.get("bin_list", bin_list)
 
-        # Loop through the binning schemes used
-        for binning in bin_list:
+        # Loop through the CCD binning schemes used
+        for ccd_bin in bin_list:
 
             # Print out a nice status message for those interested
-            human_bin = binning.replace(" ", "x")
+            human_bin = ccd_bin.replace(" ", "x")
             print(f"\nProcessing the database for {human_bin} binning...")
 
             # Set default meta and combined frames to `NoneType`
@@ -214,45 +219,45 @@ class Run:
 
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
-                bias_meta, bias_frame = pc.process_bias(
-                    cframes["bias_cl"],
-                    binning=binning,
+                bias_meta, bias_frame = process_calibrations.process_bias(
+                    calib_frames["bias_cl"],
+                    binning=ccd_bin,
                     mem_limit=self.mem_limit,
                     produce_combined=self.flags["get_flat"],
                 )
 
             # Process the DARK frames to produce a reduced frame and statistics
             if self.flags["get_dark"]:
-                dark_meta, dark_frame = pc.process_dark(
-                    cframes["dark_cl"],
-                    binning=binning,
+                dark_meta, dark_frame = process_calibrations.process_dark(
+                    calib_frames["dark_cl"],
+                    binning=ccd_bin,
                     mem_limit=self.mem_limit,
                     produce_combined=self.flags["get_flat"],
                 )
 
             # Process the DOME (&SKY?) FLAT frames to produce statistics
             if self.flags["get_flat"]:
-                flat_meta = pc.process_domeflat(
-                    cframes["domeflat_cl"],
+                flat_meta = process_calibrations.process_domeflat(
+                    calib_frames["domeflat_cl"],
                     bias_frame=bias_frame,
                     dark_frame=dark_frame,
-                    binning=binning,
+                    binning=ccd_bin,
                     instrument=self.flags["instrument"],
                 )
-                skyf_meta = pc.process_skyflat(
-                    cframes["skyflat_cl"],
+                skyf_meta = process_calibrations.process_skyflat(
+                    calib_frames["skyflat_cl"],
                     bias_frame=bias_frame,
                     dark_frame=dark_frame,
-                    binning=binning,
+                    binning=ccd_bin,
                     instrument=self.flags["instrument"],
                 )
 
             # Take the metadata from the calibration frames and produce DATABASE
-            database = dm.CalibrationDatabase(
+            database = database_manager.CalibrationDatabase(
                 self.flags,
-                self.waiter.dirs["proc"],
-                self.waiter.nightname,
-                binning,
+                self.dumbwaiter.dirs["proc"],
+                self.dumbwaiter.nightname,
+                ccd_bin,
                 bias_meta=bias_meta,
                 dark_meta=dark_meta,
                 flat_meta=flat_meta,
@@ -271,7 +276,7 @@ class Run:
             if self.flags["instrument"].lower() == "lmi":
                 # Update the LMI Filter Information page on Confluence
                 #  Images for all binnings, values only for 2x2 binning
-                cu.update_filter_characterization(
+                lmi_confluence.update_filter_characterization(
                     database, png_only=(human_bin != "2x2")
                 )
 
@@ -280,8 +285,8 @@ class Run:
 
         _extended_summary_
         """
-        sa.send_alert(
-            f"Warning: `run_sci` is not yet implemented; `{self.waiter.nightname}`",
+        send_alerts.send_alert(
+            f"Warning: `run_sci` is not yet implemented; `{self.dumbwaiter.nightname}`",
             "main_driver.Run.run_sci()",
         )
 
