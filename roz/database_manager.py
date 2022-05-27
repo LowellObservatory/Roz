@@ -57,7 +57,7 @@ class CalibrationDatabase:
     Parameters
     ----------
     inst_flags : `dict`
-        Dictionary of instrument flags from .utils.set_instrument_flags()
+        Dictionary of instrument flags from utils.set_instrument_flags()
     proc_dir : `str` or `pathlib.Path`
         Path to the processing directory
     nightname: `str`

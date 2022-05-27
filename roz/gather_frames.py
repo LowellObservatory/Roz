@@ -45,7 +45,7 @@ FRAMECLASSES = ["calibration", "science"]
 
 
 class Dumbwaiter:
-    """dumbwaiter Class for moving data between floors (servers)
+    """Class for moving data between floors (servers)
 
     It seemed easier to contain in one place all of the data and methods
     related to identifying the appropriate frames, copying them to a processing

@@ -196,22 +196,25 @@ class Run:
         Keyword argument `bin_list` is a default in case `check_bin` is not
         specified in the instrument flags.
         """
-        # Collect the calibration frames for the processing directory
-        calib_frames = gather_frames.gather_cal_frames(
-            self.dumbwaiter.dirs["proc"], self.flags
+        # Collect the calibration frames within the processing directory
+        calibs = process_calibrations.CalibContainer(
+            self.dumbwaiter.dirs["proc"],
+            self.flags,
+            mem_limit=self.mem_limit,
         )
 
         # Copy over `bin_list`, if returned from the above routine
         if isinstance(bin_list, str):
             bin_list = [bin_list]
-        bin_list = calib_frames.get("bin_list", bin_list)
+        bin_list = calibs.frame_dict.get("bin_list", bin_list)
 
         # Loop through the CCD binning schemes used
         for ccd_bin in bin_list:
 
             # Print out a nice status message for those interested
-            human_bin = ccd_bin.replace(" ", "x")
-            print(f"\nProcessing the database for {human_bin} binning...")
+            print(
+                f"\nProcessing the database for {ccd_bin.replace(' ', 'x')} binning..."
+            )
 
             # Set default meta and combined frames to `NoneType`
             bias_meta = dark_meta = flat_meta = skyf_meta = None
@@ -219,37 +222,19 @@ class Run:
 
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
-                bias_meta, bias_frame = process_calibrations.process_bias(
-                    calib_frames["bias_cl"],
-                    binning=ccd_bin,
-                    mem_limit=self.mem_limit,
-                    produce_combined=self.flags["get_flat"],
-                )
+                bias_meta, bias_frame = calibs.process_bias(ccd_bin)
 
             # Process the DARK frames to produce a reduced frame and statistics
             if self.flags["get_dark"]:
-                dark_meta, dark_frame = process_calibrations.process_dark(
-                    calib_frames["dark_cl"],
-                    binning=ccd_bin,
-                    mem_limit=self.mem_limit,
-                    produce_combined=self.flags["get_flat"],
-                )
+                dark_meta, dark_frame = calibs.process_dark(ccd_bin)
 
-            # Process the DOME (&SKY?) FLAT frames to produce statistics
+            # Process the DOME (& SKY?) FLAT frames to produce statistics
             if self.flags["get_flat"]:
-                flat_meta = process_calibrations.process_domeflat(
-                    calib_frames["domeflat_cl"],
-                    bias_frame=bias_frame,
-                    dark_frame=dark_frame,
-                    binning=ccd_bin,
-                    instrument=self.flags["instrument"],
+                flat_meta = calibs.process_domeflat(
+                    ccd_bin, bias_frame=bias_frame, dark_frame=dark_frame
                 )
-                skyf_meta = process_calibrations.process_skyflat(
-                    calib_frames["skyflat_cl"],
-                    bias_frame=bias_frame,
-                    dark_frame=dark_frame,
-                    binning=ccd_bin,
-                    instrument=self.flags["instrument"],
+                skyf_meta = calibs.process_skyflat(
+                    ccd_bin, bias_frame=bias_frame, dark_frame=dark_frame
                 )
 
             # Take the metadata from the calibration frames and produce DATABASE
@@ -263,21 +248,20 @@ class Run:
                 flat_meta=flat_meta,
                 skyf_meta=skyf_meta,
             )
-            # Validate the metadata tables, and write contents to InfluxDB
+            # Validate the metadata tables
             database.validate(
                 sigma_thresh=self.sigma_thresh,
-                # no_prob=self.no_prob,
-                # all_time=self.all_time,
                 scheme=self.scheme,
                 **self.kwargs,
             )
+            # Write the contents to InfluxDB
             database.write_to_influxdb(testing=self.skip_db_write)
 
+            # Update the LMI Filter Information page on Confluence
             if self.flags["instrument"].lower() == "lmi":
-                # Update the LMI Filter Information page on Confluence
-                #  Images for all binnings, values only for 2x2 binning
+                # Images for all binnings, values only for 2x2 binning
                 lmi_confluence.update_filter_characterization(
-                    database, png_only=(human_bin != "2x2")
+                    database, png_only=(ccd_bin != "2 2")
                 )
 
     def run_sci(self):
