@@ -402,11 +402,12 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     return return_object
 
 
-def gather_other_frames():
+def gather_other_frames(**kwargs):
     """gather_other_frames Stub for additional functionality
 
     [extended_summary]
     """
+    return kwargs
 
 
 def get_sequential_fitsfiles(directory):

@@ -4,7 +4,7 @@
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-#  Created on 23-Sep-2021
+#  Created on 27-May-2022
 #
 #  @author: tbowers
 
@@ -23,11 +23,11 @@ the odd AstroPy CCDData object (`astropy.nddata.CCDData`) and basic python
 dictionaries (`dict`).
 """
 
-# # Built-In Libraries
+# Built-In Libraries
 # import os
 # import warnings
 
-# # 3rd Party Libraries
+# 3rd Party Libraries
 # from astropy.stats import mad_std
 # from astropy.table import Table
 # from astropy.wcs import FITSFixedWarning
@@ -36,12 +36,75 @@ dictionaries (`dict`).
 # import numpy as np
 # from tqdm import tqdm
 
-# # Internal Imports
-# import roz.database_manager as dm
+# Internal Imports
+from roz import gather_frames
+
 # from roz import utils
 
 # # Silence Superflous AstroPy FITS Header Warnings
 # warnings.simplefilter("ignore", FITSFixedWarning)
 
 
-# Narrative Functions ========================================================#
+class ScienceContainer:
+    """Class for containing and processing science frames
+
+    This container holds the gathered science frames in the processing
+    directory, as well as the processing routines needed for the various types
+    of frames.  The class holds the general information needed by all
+    processing methods.
+
+    Parameters
+    ----------
+    directory : `pathlib.Path`
+        Processing directory
+    inst_flags : `dict`
+        Dictionary of instrument flags from utils.set_instrument_flags()
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    """
+
+    def __init__(
+        self,
+        directory,
+        inst_flag,
+        debug=True,
+        mem_limit=8.192e9,
+    ):
+        # Parse in arguments
+        self.directory = directory
+        self.flags = inst_flag
+        self.debug = debug
+        self.mem_limit = mem_limit
+
+        # Get the frame dictionary to be used
+        self.frame_dict = gather_frames.gather_other_frames(
+            thing1=self.directory, thing2=self.flags
+        )
+
+    def process_science(self, ccd_bin):
+        """process_science _summary_
+
+        _extended_summary_
+
+        Parameters
+        ----------
+        ccd_bin : _type_
+            _description_
+        """
+        if self.debug:
+            print(ccd_bin)
+
+    def process_standard(self, ccd_bin):
+        """process_standard _summary_
+
+        _extended_summary_
+
+        Parameters
+        ----------
+        ccd_bin : _type_
+            _description_
+        """
+        if self.debug:
+            print(ccd_bin)
