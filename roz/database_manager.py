@@ -38,9 +38,9 @@ from ligmos import workers as lig_workers
 from johnnyfive import utils as j5u
 
 # Internal Imports
-from roz import send_alerts
-from roz import validate_statistics
+from roz import messaging
 from roz import utils
+from roz import validate_statistics
 
 # Set API Components
 __all__ = ["CalibrationDatabase", "ScienceDatabase", "HistoricalData"]
@@ -179,8 +179,8 @@ class CalibrationDatabase:
         # Convert the validation report into a problem report; post
         if problem_report := validate_statistics.build_problem_report(self.v_report):
             print("++++> Posting Problem Report to Slack...")
-            send_alerts.post_report(problem_report)
-            send_alerts.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
+            messaging.post_report(problem_report)
+            messaging.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB

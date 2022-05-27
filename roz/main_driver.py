@@ -31,8 +31,8 @@ import argparse
 from roz import lmi_confluence
 from roz import database_manager
 from roz import gather_frames
+from roz import messaging
 from roz import process_calibrations
-from roz import send_alerts
 from roz import utils
 
 
@@ -104,7 +104,7 @@ def main(
 
             # If empty, send notification and move along
             if dumbwaiter.empty:
-                send_alerts.send_alert(
+                messaging.send_alert(
                     f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
                     f"does not contain any sequential {dumbwaiter.frameclass} "
                     "FITS files",
@@ -269,7 +269,7 @@ class Run:
 
         _extended_summary_
         """
-        send_alerts.send_alert(
+        messaging.send_alert(
             f"Warning: `run_sci` is not yet implemented; `{self.dumbwaiter.nightname}`",
             "main_driver.Run.run_sci()",
         )

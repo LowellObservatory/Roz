@@ -8,14 +8,14 @@
 #
 #  @author: tbowers
 
-"""Alert for various issues.
+"""Messaging system for Roz.
 
 This module is part of the Roz package, written at Lowell Observatory.
 
 If problems are found at any point in the code base, alerts are issued via
 email/slack for humans to check on.
 
-This module primarily trades in Exception-like `Alert` objects.
+This module primarily trades in... not quite sure yet.
 """
 
 # Built-In Libraries

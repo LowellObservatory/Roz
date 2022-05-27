@@ -38,9 +38,9 @@ from johnnyfive.utils import PermissionWarning
 
 # Internal Imports
 from roz import graphics_maker
-from roz import send_alerts
-from roz import validate_statistics
+from roz import messaging
 from roz import utils
+from roz import validate_statistics
 
 
 # Set API Components
@@ -80,7 +80,7 @@ def update_filter_characterization(
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
     if not lmi_filter_info.exists:
-        send_alerts.send_alert(
+        messaging.send_alert(
             "LMI Filter Information does not exist in the expected location",
             "confluence_updater.update_filter_characterization()",
         )

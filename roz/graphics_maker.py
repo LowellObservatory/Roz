@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Internal Imports
-from roz import send_alerts
+from roz import messaging
 from roz import utils
 
 
@@ -89,7 +89,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     try:
         ccd = CCDData.read(img_fn)
     except OSError as exception:
-        send_alerts.send_alert(
+        messaging.send_alert(
             f"Could not open {img_fn} because of {exception}.",
             "graphics_maker.make_png_thumbnail()",
         )
