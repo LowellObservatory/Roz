@@ -213,6 +213,7 @@ class Run:
         for ccd_bin in bin_list:
 
             # Print out a nice status message for those interested
+            print("")
             msgs.info(
                 f"Processing the database for {ccd_bin.replace(' ', 'x')} binning..."
             )

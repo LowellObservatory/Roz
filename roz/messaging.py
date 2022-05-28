@@ -298,7 +298,7 @@ class Messages:
         Print a work in progress message
         """
         if self._verbosity == 2:
-            premsg= (
+            premsg = (
                 f"{self._start}{self._black_clear}[WORK IN ]::{self._end}\n"
                 f"{self._start}{self._yellow_clear}[PROGRESS]::{self._end} "
             )
@@ -321,7 +321,9 @@ def send_alert(alert_type, caller=None, no_slack=False):
     There are various types of alerts that can be sent... maybe choose the
     medium based on the input `alertclass`?
     """
-    print(f"***** Alert: {alert_type.replace('`','')}: {caller}")
+    from roz import msgs
+
+    msgs.warn(f"{alert_type.replace('`','')}: {caller}")
 
     # TODO: Gotta find a way to not re-init the Slack instance with each call.
     #       Otherwise, with each alert (could be many in short sequence) the

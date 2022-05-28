@@ -279,7 +279,7 @@ def modify_lmi_dynamic_table(
         good_lamps = validate_statistics.check_lamp_countrates(
             database.v_tables["flat"][filt]
         )
-        print(good_lamps)
+        # print(good_lamps)
         # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
         fname = database.proc_dir.joinpath(
             database.v_tables["flat"][filt]["filename"][-1]
