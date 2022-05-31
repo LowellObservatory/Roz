@@ -24,7 +24,6 @@ This module primarily trades in its own classes.
 """
 
 # Built-In Libraries
-import datetime as dt
 import warnings
 
 # 3rd Party Libraries
@@ -33,9 +32,8 @@ from influxdb import DataFrameClient
 import numpy as np
 
 # Lowell Libraries
-from ligmos import utils as lig_utils
-from ligmos import workers as lig_workers
-from johnnyfive import utils as j5u
+import johnnyfive
+import ligmos
 
 # Internal Imports
 from roz import messaging
@@ -62,17 +60,12 @@ class CalibrationDatabase:
         Path to the processing directory
     nightname: `str`
         Name of the night (e.g., `lmi/20210106b` or `deveny/20220221a`)
-    bias_meta : `astropy.table.Table`, optional
-        Table containing the metadata and statistics for BIAS frames [Default: None]
-    dark_meta : `astropy.table.Table`, optional
-        Table containing the metadata and statistics for DARK frames [Default: None]
-    flat_meta : `astropy.table.Table`, optional
-        Table containing the metadata and statistics for DOME FLAT frames [Default: None]
-    skyf_meta : `astropy.table.Table`, optional
-        Table containing the metadata and statistics for SKY FLAT frames [Default: None]
+    calib_container: `process_calibrations.CalibContainer`
+        Calibration Container Class from adjoining module; contains the
+        various calibration metadata tables
     """
 
-    def __init__(self, inst_flags, proc_dir, nightname, binning, **kwargs):
+    def __init__(self, inst_flags, proc_dir, nightname, binning, calib_container):
         # Set instance attributes
         self.proc_dir = proc_dir
 
@@ -84,14 +77,18 @@ class CalibrationDatabase:
         }
 
         # Place the metadata tables into a dictionary; init empty validated dict
-        self.meta_tabls = {key: val for key, val in kwargs.items() if "_meta" in key}
+        self.meta_tabls = {
+            attr: getattr(calib_container, attr, None)
+            for attr in dir(calib_container)
+            if "_meta" in attr
+        }
         self.v_tables = {}
 
         # Read in the InfluxDB config file
         self.db_setup = utils.read_ligmos_conffiles("databaseSetup")
 
         # The InfluxDB object is thuswise constructed:
-        self.influxdb = lig_utils.database.influxobj(
+        self.influxdb = ligmos.utils.database.influxobj(
             tablename=self.db_setup.tablename,
             host=self.db_setup.host,
             port=self.db_setup.port,
@@ -221,7 +218,7 @@ class CalibrationDatabase:
                     f"Writing {len(pkt_list)} {frametype.upper()} frames to InfluxDB...",
                     end=" ",
                 )
-                j5u.safe_service_connect(
+                johnnyfive.safe_service_connect(
                     self.influxdb.singleCommit, pkt_list, table=self.db_setup.tablename
                 )
 
@@ -295,9 +292,9 @@ class HistoricalData:
             print(self.tagdict)
 
         # Parse the database query configuration file
-        db_query, db_info = lig_utils.confparsers.parseConfig(
+        db_query, db_info = ligmos.utils.confparsers.parseConfig(
             utils.Paths.dbqueries,
-            lig_utils.classes.databaseQuery,
+            ligmos.utils.classes.databaseQuery,
             passfile=None,
             searchCommon=True,
             enableCheck=False,
@@ -305,7 +302,9 @@ class HistoricalData:
         )
 
         # Formally create the query from the parsed configuration file
-        query = lig_workers.confUtils.assignComm(db_query, db_info, commkey="database")
+        query = ligmos.workers.confUtils.assignComm(
+            db_query, db_info, commkey="database"
+        )
         # There should only be one query key; extract into self.query
         self.query = query[list(query.keys())[0]]
 
@@ -341,7 +340,7 @@ class HistoricalData:
             print(f"This is the query string:\n{query_str}")
 
         # Get the results of the query in a safe way:
-        results = j5u.safe_service_connect(self.idfc.query, query_str)
+        results = johnnyfive.safe_service_connect(self.idfc.query, query_str)
 
         # If `results` is empty, assign a (nearly) empty table
         if results == {}:
@@ -667,11 +666,8 @@ def neatly_package(table_row, measure):
     row_as_dict = dict(zip(table_row.colnames, table_row))
 
     # We want the database timestamp to be that of the image DATEOBS,
-    #  not the current time.  Therefore, we need to create a datetime()
-    #  object from the field `dateobs`.  (NOTE: .fromisoformat() not working)
-    timestamp = dt.datetime.strptime(
-        f"{row_as_dict.pop('dateobs')}", "%Y-%m-%dT%H:%M:%S.%f"
-    )
+    #  not the current time.  Create a datetime() object from `dateobs`.
+    timestamp = utils.scrub_isot_dateobs(row_as_dict.pop("dateobs"))
 
     # Build the tags from information in the table Row
     tags = {

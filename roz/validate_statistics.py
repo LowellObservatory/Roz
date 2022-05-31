@@ -440,8 +440,8 @@ def check_lamp_countrates(table):
     table : _type_
         _description_
     """
-    # print("Colnames:")
-    # print(table.colnames)
-    # print(f"This is the crop median: {table['crop_med']}")
+    print("Colnames:")
+    print(table.colnames)
+    print(f"This is the crop median: {table['crop_med']}")
     # TODO: This function needs to check that the count rates are reasonable (> 500 ct/s ?)
     return np.ones(len(table), dtype=bool)

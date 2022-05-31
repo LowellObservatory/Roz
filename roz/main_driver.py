@@ -28,7 +28,7 @@ import argparse
 # 3rd Party Libraries
 
 # Internal Imports
-from roz import lmi_confluence
+from roz import lmi_confluence_table
 from roz import database_manager
 from roz import gather_frames
 from roz import messaging
@@ -205,9 +205,9 @@ class Run:
         )
 
         # Copy over `bin_list`, if returned from the above routine
-        if isinstance(bin_list, str):
-            bin_list = [bin_list]
-        bin_list = calibs.frame_dict.get("bin_list", bin_list)
+        bin_list = calibs.frame_dict.get(
+            "bin_list", [bin_list] if isinstance(bin_list, str) else bin_list
+        )
 
         # Loop through the CCD binning schemes used
         for ccd_bin in bin_list:
@@ -218,26 +218,18 @@ class Run:
                 f"Processing the database for {ccd_bin.replace(' ', 'x')} binning..."
             )
 
-            # Set default meta and combined frames to `NoneType`
-            bias_meta = dark_meta = flat_meta = skyf_meta = None
-            bias_frame = dark_frame = None
-
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
-                bias_meta, bias_frame = calibs.process_bias(ccd_bin)
+                calibs.process_bias(ccd_bin)
 
             # Process the DARK frames to produce a reduced frame and statistics
             if self.flags["get_dark"]:
-                dark_meta, dark_frame = calibs.process_dark(ccd_bin)
+                calibs.process_dark(ccd_bin)
 
             # Process the DOME (& SKY?) FLAT frames to produce statistics
             if self.flags["get_flat"]:
-                flat_meta = calibs.process_domeflat(
-                    ccd_bin, bias_frame=bias_frame, dark_frame=dark_frame
-                )
-                skyf_meta = calibs.process_skyflat(
-                    ccd_bin, bias_frame=bias_frame, dark_frame=dark_frame
-                )
+                calibs.process_domeflat(ccd_bin)
+                calibs.process_skyflat(ccd_bin)
 
             # Take the metadata from the calibration frames and produce DATABASE
             database = database_manager.CalibrationDatabase(
@@ -245,10 +237,7 @@ class Run:
                 self.dumbwaiter.dirs["proc"],
                 self.dumbwaiter.nightname,
                 ccd_bin,
-                bias_meta=bias_meta,
-                dark_meta=dark_meta,
-                flat_meta=flat_meta,
-                skyf_meta=skyf_meta,
+                calib_container=calibs,
             )
             # Validate the metadata tables
             database.validate(
@@ -262,7 +251,7 @@ class Run:
             # Update the LMI Filter Information page on Confluence
             if self.flags["instrument"].lower() == "lmi":
                 # Images for all binnings, values only for 2x2 binning
-                lmi_confluence.update_filter_characterization(
+                lmi_confluence_table.update_filter_characterization(
                     database, png_only=(ccd_bin != "2 2")
                 )
 

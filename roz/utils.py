@@ -19,6 +19,7 @@ This module primarily trades in... utility?
 """
 
 # Built-In Libraries
+import datetime
 import os
 import pathlib
 
@@ -26,20 +27,20 @@ import pathlib
 from astropy.modeling import models
 from astropy.nddata import CCDData
 from astropy.table import Table
+from astropy.time import Time
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
 import numpy as np
-from numpy.ma.core import MaskedConstant
 from pkg_resources import resource_filename
 
 # Lowell Libraries
-from ligmos import utils as lig_utils, workers as lig_workers
+import ligmos
 
 # Internal Imports
 
 
 # Create various augmented classes for Roz-specific configuration things
-class DatabaseTarget(lig_utils.classes.baseTarget):
+class DatabaseTarget(ligmos.utils.classes.baseTarget):
     """
     For roz.conf:[databaseSetup] and roz.conf:[q_rozdata]
     """
@@ -52,7 +53,7 @@ class DatabaseTarget(lig_utils.classes.baseTarget):
         self.metricname = None
 
 
-class SetupTarget(lig_utils.classes.baseTarget):
+class SetupTarget(ligmos.utils.classes.baseTarget):
     """
     For roz.conf:[rozSetup]
     """
@@ -65,7 +66,7 @@ class SetupTarget(lig_utils.classes.baseTarget):
         self.coldstorage_dir = None
 
 
-class FilterTarget(lig_utils.classes.baseTarget):
+class FilterTarget(ligmos.utils.classes.baseTarget):
     """
     For roz.conf:[lmifilterSetup]
     """
@@ -216,12 +217,12 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
     elif confname == "lmifilterSetup":
         ConfClass = FilterTarget
     elif confname == "q_rozdata":
-        ConfClass = lig_utils.classes.databaseQuery
+        ConfClass = ligmos.utils.classes.databaseQuery
     else:
-        ConfClass = lig_utils.classes.baseTarget
+        ConfClass = ligmos.utils.classes.baseTarget
 
-    ligconf = lig_utils.confparsers.rawParser(Paths.config.joinpath(conffile))
-    ligconf = lig_workers.confUtils.assignConf(
+    ligconf = ligmos.utils.confparsers.rawParser(Paths.config.joinpath(conffile))
+    ligconf = ligmos.workers.confUtils.assignConf(
         ligconf[confname], ConfClass, backfill=True
     )
     return ligconf
@@ -236,6 +237,54 @@ def read_instrument_table():
         The instrument flags table
     """
     return Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
+
+
+def scrub_isot_dateobs(dt_str):
+    """scrub_isot_dateobs _summary_
+
+    First of all, strict ISO 8601 format requires a 6-digit "microsecond" field
+    as the fractional portion of the seconds.  In the DATE-OBS field, lois only
+    prints two digits for the fractional second.  The main scrub here adds
+    additional trailing zeroes to satifsy the formatting requirements of
+    `datetime.datetime.fromisoformat()`.
+
+    While this yields happy results for the majority of cases, sometimes lois
+    has roundoff abnormalities in the time string written to the DATE-OBS
+    header keyword.  For example, "2020-01-30T13:17:010.00" was written, where
+    the seconds have 3 digits -- presumably the seconds field was constructed
+    with a leading zero because `sec` was < 10, but when rounded for printing
+    yielded "10.00", producing a complete seconds field of "010.00".
+
+    These kinds of abnormalities cause the standard python datetime parsers to
+    freak out with `ValueError`s.  This function attempts to return the
+    datetime directly, but then scrubs any values cause a `ValueError`.
+
+    Parameters
+    ----------
+    dt_str : `str`
+        Input datetime string from the DATE-OBS header keyword
+
+    Returns
+    -------
+    `datetime.datetime`
+        The datetime object corresponding to the DATE-OBS input string
+    """
+    try:
+        # fromisoformat() expects a 6-digit microsecond field; append zeros
+        if (n_micro := len(dt_str.split(".")[-1])) < 6:
+            dt_str += "0" * (6 - n_micro)
+        return datetime.datetime.fromisoformat(dt_str)
+    except ValueError:
+        print(f"Could not parse DATE-OBS string: >>>{dt_str}<<<")
+        # Split out all pieces of the datetime, and recompile
+        date, time = dt_str.split("T")
+        yr, mo, dy = date.split("-")
+        hr, mi, se = time.split(":")
+        date = f"{int(yr):04d}-{int(mo):02d}-{int(dy):02d}"
+        time = f"{int(hr):02d}:{int(mi):02d}:{float(se):09.6f}"
+        dt_str = f"{date}T{time}"
+        print(f"Reconstituted DATE-OBS string: >>>{dt_str}<<<")
+        return datetime.datetime.fromisoformat(dt_str)
 
 
 def subpath(path_to_dir):
@@ -403,7 +452,7 @@ def two_sigfig(value):
         String representation of `value` at two significant figures
     """
     # If zero, return a 'N/A' type string
-    if value <= 0 or isinstance(value, MaskedConstant):
+    if value <= 0 or isinstance(value, np.ma.core.MaskedConstant):
         return "-----"
     # Compute the number of decimal places using the log10.  The way
     #  np.around() works is that +decimal is to the RIGHT, hence the

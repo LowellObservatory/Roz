@@ -81,6 +81,14 @@ class CalibContainer:
         # Get the frame dictionary to be used
         self.frame_dict = gather_frames.gather_cal_frames(self.directory, self.flags)
 
+        # Set up the various calibration output attritubes
+        self.bias_meta = None
+        self.dark_meta = None
+        self.flat_meta = None
+        self.skyf_meta = None
+        self.bias_frame = None
+        self.dark_frame = None
+
     def process_bias(self, ccd_bin, combine_method="average"):
         """Process and combine available bias frames
 
@@ -152,7 +160,10 @@ class CalibContainer:
             )
             # Reinstate RuntimeWarning
             warnings.simplefilter("default", RuntimeWarning)
-        return Table(metadata), combined
+
+        # Stuff into instance attributes
+        self.bias_meta = Table(metadata)
+        self.bias_frame = combined
 
     def process_dark(self, ccd_bin, combine_method="average"):
         """Process and combine available dark frames
@@ -186,9 +197,12 @@ class CalibContainer:
             )
             # Reinstate RuntimeWarning
             warnings.simplefilter("default", RuntimeWarning)
-        return Table(metadata), combined
 
-    def process_domeflat(self, ccd_bin, bias_frame=None, dark_frame=None):
+        # Stuff into instance attributes
+        self.dark_meta = Table(metadata)
+        self.dark_frame = combined
+
+    def process_domeflat(self, ccd_bin):
         """Process the dome flat fields and return statistics
 
         [extended_summary]
@@ -197,12 +211,6 @@ class CalibContainer:
         ----------
         ccd_bin : `str`, optional
             The binning to use for this routine [Default: None]
-        bias_frame : `astropy.nddata.CCDData`, optional
-            The combined, overscan-subtracted bias frame  [Default: None]
-            If None, the routine will load in a saved bias
-        dark_frame : `astropt.nddata.CCDData`, optional
-            The combined, bias-subtracted dark frame [Default: None]
-            If None, the routine will load in a saved dark, if necessary
 
         Returns
         -------
@@ -215,15 +223,15 @@ class CalibContainer:
             return Table()
 
         # Check for actual bias frame, else make something up
-        if not bias_frame:
+        if not self.bias_frame:
             msgs.info("No appropriate bias frames passed; loading saved BIAS...")
-            bias_frame = utils.load_saved_bias(self.flags["instrument"], ccd_bin)
+            self.bias_frame = utils.load_saved_bias(self.flags["instrument"], ccd_bin)
         else:
             # Write this bias to disk for future use
-            utils.write_saved_bias(bias_frame, self.flags["instrument"], ccd_bin)
+            utils.write_saved_bias(self.bias_frame, self.flags["instrument"], ccd_bin)
 
         if self.debug:
-            msgs.info("Processing flat frames...")
+            msgs.info("Processing dome flat frames...")
 
         # Show progress bar for processing flat frames
         progress_bar = tqdm(
@@ -243,10 +251,10 @@ class CalibContainer:
 
             # Fit & subtract the overscan section, trim the image, subtract bias
             ccd = utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
-            ccd = ccdp.subtract_bias(ccd, bias_frame)
+            ccd = ccdp.subtract_bias(ccd, self.bias_frame)
 
             # If a DARK frame was passed, scale and subtract
-            if dark_frame:
+            if self.dark_frame:
                 # NOTE: Not yet implemented
                 pass
 
@@ -275,16 +283,16 @@ class CalibContainer:
         progress_bar.close()
 
         # Convert the list of dicts into a Table and return
-        return Table(metadata)
+        self.flat_meta = Table(metadata)
 
-    def process_skyflat(self, ccd_bin, bias_frame=None, dark_frame=None):
+    def process_skyflat(self, ccd_bin):
         """Process the sky flat fields and return statistics
 
         NOTE: Not yet implemented --
             tqdm color should be "red"
         """
-        [ccd_bin, bias_frame, dark_frame, self.debug]
-        return Table()
+        [ccd_bin, self.debug]
+        self.skyf_meta = Table()
 
     def _check_ifc(self, frametype, ccd_bin):
         """Check the IFC being processed

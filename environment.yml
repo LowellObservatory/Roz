@@ -21,4 +21,4 @@ dependencies:
   - pip
   - pip:
     - git+https://github.com/LowellObservatory/ligmos
-    - git+https://github.com/LowellObservatory/JohnnyFive
+    - git+https://github.com/LowellObservatory/JohnnyFive@api_changes

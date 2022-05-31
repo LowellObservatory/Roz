@@ -12,7 +12,7 @@
 
 This module is part of the Roz package, written at Lowell Observatory.
 
-This module is based heavily upon `pypeit.pypmsgs`, with gratitude to
+This module steals unrepentantly from `pypeit.pypmsgs`, with gratitude to
 those authors.
 
 If problems are found at any point in the code base, alerts are issued via

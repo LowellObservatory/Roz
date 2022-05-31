@@ -21,20 +21,18 @@ This module primarily trades in internal databse objects
 """
 
 # Built-In Libraries
-import datetime as dt
+import datetime
 import os
 import warnings
 
 # 3rd Party Libraries
-from astropy.io.votable import parse as vo_parse
+import astropy.io.votable
 from astropy.table import join, Column, Table
-from bs4 import BeautifulSoup
-from bs4.element import NavigableString
+import bs4
 import numpy as np
 
 # Lowell Libraries
-from johnnyfive import confluence as j5c
-from johnnyfive.utils import PermissionWarning
+import johnnyfive
 
 # Internal Imports
 from roz import graphics_maker
@@ -72,11 +70,11 @@ def update_filter_characterization(
         Pring debugging statements?  [Default: False]
     """
     # Silence JohnnyFive's PermissionWarning -- we know, and we don't care
-    warnings.simplefilter("ignore", PermissionWarning)
+    warnings.simplefilter("ignore", johnnyfive.PermissionWarning)
 
     # Instantiate a ConfluencePage object for the LMI Filter Page
     page_info = utils.read_ligmos_conffiles("lmifilterSetup")
-    lmi_filter_info = j5c.ConfluencePage(page_info.space, page_info.page_title)
+    lmi_filter_info = johnnyfive.ConfluencePage(page_info.space, page_info.page_title)
 
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
@@ -268,9 +266,9 @@ def modify_lmi_dynamic_table(
             lmi_filt["UT Date of Latest Flat"][i], np.ma.core.MaskedConstant
         ):
             if existing_date := lmi_filt["UT Date of Latest Flat"][i].strip():
-                if dt.datetime.strptime(
+                if datetime.datetime.strptime(
                     existing_date, "%Y-%m-%d"
-                ) >= dt.datetime.strptime(new_date, "%Y-%m-%d"):
+                ) >= datetime.datetime.strptime(new_date, "%Y-%m-%d"):
                     continue
 
         # TODO: Add a check here for whether the correct lamps were used.  This
@@ -405,10 +403,10 @@ def construct_lmi_html_table(
     # Now that AstroPy has done the hard work writing this table to HTML,
     #  we need to modify it a bit for visual clarity.  Use BeautifulSoup!
     with open(filename, encoding="utf8") as fileobj:
-        soup = BeautifulSoup(fileobj, "html.parser")
+        soup = bs4.BeautifulSoup(fileobj, "html.parser")
 
     # Add the `creation date` line to the body of the HTML above the table
-    timestr = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    timestr = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
     itdate = soup.new_tag("i")  # Italics, for the fun of it
     itdate.string = f"Table Auto-Generated {timestr} UTC by Roz."
     # Place the italicized date string ahead of the table
@@ -467,7 +465,7 @@ def load_lmi_static_table(table_type="ecsv"):
     """
     if table_type == "xml":
         # Read in the XML table.
-        votable = vo_parse(utils.Paths.xml_table)
+        votable = astropy.io.votable.parse(utils.Paths.xml_table)
 
         # The VOTable has both the LMI Filter Info and the section heads for the HTML
         filter_table = votable.get_table_by_index(0).to_table(use_names_over_ids=True)
@@ -505,7 +503,10 @@ def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
     # The try/except catches bs_tag items that don't have children
     try:
         for element in bs_tag.children:
-            if isinstance(element, NavigableString) and element.string[:4] == "http":
+            if (
+                isinstance(element, bs4.element.NavigableString)
+                and element.string[:4] == "http"
+            ):
                 # If this is a string that starts with 'http', linkify!
                 link = soup.new_tag("a", href=element.string)
                 link.string = link_text
