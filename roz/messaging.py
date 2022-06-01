@@ -23,25 +23,18 @@ This module primarily trades in... not quite sure yet.
 
 # Built-In Libraries
 import inspect
-import os
 import sys
 
 # 3rd Party Libraries
 import astropy
-from astropy.table import Table
 import numpy
 import scipy
 
 # Lowell Libraries
-from johnnyfive import slack as j5s
+import johnnyfive
 
 # Internal Imports
-from roz import graphics_maker
-from roz import utils
 import roz
-
-# Constants
-MACHINE = os.uname()[1].split(".")[0]
 
 
 class RozError(Exception):
@@ -312,89 +305,39 @@ class Messages:
         return "\n             "
 
 
-def send_alert(alert_type, caller=None, no_slack=False):
-    """send_alert Send out an alert
-
-    The medium for alerts needs to be decided -- should it be via email from
-    lig.nanni@lowell.edu, or over Slack, or both, or something different?
-
-    There are various types of alerts that can be sent... maybe choose the
-    medium based on the input `alertclass`?
-    """
-    from roz import msgs
-
-    msgs.warn(f"{alert_type.replace('`','')}: {caller}")
-
-    # TODO: Gotta find a way to not re-init the Slack instance with each call.
-    #       Otherwise, with each alert (could be many in short sequence) the
-    #       code goes through the whole initialization mess (disk reads,
-    #       credential handshakes, etc.).
-
-    if not no_slack:
-        slack_alert = j5s.SlackChannel("bot_test")
-        slack_alert.send_message(
-            f"Alert from Roz on `{MACHINE}`:\n{alert_type}: `{caller}`"
-        )
-
-
-def post_report(report):
-    """post_report Post the Problem Report to Slack
+class RozSlack(johnnyfive.SlackChannel):
+    """RozSlack _summary_
 
     _extended_summary_
 
     Parameters
     ----------
-    report : `str`
-        The problem report, as a string with occasional newlines
-    """
-    slack_report = j5s.SlackChannel("bot_test")
-    slack_report.send_message(f"Problem report from Roz on `{MACHINE}`:")
-
-    # Split up the report into frame sections to meet the message size limit
-    rlist = report.split("*.*.")
-    for subreport in rlist:
-        if subreport.strip() == "":
-            continue
-        slack_report.send_message(f"```\n{subreport}```")
-
-
-def post_pngs(metadata_tables, directory, inst_flags):
-    """post_pngs Post the problematic PNGs to Slack
-
-    _extended_summary_
-
-    Parameters
-    ----------
-    metadata_tables : `dict`
+    johnnyfive : _type_
         _description_
-    directory : `pathlib.Path`
-        Path to the processing directory
     """
-    slack_report = j5s.SlackChannel("bot_test")
 
-    # Loop through Frame Types
-    for ftype in metadata_tables:
-        if metadata_tables[ftype]:
+    def send(self, msg):
+        """send _summary_
 
-            # Loop through Filters
-            for filt in metadata_tables[ftype]:
-                if isinstance(metadata_tables[ftype][filt], Table):
+        _extended_summary_
 
-                    # Grab frames marked as "PROBLEM"
-                    mask = metadata_tables[ftype][filt]["problem"] == 1
-                    pngs = list(metadata_tables[ftype][filt]["filename"][mask])
+        Parameters
+        ----------
+        msg : _type_
+            _description_
+        """
+        self.send_message(msg)
 
-                    # Go through the files one by one, make PNGs, and upload
-                    for png in pngs:
-                        png_fn = graphics_maker.make_png_thumbnail(
-                            directory.joinpath(png),
-                            inst_flags,
-                            problem=True,
-                            debug=False,
-                        )
+    def file(self, fname, title=None):
+        """file _summary_
 
-                        # NOTE: SlackChannel.upload_file() requires `str` filename
-                        slack_report.upload_file(
-                            str(utils.Paths.thumbnail.joinpath(png_fn)),
-                            title=png_fn,
-                        )
+        _extended_summary_
+
+        Parameters
+        ----------
+        fname : _type_
+            _description_
+        title : _type_, optional
+            _description_, by default None
+        """
+        self.upload_file(fname, title=title)

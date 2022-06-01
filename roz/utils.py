@@ -27,7 +27,6 @@ import pathlib
 from astropy.modeling import models
 from astropy.nddata import CCDData
 from astropy.table import Table
-from astropy.time import Time
 import ccdproc as ccdp
 from ccdproc.utils.slices import slice_from_string
 import numpy as np
@@ -240,7 +239,7 @@ def read_instrument_table():
 
 
 def scrub_isot_dateobs(dt_str):
-    """scrub_isot_dateobs _summary_
+    """scrub_isot_dateobs Scrub the input DATE-OBS for ingestion by datetime
 
     First of all, strict ISO 8601 format requires a 6-digit "microsecond" field
     as the fractional portion of the seconds.  In the DATE-OBS field, lois only
@@ -259,6 +258,9 @@ def scrub_isot_dateobs(dt_str):
     freak out with `ValueError`s.  This function attempts to return the
     datetime directly, but then scrubs any values cause a `ValueError`.
 
+    The scrubbing consists of deconstructing the string into its components,
+    then carefully reconstructing it into proper ISO 8601 format.
+
     Parameters
     ----------
     dt_str : `str`
@@ -275,16 +277,27 @@ def scrub_isot_dateobs(dt_str):
             dt_str += "0" * (6 - n_micro)
         return datetime.datetime.fromisoformat(dt_str)
     except ValueError:
-        print(f"Could not parse DATE-OBS string: >>>{dt_str}<<<")
         # Split out all pieces of the datetime, and recompile
         date, time = dt_str.split("T")
-        yr, mo, dy = date.split("-")
-        hr, mi, se = time.split(":")
-        date = f"{int(yr):04d}-{int(mo):02d}-{int(dy):02d}"
-        time = f"{int(hr):02d}:{int(mi):02d}:{float(se):09.6f}"
-        dt_str = f"{date}T{time}"
-        print(f"Reconstituted DATE-OBS string: >>>{dt_str}<<<")
-        return datetime.datetime.fromisoformat(dt_str)
+        yea, mon, day = date.split("-")
+        hou, mnt, sec = time.split(":")
+        # Check if the seconds is exactly equal to 60... increment minute
+        if sec == "60.00":
+            sec = "00.00"
+            if mnt != "59":
+                mnt = int(mnt) + 1
+            else:
+                mnt = "00"
+                if hou != "23":
+                    hou = int(hou) + 1
+                else:
+                    hou = "00"
+                    # If the edge cases go past here, go buy a lottery ticket!
+                    day = int(day) + 1
+        # Reconstitute the DATE-OBS string
+        date = f"{int(yea):04d}-{int(mon):02d}-{int(day):02d}"
+        time = f"{int(hou):02d}:{int(mnt):02d}:{float(sec):09.6f}"
+        return datetime.datetime.fromisoformat(f"{date}T{time}")
 
 
 def subpath(path_to_dir):

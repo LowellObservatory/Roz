@@ -428,20 +428,3 @@ def build_problem_report(report_dict):
             report += "*.*."
 
     return report
-
-
-def check_lamp_countrates(table):
-    """check_lamp_countrates _summary_
-
-    _extended_summary_
-
-    Parameters
-    ----------
-    table : _type_
-        _description_
-    """
-    print("Colnames:")
-    print(table.colnames)
-    print(f"This is the crop median: {table['crop_med']}")
-    # TODO: This function needs to check that the count rates are reasonable (> 500 ct/s ?)
-    return np.ones(len(table), dtype=bool)

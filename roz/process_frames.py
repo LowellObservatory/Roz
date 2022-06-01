@@ -8,14 +8,16 @@
 #
 #  @author: tbowers
 
-"""Process the Calibration Frames for 1 Night for specified instrument
+"""Process the Frames for 1 Night for specified instrument
 
 This module is part of the Roz package, written at Lowell Observatory.
 
-This module takes the gathered calibration frames from a night (as collected by
-roz.gather_frames) and performs basic data processing (bias & overscan
-subtraction) before gathering statistics.  The statistics are then stuffed into
-a database object (from roz.database_manager) for later use.
+This module takes the gathered calibration/science frames from a night (as
+collected by roz.gather_frames) and performs basic data processing (bias &
+overscan subtraction) before gathering statistics.  The statistics are then
+stuffed into a database object (from roz.database_manager) for later use.
+
+Both Calibration and Science processing classes are included in this module.
 
 This module primarily trades in AstroPy Table objects (`astropy.table.Table`)
 and CCDPROC Image File Collections (`ccdproc.ImageFileCollection`), along with
@@ -45,13 +47,8 @@ from roz import utils
 warnings.simplefilter("ignore", FITSFixedWarning)
 
 
-class CalibContainer:
-    """Class for containing and processing calubration frames
-
-    This container holds the gathered calibration frames in the processing
-    directory, as well as the processing routines needed for the various types
-    of frames.  The class holds the general information needed by all
-    processing methods.
+class _ContainerBase:
+    """Base class for containing and processing Roz frames
 
     Parameters
     ----------
@@ -77,6 +74,74 @@ class CalibContainer:
         self.flags = inst_flag
         self.debug = debug
         self.mem_limit = mem_limit
+
+        # Init other things
+        self.frame_dict = {}
+
+    def _check_ifc(self, frametype, ccd_bin):
+        """Check the IFC being processed
+
+        This is a DRY block, used in both process_bias and process_flats.  It
+        does the various checks for existance of files, and making sure binning
+        is uniform and FULL FRAME.
+
+        Parameters
+        ----------
+        frametype : `str`
+            Frametype to pull from the frame_dict
+        ccd_bin : `str`
+            The binning to use for this routine
+
+        Returns
+        -------
+        `ccdproc.ImageFileCollection`
+            Filtered ImageFileCollection, ready for processing
+
+        Raises
+        ------
+        InputError
+            Raised if the binning is not set.
+        """
+        ifc = self.frame_dict[frametype]
+
+        # Error checking for binning
+        if not ccd_bin:
+            raise utils.InputError("Binning not set.")
+
+        # If IFC is empty already, just return it
+        if not ifc.files:
+            return ifc
+
+        # Double-check that we're processing FULL FRAMEs of identical binning only
+        return ifc.filter(ccdsum=ccd_bin, subarrno=0)
+
+
+class CalibContainer(_ContainerBase):
+    """Class for containing and processing calibration frames
+
+    This container holds the gathered calibration frames in the processing
+    directory, as well as the processing routines needed for the various types
+    of frames.  The class holds the general information needed by all
+    processing methods.
+
+    Parameters
+    ----------
+    directory : `pathlib.Path`
+        Processing directory
+    inst_flags : `dict`
+        Dictionary of instrument flags from utils.set_instrument_flags()
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    """
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
         self.frame_dict = gather_frames.gather_cal_frames(self.directory, self.flags)
@@ -114,7 +179,7 @@ class CalibContainer:
         produce_combined = self.flags["get_flat"]
 
         if not bias_cl.files:
-            return (Table(), None) if produce_combined else Table()
+            return
         if self.debug:
             msgs.info("Processing bias frames...")
 
@@ -176,7 +241,7 @@ class CalibContainer:
         produce_combined = self.flags["get_flat"]
 
         if not dark_cl.files:
-            return (Table(), None) if produce_combined else Table()
+            return
         if self.debug:
             msgs.info("Processing dark frames...")
 
@@ -220,7 +285,7 @@ class CalibContainer:
         # Check for existance of flats with this binning, else retun empty Table()
         domeflat_cl = self._check_ifc("domeflat_cl", ccd_bin)
         if not domeflat_cl.files:
-            return Table()
+            return
 
         # Check for actual bias frame, else make something up
         if not self.bias_frame:
@@ -294,42 +359,64 @@ class CalibContainer:
         [ccd_bin, self.debug]
         self.skyf_meta = Table()
 
-    def _check_ifc(self, frametype, ccd_bin):
-        """Check the IFC being processed
 
-        This is a DRY block, used in both process_bias and process_flats.  It
-        does the various checks for existance of files, and making sure binning
-        is uniform and FULL FRAME.
+class ScienceContainer(_ContainerBase):
+    """Class for containing and processing science frames
+
+    This container holds the gathered science frames in the processing
+    directory, as well as the processing routines needed for the various types
+    of frames.  The class holds the general information needed by all
+    processing methods.
+
+    Parameters
+    ----------
+    directory : `pathlib.Path`
+        Processing directory
+    inst_flags : `dict`
+        Dictionary of instrument flags from utils.set_instrument_flags()
+    debug : `bool`, optional
+        Print debugging statements? [Default: True]
+    mem_limit : `float`, optional
+        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    """
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        # Get the frame dictionary to be used
+        self.frame_dict = gather_frames.gather_other_frames(
+            thing1=self.directory, thing2=self.flags
+        )
+
+    def process_science(self, ccd_bin):
+        """process_science _summary_
+
+        _extended_summary_
 
         Parameters
         ----------
-        frametype : `str`
-            Frametype to pull from the frame_dict
-        ccd_bin : `str`
-            The binning to use for this routine
-
-        Returns
-        -------
-        `ccdproc.ImageFileCollection`
-            Filtered ImageFileCollection, ready for processing
-
-        Raises
-        ------
-        InputError
-            Raised if the binning is not set.
+        ccd_bin : _type_
+            _description_
         """
-        ifc = self.frame_dict[frametype]
+        if self.debug:
+            print(ccd_bin)
 
-        # Error checking for binning
-        if not ccd_bin:
-            raise utils.InputError("Binning not set.")
+    def process_standard(self, ccd_bin):
+        """process_standard _summary_
 
-        # If IFC is empty already, just return it
-        if not ifc.files:
-            return ifc
+        _extended_summary_
 
-        # Double-check that we're processing FULL FRAMEs of identical binning only
-        return ifc.filter(ccdsum=ccd_bin, subarrno=0)
+        Parameters
+        ----------
+        ccd_bin : _type_
+            _description_
+        """
+        if self.debug:
+            print(ccd_bin)
 
 
 # Helper Functions (Alphabetical) ============================================#

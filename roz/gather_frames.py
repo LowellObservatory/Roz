@@ -37,7 +37,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Internal Imports
-from roz import messaging
+from roz import alerting
 from roz import msgs
 from roz import utils
 
@@ -71,7 +71,7 @@ class Dumbwaiter:
 
         # Check that `frameclass` is the currently supported
         if frameclass not in FRAMECLASSES:
-            messaging.send_alert(
+            alerting.send_alert(
                 "Incorrect frameclass specified", "gather_frames.Dumbwaiter.__init__()"
             )
             return
@@ -110,7 +110,7 @@ class Dumbwaiter:
                 fnames_only=True,
             )
         else:
-            messaging.send_alert(
+            alerting.send_alert(
                 f"Valid but unsupported frameclass {self.frameclass}",
                 "gather_frames.Dumbwaiter.__init__()",
             )
@@ -220,7 +220,7 @@ class Dumbwaiter:
         #  be of form ".../dataquality/{site}/{instrument}"
         cold_dir = self.dirs["cold"].joinpath(self.inst_flags["site"], self.instrument)
         if not cold_dir.is_dir():
-            messaging.send_alert(
+            alerting.send_alert(
                 f"Cold storage directory not available at `{cold_dir}`",
                 "gather_frames.Dumbwaiter.cold_storage()",
             )
@@ -299,7 +299,7 @@ def divine_instrument(directory=None, fits_files=None):
             continue
 
     # Otherwise...
-    messaging.send_alert(
+    alerting.send_alert(
         f"No Instrument found in {utils.subpath(directory) if directory else 'this directory'}",
         "gather_frames.divine_instrument()",
     )
@@ -435,7 +435,7 @@ def get_sequential_fitsfiles(directory):
 
     # Check that `directory` is, in fact, a directory
     if not directory.is_dir():
-        messaging.send_alert(
+        alerting.send_alert(
             f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
             "gather_frames.get_sequential_fitsfiles()",
         )
@@ -472,7 +472,7 @@ def set_instrument_flags(inst):
 
     # Check that the instrument is in the table
     if (inst := inst.upper()) not in instrument_table["instrument"]:
-        messaging.send_alert(
+        alerting.send_alert(
             f"Instrument {inst} not yet supported; update instrument_flags.ecsv",
             "gather_frames.set_instrument_flags()",
         )

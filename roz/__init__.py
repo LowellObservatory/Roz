@@ -13,6 +13,7 @@
 
 
 # Imports for signal and log handling
+from email.headerregistry import MessageIDHeader
 import os
 import signal
 import sys
@@ -39,7 +40,7 @@ __version__ = version
 
 # Import and instantiate the logger
 msgs = messaging.Messages()
-
+slack = messaging.RozSlack("bot_test")
 
 # Send all signals to messages to be dealt with (i.e. someone hits ctrl+c)
 def signal_handler(signalnum, handler):

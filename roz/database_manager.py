@@ -36,7 +36,7 @@ import johnnyfive
 import ligmos
 
 # Internal Imports
-from roz import messaging
+from roz import alerting
 from roz import utils
 from roz import validate_statistics
 
@@ -176,8 +176,8 @@ class CalibrationDatabase:
         # Convert the validation report into a problem report; post
         if problem_report := validate_statistics.build_problem_report(self.v_report):
             print("++++> Posting Problem Report to Slack...")
-            messaging.post_report(problem_report)
-            messaging.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
+            alerting.post_report(problem_report)
+            alerting.post_pngs(self.v_tables, self.proc_dir, self.v_report["flags"])
 
     def write_to_influxdb(self, testing=True):
         """write_to_influxdb Write the contents to the InfluxDB

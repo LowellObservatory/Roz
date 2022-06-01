@@ -35,11 +35,10 @@ import numpy as np
 import johnnyfive
 
 # Internal Imports
+from roz import alerting
 from roz import graphics_maker
-from roz import messaging
 from roz import msgs
 from roz import utils
-from roz import validate_statistics
 
 
 # Set API Components
@@ -79,7 +78,7 @@ def update_filter_characterization(
     # If the page doesn't already exist (or Confluence times out),
     #   send alert and return
     if not lmi_filter_info.exists:
-        messaging.send_alert(
+        alerting.send_alert(
             "LMI Filter Information does not exist in the expected location",
             "confluence_updater.update_filter_characterization()",
         )
@@ -111,9 +110,17 @@ def update_filter_characterization(
         comment="LMI Filter Information Table",
     )
 
-    # Attach any PNGs created
-    # TODO: If replacing an existing PNG, remove the old one to save space on Confluence
+    # Attach any PNGs created, but only after removing the existing one for that filter
+    attch_fnames = [
+        result["title"] for result in lmi_filter_info.get_page_attachments()["results"]
+    ]
     for png in png_fn:
+        # List of existing filenames to remove from Confluence prior to upload
+        existing_png = [attch for attch in attch_fnames if png.split(".")[1] in attch]
+        for existing in existing_png:
+            msgs.warn(f"Deleting {existing} from Confluence...")
+            lmi_filter_info.delete_attachment(existing)
+        # Now, attach this new file!
         lmi_filter_info.attach_file(
             utils.Paths.thumbnail.joinpath(png),
             name=png,
@@ -219,9 +226,6 @@ def modify_lmi_dynamic_table(
     png_fn : `list`
         List of the PNG filenames created during this run
     """
-    # Shorthand
-    lmi_filters = utils.FILTER_LIST["LMI"]
-
     # Check if the dynamic-portion FITS table is extant
     if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
@@ -229,10 +233,10 @@ def modify_lmi_dynamic_table(
 
     else:
         # Make a blank table, including the lmi_filters for correspondence
-        nrow = len(lmi_filters)
+        nrow = len(utils.FILTER_LIST["LMI"])
         dyntable = Table(
             [
-                Column(lmi_filters, name="Filter"),
+                Column(utils.FILTER_LIST["LMI"], name="Filter"),
                 Column(name="Latest Image", length=nrow, dtype="U256"),
                 Column(name="UT Date of Latest Flat", length=nrow, dtype="U128"),
                 Column(name="Count Rate (ADU/s)", length=nrow, dtype=float),
@@ -245,7 +249,9 @@ def modify_lmi_dynamic_table(
     #  however, it also sorts the table...
     lmi_filt = join(lmi_filt, dyntable, join_type="left", keys="Filter")
     # Undo the alpha sorting done by .join()
-    lmi_filt = utils.table_sort_on_list(lmi_filt, "FITS Header Value", lmi_filters)
+    lmi_filt = utils.table_sort_on_list(
+        lmi_filt, "FITS Header Value", utils.FILTER_LIST["LMI"]
+    )
     # Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
 
@@ -254,7 +260,7 @@ def modify_lmi_dynamic_table(
 
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
-    for i, filt in enumerate(lmi_filters):
+    for i, filt in enumerate(utils.FILTER_LIST["LMI"]):
         # Skip filters not used in this data set (also check for `database.flat`)
         if not database.v_tables["flat"] or not database.v_tables["flat"][filt]:
             continue
@@ -271,27 +277,28 @@ def modify_lmi_dynamic_table(
                 ) >= datetime.datetime.strptime(new_date, "%Y-%m-%d"):
                     continue
 
-        # TODO: Add a check here for whether the correct lamps were used.  This
-        #       can be determined by checking that the count rate is within
-        #       some nominal range.
-        good_lamps = validate_statistics.check_lamp_countrates(
-            database.v_tables["flat"][filt]
-        )
-        # print(good_lamps)
-        # Call the PNG-maker to PNG-ify the latest image; record PNG's filename
-        fname = database.proc_dir.joinpath(
-            database.v_tables["flat"][filt]["filename"][-1]
-        )
-        png_fn.append(
-            graphics_maker.make_png_thumbnail(fname, database.v_report["flags"])
-        )
+        # Check whether the correct flat lamps were used (as judged by count rate)
+        good_lamps = check_lamp_countrates(database.v_tables["flat"][filt])
 
-        # Update the dynamic columns
-        lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-        lmi_filt["UT Date of Latest Flat"][i] = new_date
-        if not png_only:
+        # Call the PNG-maker to PNG-ify the latest image (if good); record PNG's filename
+        if any(good_lamps):
+            fname = database.proc_dir.joinpath(
+                database.v_tables["flat"][filt]["filename"][good_lamps][-1]
+            )
+            png_fn.append(
+                graphics_maker.make_png_thumbnail(fname, database.v_report["flags"])
+            )
+
+            # Update the dynamic columns
+            lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
+            lmi_filt["UT Date of Latest Flat"][i] = new_date
+
+        # Compute the expected count rates
+        if not png_only and any(good_lamps):
             lmi_filt["Count Rate (ADU/s)"][i] = (
-                count_rate := np.mean(database.v_tables["flat"][filt]["crop_med"])
+                count_rate := np.mean(
+                    database.v_tables["flat"][filt]["crop_med"][good_lamps]
+                )
             )
             lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
 
@@ -364,6 +371,58 @@ def add_html_section_header(soup, ncols, text, extra=""):
     newrow.append(newcol)
     # All done
     return newrow
+
+
+def check_lamp_countrates(table):
+    """Check LMI Flat Field Count Rates against lamp type
+
+    Only receives the table associated with a single filter.
+
+    Define Minimum Count Rates for each filter under the correct lamps:
+
+    Parameters
+    ----------
+    table : `astropy.table.Table`
+        Validated table of frames for this filter
+
+    Returns
+    -------
+    `np.ndarray`
+        Boolean array indicating whether the count rate for this filter is
+        appropriate (i.e., was the correct lamp used?).
+    """
+    # Johnson-Cousins Filters:
+    if (filt := table["filter"][0]) in ["U", "B", "V", "R", "I"]:
+        min_count = 1500
+    # Sloan Filters:
+    elif filt in ["SDSS u'", "SDSS g'", "SDSS r'", "SDSS i'", "SDSS z'"]:
+        min_count = 2000
+    # Other Broadband Filters:
+    elif filt == "V+R":
+        min_count = 5000
+    elif filt == "Yish":
+        min_count = 500
+    # Comet Filters:
+    elif filt in [
+        "Ultraviolet Continuum",
+        "Blue Continuum",
+        "Green Continuum",
+        "Red Continuum",
+        "C2",
+        "C3",
+        "CN",
+        "CO+",
+        "H2O+",
+        "OH",
+        "NH",
+    ]:
+        min_count = 200
+    # Everything else, don't check
+    else:
+        min_count = 0
+
+    # Return a boolean array-like of whether we pass muster
+    return table["crop_med"] > min_count
 
 
 def construct_lmi_html_table(
@@ -516,3 +575,23 @@ def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
                 wrap_plaintext_links(element, soup, link_text=link_text)
     except AttributeError:
         pass
+
+
+def purge_page_attachments(args=None):
+    """purge_page_attachments Quick script for clearing accumulated attachments
+
+    Console Script for the quick cleaning of accumulated attachment cruft
+    """
+    # Instantiate a ConfluencePage object for the LMI Filter Page
+    page_info = utils.read_ligmos_conffiles("lmifilterSetup")
+    lmi_filter_info = johnnyfive.ConfluencePage(page_info.space, page_info.page_title)
+
+    # Get the attachments, and parse out the filename "titles" from the returned object
+    attachments = lmi_filter_info.get_page_attachments(limit=200)
+    titles = [result["title"] for result in attachments["results"]]
+
+    # Say something about what we're up to, then get to it
+    print(f"Puring {len(titles)} attachments from {page_info.page_title}...")
+    for title in titles:
+        print(f"Deleting {title}...")
+        lmi_filter_info.delete_attachment(title)
