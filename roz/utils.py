@@ -36,7 +36,7 @@ from pkg_resources import resource_filename
 import ligmos
 
 # Internal Imports
-
+from roz import msgs
 
 # Create various augmented classes for Roz-specific configuration things
 class DatabaseTarget(ligmos.utils.classes.baseTarget):
@@ -381,6 +381,29 @@ def table_sort_on_list(table, colname, sort_list):
                 table[col.info.name] = new_col
 
     return table
+
+
+def wrap_trim_oscan(ccd, hdr):
+    """wrap_trim_oscan _summary_
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    ccd : _type_
+        _description_
+    hdr : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    if hdr["NUMAMP"] == 1:
+        return trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
+
+    msgs.error("Can't deal with multiple amplifiers, yet.")
 
 
 def trim_oscan(ccd, biassec, trimsec):

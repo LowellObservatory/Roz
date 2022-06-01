@@ -204,7 +204,7 @@ class CalibContainer(_ContainerBase):
 
             # Fit the overscan section, subtract it, then trim the image
             #  Append this to a list, update the progress bar and repeat!
-            bias_ccds.append(utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"]))
+            bias_ccds.append(utils.wrap_trim_oscan(ccd, hdr))
             progress_bar.update(1)
 
         progress_bar.close()
@@ -315,7 +315,7 @@ class CalibContainer(_ContainerBase):
             hdr["SHORT_FN"] = fname.split(os.sep)[-1]
 
             # Fit & subtract the overscan section, trim the image, subtract bias
-            ccd = utils.trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
+            ccd = utils.wrap_trim_oscan(ccd, hdr)
             ccd = ccdp.subtract_bias(ccd, self.bias_frame)
 
             # If a DARK frame was passed, scale and subtract
@@ -505,6 +505,6 @@ def parse_lois_ampids(hdr):
         return f"{hdr['AMPID'].strip()}"
 
     # Else, parse out all of the "AMPIDnn" keywords, join and return
-    ampids = [val for kwd, val in hdr.items() if 'AMPID' in kwd]
+    ampids = [val for kwd, val in hdr.items() if "AMPID" in kwd]
     msgs.info(f"Image has multiple amplifiers: {','.join(ampids)}")
     return "".join(ampids)
