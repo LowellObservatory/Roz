@@ -252,7 +252,7 @@ class Run:
             if self.flags["instrument"].lower() == "lmi":
                 # Images for all binnings, values only for 2x2 binning
                 lmi_confluence_table.update_filter_characterization(
-                    database, png_only=(ccd_bin != "2 2")
+                    database, png_only=(ccd_bin != "2 2"), delete_existing=True
                 )
 
     def run_sci(self):

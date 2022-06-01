@@ -457,7 +457,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         "binning": "x".join(hdr["CCDSUM"].split()),
         "filter": f"{hdr['FILTERS'].strip()}",
         "numamp": int(hdr["NUMAMP"]),
-        "ampid": f"{hdr['AMPID'].strip()}",
+        "ampid": parse_lois_ampids(hdr),
         "exptime": float(hdr["EXPTIME"]),
         "mnttemp": float(hdr["MNTTEMP"]),
         "tempamb": float(hdr["TEMPAMB"]),
@@ -479,3 +479,32 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     #     metadict[f"qs_{m}"] = quadsurf[i]
 
     return metadict
+
+
+def parse_lois_ampids(hdr):
+    """parse_lois_ampids Parse the LOIS amplifier IDs
+
+    LOIS is particular about how it records which amplifiers are used to read
+    out the CCD.  Most of the time, users will use a single amplifier, whose ID
+    is recorded in the 'AMPID' FITS keyword.  If, however, more than one
+    amplifier is used, 'AMPID' is not present, and the amplifier combination
+    must be reconstructed from the present 'AMPIDnn' keywords.
+
+    Parameters
+    ----------
+    hdr : `astropy.io.fits.Header`
+        The FITS header for which the amplifier IDs are to be parsed
+
+    Returns
+    -------
+    `str`
+        The amplifier designation(s) used
+    """
+    # Basic 1-amplifier case:
+    if int(hdr["NUMAMP"]) == 1:
+        return f"{hdr['AMPID'].strip()}"
+
+    # Else, parse out all of the "AMPIDnn" keywords, join and return
+    ampids = [val for kwd, val in hdr.items() if 'AMPID' in kwd]
+    msgs.info(f"Image has multiple amplifiers: {','.join(ampids)}")
+    return "".join(ampids)
