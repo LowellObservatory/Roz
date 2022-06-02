@@ -168,24 +168,15 @@ def load_saved_bias(instrument, binning):
         raise DeveloperWarning(f"File Not Found!  Add {fname} to Paths.data") from error
 
 
-def write_saved_bias(ccd, instrument, binning):
-    """write_saved_bias Write a saved (canned) bias frame
+def read_instrument_table():
+    """read_instrument_table Read in the instrument table
 
-    Write a bias frame to disk for use with other nights' data that has
-    no bias.
-
-    Parameters
-    ----------
-    ccd : `astropy.nddata.CCDData`
-        The (canned) combined, overscan-subtracted bias frame to write
-    instrument : `str`
-        Instrument name from instrument_flags()
-    binning : `str`
-        Instrument binning from CCDSUM
+    Returns
+    -------
+    `astropy.table.Table`
+        The instrument flags table
     """
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
-    ccd.write(Paths.data.joinpath(fname), overwrite=True)
+    return Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
 
 
 def read_ligmos_conffiles(confname, conffile="roz.conf"):
@@ -225,17 +216,6 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         ligconf[confname], ConfClass, backfill=True
     )
     return ligconf
-
-
-def read_instrument_table():
-    """read_instrument_table Read in the instrument table
-
-    Returns
-    -------
-    `astropy.table.Table`
-        The instrument flags table
-    """
-    return Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
 
 
 def scrub_isot_dateobs(dt_str):
@@ -383,51 +363,6 @@ def table_sort_on_list(table, colname, sort_list):
     return table
 
 
-def wrap_trim_oscan(ccd):
-    """wrap_trim_oscan Wrap the trim_oscan() function to handle multiple amps
-
-    This function will perform the magic of stitching together multi-amplifier
-    reads.  There may be instrument-specific issues related to this, but it is
-    likely that only LMI will ever bet read out in multi-amplifier mode.
-
-    TODO: Whether here or somewhere else, should convert things to electrons
-          via the GAIN.  Might not be necessary within the context of Roz, but
-          will be necessary for science frame analysis with multiple amplifier
-          reads.
-
-    Parameters
-    ----------
-    ccd : `astropy.nddata.CCDData`
-        The CCDData object upon which to operate
-
-    Returns
-    -------
-    `astropy.nddata.CCDData`
-        The properly trimmed and overscan-subtracted CCDData object
-    """
-    # Shorthand
-    hdr = ccd.header
-
-    # The "usual" case, pass-through from `trim_oscan()`
-    if hdr["NUMAMP"] == 1:
-        return trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
-
-    # Use the individual amplifier BIAS and TRIM sections to process
-    amp_nums = [kwd[-2:] for kwd in hdr.keys() if "AMPID" in kwd]
-    clean_data = ccd.data.copy()
-    for amp_num in amp_nums:
-        yrange, xrange = slice_from_string(hdr[f"TRIM{amp_num}"], fits_convention=True)
-        clean_data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
-            ccd, hdr[f"BIAS{amp_num}"], hdr[f"TRIM{amp_num}"]
-        )
-    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
-
-    # Return the final sliced thing
-    return ccdproc.trim_image(
-        clean_data[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop]
-    )
-
-
 def trim_oscan(ccd, biassec, trimsec):
     """trim_oscan Subtract the overscan region and trim image to desired size
 
@@ -526,6 +461,71 @@ def two_sigfig(value):
     if decimal == 1:
         return f"{np.around(value, decimals=decimal):.1f}"
     return f"{np.around(value, decimals=decimal):.2f}"
+
+
+def wrap_trim_oscan(ccd):
+    """wrap_trim_oscan Wrap the trim_oscan() function to handle multiple amps
+
+    This function will perform the magic of stitching together multi-amplifier
+    reads.  There may be instrument-specific issues related to this, but it is
+    likely that only LMI will ever bet read out in multi-amplifier mode.
+
+    TODO: Whether here or somewhere else, should convert things to electrons
+          via the GAIN.  Might not be necessary within the context of Roz, but
+          will be necessary for science frame analysis with multiple amplifier
+          reads.
+
+    Parameters
+    ----------
+    ccd : `astropy.nddata.CCDData`
+        The CCDData object upon which to operate
+
+    Returns
+    -------
+    `astropy.nddata.CCDData`
+        The properly trimmed and overscan-subtracted CCDData object
+    """
+    # Shorthand
+    hdr = ccd.header
+
+    # The "usual" case, pass-through from `trim_oscan()`
+    if hdr["NUMAMP"] == 1:
+        return trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
+
+    # Use the individual amplifier BIAS and TRIM sections to process
+    amp_nums = [kwd[-2:] for kwd in hdr.keys() if "AMPID" in kwd]
+    clean_data = ccd.data.copy()
+    for amp_num in amp_nums:
+        yrange, xrange = slice_from_string(hdr[f"TRIM{amp_num}"], fits_convention=True)
+        clean_data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
+            ccd, hdr[f"BIAS{amp_num}"], hdr[f"TRIM{amp_num}"]
+        )
+    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
+
+    # Return the final sliced thing
+    return ccdproc.trim_image(
+        clean_data[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop]
+    )
+
+
+def write_saved_bias(ccd, instrument, binning):
+    """write_saved_bias Write a saved (canned) bias frame
+
+    Write a bias frame to disk for use with other nights' data that has
+    no bias.
+
+    Parameters
+    ----------
+    ccd : `astropy.nddata.CCDData`
+        The (canned) combined, overscan-subtracted bias frame to write
+    instrument : `str`
+        Instrument name from instrument_flags()
+    binning : `str`
+        Instrument binning from CCDSUM
+    """
+    # Build bias filename
+    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    ccd.write(Paths.data.joinpath(fname), overwrite=True)
 
 
 # Quadric Surface Functions ==================================================#
