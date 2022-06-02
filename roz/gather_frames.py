@@ -32,7 +32,7 @@ import warnings
 # 3rd Party Libraries
 from astropy.io.fits import getheader
 from astropy.utils.exceptions import AstropyUserWarning
-import ccdproc as ccdp
+import ccdproc
 import numpy as np
 from tqdm import tqdm
 
@@ -235,7 +235,7 @@ class Dumbwaiter:
         Add summary table to the tarball for future reference
         Tags: obserno, frametype, filter, binning, numamp, ampid
         """
-        icl = ccdp.ImageFileCollection(
+        icl = ccdproc.ImageFileCollection(
             location=self.dirs["proc"], filenames=self.frames
         )
         # Pull the subtable based on FITS header keywords
@@ -341,7 +341,7 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     # Create an ImageFileCollection for the specified directory
     if not fitsfiles:
         fitsfiles = get_sequential_fitsfiles(directory)
-    icl = ccdp.ImageFileCollection(location=directory, filenames=fitsfiles)
+    icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
 
     if not icl.files:
         return None
@@ -357,7 +357,7 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
         fn_list.append(icl.files_filtered(exptime=0, subarrno=0))
         fn_list = list(np.unique(np.concatenate(fn_list)))
         # Do this `location` thing to work around how IFC deals with empty lists
-        bias_cl = ccdp.ImageFileCollection(
+        bias_cl = ccdproc.ImageFileCollection(
             location=directory if fn_list else None, filenames=fn_list
         )
         return_object["bias_fn"] = bias_cl.files

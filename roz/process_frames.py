@@ -32,9 +32,8 @@ import warnings
 # 3rd Party Libraries
 from astropy.stats import mad_std
 from astropy.table import Table
-from astropy.wcs import FITSFixedWarning
-import ccdproc as ccdp
-from ccdproc.utils.slices import slice_from_string as get_slice
+import astropy.wcs
+import ccdproc
 import numpy as np
 from tqdm import tqdm
 
@@ -44,7 +43,7 @@ from roz import msgs
 from roz import utils
 
 # Silence Superflous AstroPy FITS Header Warnings
-warnings.simplefilter("ignore", FITSFixedWarning)
+warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
 
 
 class _ContainerBase:
@@ -196,7 +195,11 @@ class CalibContainer(_ContainerBase):
             # For BIAS set header FILTERS keyword to "DARK"
             hdr["FILTERS"] = "DARK"
             hdr["SHORT_FN"] = fname.split(os.sep)[-1]
-            data = ccd.data[get_slice(hdr["TRIMSEC"], fits_convention=True)]
+            data = ccd.data[
+                ccdproc.utils.slices.slice_from_string(
+                    hdr["TRIMSEC"], fits_convention=True
+                )
+            ]
 
             # Statistics, statistics, statistics!!!!
             quadsurf, coord_arrays = utils.fit_quadric_surface(data, coord_arrays)
@@ -204,7 +207,7 @@ class CalibContainer(_ContainerBase):
 
             # Fit the overscan section, subtract it, then trim the image
             #  Append this to a list, update the progress bar and repeat!
-            bias_ccds.append(utils.wrap_trim_oscan(ccd, hdr))
+            bias_ccds.append(utils.wrap_trim_oscan(ccd))
             progress_bar.update(1)
 
         progress_bar.close()
@@ -216,7 +219,7 @@ class CalibContainer(_ContainerBase):
                 msgs.info(f"Doing {combine_method} combine of biases now...")
             # Silence RuntimeWarning issued related to means of empty slices
             warnings.simplefilter("ignore", RuntimeWarning)
-            combined = ccdp.combine(
+            combined = ccdproc.combine(
                 bias_ccds,
                 method=combine_method,
                 sigma_clip=True,
@@ -253,7 +256,7 @@ class CalibContainer(_ContainerBase):
                 msgs.info(f"Doing {combine_method} combine of darks now...")
             # Silence RuntimeWarning issued related to means of empty slices
             warnings.simplefilter("ignore", RuntimeWarning)
-            combined = ccdp.combine(
+            combined = ccdproc.combine(
                 dark_ccds,
                 method=combine_method,
                 sigma_clip=True,
@@ -315,8 +318,8 @@ class CalibContainer(_ContainerBase):
             hdr["SHORT_FN"] = fname.split(os.sep)[-1]
 
             # Fit & subtract the overscan section, trim the image, subtract bias
-            ccd = utils.wrap_trim_oscan(ccd, hdr)
-            ccd = ccdp.subtract_bias(ccd, self.bias_frame)
+            ccd = utils.wrap_trim_oscan(ccd)
+            ccd = ccdproc.subtract_bias(ccd, self.bias_frame)
 
             # If a DARK frame was passed, scale and subtract
             if self.dark_frame:

@@ -24,10 +24,10 @@ import os
 import pathlib
 
 # 3rd Party Libraries
-from astropy.modeling import models
-from astropy.nddata import CCDData
+import astropy.modeling.models
+import astropy.nddata
 from astropy.table import Table
-import ccdproc as ccdp
+import ccdproc
 from ccdproc.utils.slices import slice_from_string
 import numpy as np
 from pkg_resources import resource_filename
@@ -158,7 +158,7 @@ def load_saved_bias(instrument, binning):
 
     print(f"Reading in saved file {fname}...")
     try:
-        return CCDData.read(Paths.data.joinpath(fname))
+        return astropy.nddata.CCDData.read(Paths.data.joinpath(fname))
 
     # TODO: Should also have a way to return a blank (zeros) frame of the
     #       appropriate size in the event that a bias does not or will not
@@ -383,27 +383,49 @@ def table_sort_on_list(table, colname, sort_list):
     return table
 
 
-def wrap_trim_oscan(ccd, hdr):
-    """wrap_trim_oscan _summary_
+def wrap_trim_oscan(ccd):
+    """wrap_trim_oscan Wrap the trim_oscan() function to handle multiple amps
 
-    _extended_summary_
+    This function will perform the magic of stitching together multi-amplifier
+    reads.  There may be instrument-specific issues related to this, but it is
+    likely that only LMI will ever bet read out in multi-amplifier mode.
+
+    TODO: Whether here or somewhere else, should convert things to electrons
+          via the GAIN.  Might not be necessary within the context of Roz, but
+          will be necessary for science frame analysis with multiple amplifier
+          reads.
 
     Parameters
     ----------
-    ccd : _type_
-        _description_
-    hdr : _type_
-        _description_
+    ccd : `astropy.nddata.CCDData`
+        The CCDData object upon which to operate
 
     Returns
     -------
-    _type_
-        _description_
+    `astropy.nddata.CCDData`
+        The properly trimmed and overscan-subtracted CCDData object
     """
+    # Shorthand
+    hdr = ccd.header
+
+    # The "usual" case, pass-through from `trim_oscan()`
     if hdr["NUMAMP"] == 1:
         return trim_oscan(ccd, hdr["BIASSEC"], hdr["TRIMSEC"])
 
-    msgs.error("Can't deal with multiple amplifiers, yet.")
+    # Use the individual amplifier BIAS and TRIM sections to process
+    amp_nums = [kwd[-2:] for kwd in hdr.keys() if "AMPID" in kwd]
+    clean_data = ccd.data.copy()
+    for amp_num in amp_nums:
+        yrange, xrange = slice_from_string(hdr[f"TRIM{amp_num}"], fits_convention=True)
+        clean_data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
+            ccd, hdr[f"BIAS{amp_num}"], hdr[f"TRIM{amp_num}"]
+        )
+    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
+
+    # Return the final sliced thing
+    return ccdproc.trim_image(
+        clean_data[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop]
+    )
 
 
 def trim_oscan(ccd, biassec, trimsec):
@@ -450,18 +472,18 @@ def trim_oscan(ccd, biassec, trimsec):
     yt, xt = slice_from_string(trimsec, fits_convention=True)
 
     # First trim off the top & bottom rows
-    ccd = ccdp.trim_image(ccd[yt.start : yt.stop, :])
+    ccd = ccdproc.trim_image(ccd[yt.start : yt.stop, :])
 
     # Model & Subtract the overscan
-    ccd = ccdp.subtract_overscan(
+    ccd = ccdproc.subtract_overscan(
         ccd,
         overscan=ccd[:, xb.start : xb.stop],
         median=True,
-        model=models.Chebyshev1D(1),
+        model=astropy.modeling.models.Chebyshev1D(1),
     )
 
     # Trim the overscan & return
-    return ccdp.trim_image(ccd[:, xt.start : xt.stop])
+    return ccdproc.trim_image(ccd[:, xt.start : xt.stop])
 
 
 def two_sigfig(value):
