@@ -208,7 +208,7 @@ class Run:
             # Print out a nice status message for those interested
             print("")
             msgs.info(
-                f"Processing the database for {ccd_bin.replace(' ', 'x')} "
+                f"Processing {self.dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
                 f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
             )
 

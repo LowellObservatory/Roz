@@ -147,9 +147,9 @@ class Dumbwaiter:
         msgs.info(
             f"Copying data from {self.dirs['data']} to {self.dirs['proc']} for processing..."
         )
-        # Show progress bar for copying files
+        # Show progress bar for copying files (Cherry Red)
         progress_bar = tqdm(
-            total=len(self.frames), unit="file", unit_scale=False, colour="#2a52be"
+            total=len(self.frames), unit="file", unit_scale=False, colour="#D2042D"
         )
         for frame in self.frames:
             shutil.copy2(self.dirs["data"].joinpath(frame), self.dirs["proc"])
@@ -206,9 +206,9 @@ class Dumbwaiter:
         msgs.info("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
             tar.add(self.dirs["proc"].joinpath("README.txt"), arcname="README.txt")
-            # Show progress bar for processing the tarball
+            # Show progress bar for processing the tarball (Forest Green)
             progress_bar = tqdm(
-                total=len(self.frames), unit="file", unit_scale=False, colour="#00ff7f"
+                total=len(self.frames), unit="file", unit_scale=False, colour="#228B22"
             )
             for name in self.frames:
                 tar.add(self.dirs["proc"].joinpath(name), arcname=name)

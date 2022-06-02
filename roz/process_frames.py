@@ -214,7 +214,7 @@ class CalibContainer(_ContainerBase):
 
         # Show progress bar for processing bias frames
         progress_bar = tqdm(
-            total=len(bias_cl.files), unit="frame", unit_scale=False, colour="#bbc4cc"
+            total=len(bias_cl.files), unit="frame", unit_scale=False, colour="#a3c4d4"
         )
 
         # Loop through files
@@ -267,7 +267,7 @@ class CalibContainer(_ContainerBase):
         """Process and combine available dark frames
 
         NOTE: Not yet implemented -- Boilerplate below is from process_bias
-            tqdm color should be "#00008b"
+            tqdm color should be "#736d67"
         """
         ccd_bin, amp_id = config
         # Parse instance attributes into expected variables
@@ -333,12 +333,12 @@ class CalibContainer(_ContainerBase):
         if self.debug:
             msgs.info("Processing dome flat frames...")
 
-        # Show progress bar for processing flat frames
+        # Show progress bar for processing flat frames ("Candlelight")
         progress_bar = tqdm(
             total=len(domeflat_cl.files),
             unit="frame",
             unit_scale=False,
-            colour="#fc6a03",
+            colour="#ffd21c",
         )
 
         # Loop through flat frames, subtracting bias and gathering statistics
@@ -389,7 +389,7 @@ class CalibContainer(_ContainerBase):
         """Process the sky flat fields and return statistics
 
         NOTE: Not yet implemented --
-            tqdm color should be "red"
+            tqdm color should be "#d8c3e1" (skybluepink)
         """
         ccd_bin, amp_id = config
         [ccd_bin, amp_id]
