@@ -86,7 +86,7 @@ def update_filter_characterization(
 
     if debug:
         # Get the `page_id` needed for intracting with the page we want to update
-        msgs.info(f"This is the page_id: {lmi_filter_info.page_id}")
+        msgs.test(f"This is the page_id: {lmi_filter_info.page_id}")
 
     # Update the HTML table attached to the Confluence page
     png_fn = update_lmi_filter_table(
@@ -115,8 +115,10 @@ def update_filter_characterization(
         result["title"] for result in lmi_filter_info.get_page_attachments()["results"]
     ]
     for png in png_fn:
+        # This is the instrument plus filter, like "lmi.SDSS-Z." or "lmi.R."
+        prefix = f"{'.'.join(png.split('.')[:2])}."
         # List of existing filenames to remove from Confluence prior to upload
-        existing_png = [attch for attch in attch_fnames if png.split(".")[1] in attch]
+        existing_png = [attch for attch in attch_fnames if attch.startswith(prefix)]
         for existing in existing_png:
             msgs.warn(f"Deleting {existing} from Confluence...")
             lmi_filter_info.delete_attachment(existing)
@@ -279,6 +281,8 @@ def modify_lmi_dynamic_table(
 
         # Check whether the correct flat lamps were used (as judged by count rate)
         good_lamps = check_lamp_countrates(database.v_tables["flat"][filt])
+        if debug:
+            msgs.test(f"These are good_lamps: {good_lamps}")
 
         # Call the PNG-maker to PNG-ify the latest image (if good); record PNG's filename
         if any(good_lamps):
@@ -471,7 +475,7 @@ def construct_lmi_html_table(
     # Place the italicized date string ahead of the table
     soup.find("table").insert_before(itdate)
     if debug:
-        msgs.info(f"HTML table timestamp: {timestr}")
+        msgs.test(f"HTML table timestamp: {timestr}")
 
     # Add the section headings for the different filter groups:
     for i, row in enumerate(soup.find_all("tr")):
@@ -516,11 +520,6 @@ def load_lmi_static_table(table_type="ecsv"):
         The basic portions of the AstroPy table for LMI Filter Information
     section_head : `astropy.table.Table`
         The section headings for the HTML table
-
-    Raises
-    ------
-    ValueError
-        Raised if improper `table_type` passed to the function.
     """
     if table_type == "xml":
         # Read in the XML table.
@@ -536,7 +535,7 @@ def load_lmi_static_table(table_type="ecsv"):
         section_head = Table.read(utils.Paths.ecsv_sechead)
 
     else:
-        raise ValueError(f"Table type {table_type} not recognized!")
+        msgs.error(f"Table type {table_type} not recognized!")
 
     return filter_table, section_head
 

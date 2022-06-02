@@ -77,7 +77,7 @@ class _ContainerBase:
         # Init other things
         self.frame_dict = {}
 
-    def _check_ifc(self, frametype, ccd_bin):
+    def _check_ifc(self, frametype, ccd_bin, amp_config):
         """Check the IFC being processed
 
         This is a DRY block, used in both process_bias and process_flats.  It
@@ -90,29 +90,58 @@ class _ContainerBase:
             Frametype to pull from the frame_dict
         ccd_bin : `str`
             The binning to use for this routine
+        amp_config : `str`
+            The amplifier ID(s) to use for this routine
 
         Returns
         -------
         `ccdproc.ImageFileCollection`
             Filtered ImageFileCollection, ready for processing
 
-        Raises
-        ------
-        InputError
-            Raised if the binning is not set.
         """
         ifc = self.frame_dict[frametype]
 
         # Error checking for binning
         if not ccd_bin:
-            raise utils.InputError("Binning not set.")
+            msgs.error("Binning not set.")
+        if not amp_config:
+            msgs.error("Amplifier configuration not set.")
 
         # If IFC is empty already, just return it
         if not ifc.files:
             return ifc
 
-        # Double-check that we're processing FULL FRAMEs of identical binning only
-        return ifc.filter(ccdsum=ccd_bin, subarrno=0)
+        # Parse the `amp_config` into something the ImageFileCollection can filter
+        if len(amp_config) == 1:
+            kwargs = {"numamp": 1, "ampid": amp_config}
+        else:
+            kwargs = {"numamp": len(amp_config)}
+            for amp in amp_config:
+                # Use `ord()` to convert the letter into a number
+                kwargs[f"ampid{ord(amp) - 64:02d}"] = amp
+
+        # Double-check that we're processing FULL FRAMEs of identical config only
+        return ifc.filter(ccdsum=ccd_bin, subarrno=0, **kwargs)
+
+    @property
+    def unique_detector_configs(self):
+        """Returns the set of unique detector configurations
+
+        Returns
+        -------
+        `list` of `tuple`
+            List of unique detector configurations, expressed as (ccd_bin, amp_id)
+        """
+        configs = []
+        for ccd_bin in self.frame_dict.get("bin_list", ["1x1"]):
+            amplist = [
+                utils.parse_lois_ampids(hdr)
+                for hdr in self.frame_dict["allcal_cl"].headers(ccdsum=ccd_bin)
+            ]
+            # Sorted list set to keep it identical between runs
+            for amp in sorted(list(set(amplist))):
+                configs.append((ccd_bin, amp))
+        return configs
 
 
 class CalibContainer(_ContainerBase):
@@ -153,7 +182,7 @@ class CalibContainer(_ContainerBase):
         self.bias_frame = None
         self.dark_frame = None
 
-    def process_bias(self, ccd_bin, combine_method="average"):
+    def process_bias(self, config, combine_method="average"):
         """Process and combine available bias frames
 
         [extended_summary]
@@ -173,8 +202,9 @@ class CalibContainer(_ContainerBase):
             The combined, overscan-subtracted bias frame (if
             `produce_combined == True` else None)
         """
+        ccd_bin, amp_id = config
         # Parse instance attributes into expected variables
-        bias_cl = self._check_ifc("bias_cl", ccd_bin)
+        bias_cl = self._check_ifc("bias_cl", ccd_bin, amp_id)
         produce_combined = self.flags["get_flat"]
 
         if not bias_cl.files:
@@ -233,14 +263,15 @@ class CalibContainer(_ContainerBase):
         self.bias_meta = Table(metadata)
         self.bias_frame = combined
 
-    def process_dark(self, ccd_bin, combine_method="average"):
+    def process_dark(self, config, combine_method="average"):
         """Process and combine available dark frames
 
         NOTE: Not yet implemented -- Boilerplate below is from process_bias
             tqdm color should be "#00008b"
         """
+        ccd_bin, amp_id = config
         # Parse instance attributes into expected variables
-        dark_cl = self._check_ifc("dark_cl", ccd_bin)
+        dark_cl = self._check_ifc("dark_cl", ccd_bin, amp_id)
         produce_combined = self.flags["get_flat"]
 
         if not dark_cl.files:
@@ -270,7 +301,7 @@ class CalibContainer(_ContainerBase):
         self.dark_meta = Table(metadata)
         self.dark_frame = combined
 
-    def process_domeflat(self, ccd_bin):
+    def process_domeflat(self, config):
         """Process the dome flat fields and return statistics
 
         [extended_summary]
@@ -285,8 +316,9 @@ class CalibContainer(_ContainerBase):
         `astropy.table.Table`
             The table of relevant metadata and statistics for each frame
         """
+        ccd_bin, amp_id = config
         # Check for existance of flats with this binning, else retun empty Table()
-        domeflat_cl = self._check_ifc("domeflat_cl", ccd_bin)
+        domeflat_cl = self._check_ifc("domeflat_cl", ccd_bin, amp_id)
         if not domeflat_cl.files:
             return
 
@@ -353,13 +385,14 @@ class CalibContainer(_ContainerBase):
         # Convert the list of dicts into a Table and return
         self.flat_meta = Table(metadata)
 
-    def process_skyflat(self, ccd_bin):
+    def process_skyflat(self, config):
         """Process the sky flat fields and return statistics
 
         NOTE: Not yet implemented --
             tqdm color should be "red"
         """
-        [ccd_bin, self.debug]
+        ccd_bin, amp_id = config
+        [ccd_bin, amp_id]
         self.skyf_meta = Table()
 
 
@@ -460,7 +493,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         "binning": "x".join(hdr["CCDSUM"].split()),
         "filter": f"{hdr['FILTERS'].strip()}",
         "numamp": int(hdr["NUMAMP"]),
-        "ampid": parse_lois_ampids(hdr),
+        "ampid": utils.parse_lois_ampids(hdr),
         "exptime": float(hdr["EXPTIME"]),
         "mnttemp": float(hdr["MNTTEMP"]),
         "tempamb": float(hdr["TEMPAMB"]),
@@ -482,32 +515,3 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     #     metadict[f"qs_{m}"] = quadsurf[i]
 
     return metadict
-
-
-def parse_lois_ampids(hdr):
-    """parse_lois_ampids Parse the LOIS amplifier IDs
-
-    LOIS is particular about how it records which amplifiers are used to read
-    out the CCD.  Most of the time, users will use a single amplifier, whose ID
-    is recorded in the 'AMPID' FITS keyword.  If, however, more than one
-    amplifier is used, 'AMPID' is not present, and the amplifier combination
-    must be reconstructed from the present 'AMPIDnn' keywords.
-
-    Parameters
-    ----------
-    hdr : `astropy.io.fits.Header`
-        The FITS header for which the amplifier IDs are to be parsed
-
-    Returns
-    -------
-    `str`
-        The amplifier designation(s) used
-    """
-    # Basic 1-amplifier case:
-    if int(hdr["NUMAMP"]) == 1:
-        return f"{hdr['AMPID'].strip()}"
-
-    # Else, parse out all of the "AMPIDnn" keywords, join and return
-    ampids = [val for kwd, val in hdr.items() if "AMPID" in kwd]
-    msgs.info(f"Image has multiple amplifiers: {','.join(ampids)}")
-    return "".join(ampids)

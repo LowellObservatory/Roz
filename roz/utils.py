@@ -36,7 +36,7 @@ from pkg_resources import resource_filename
 import ligmos
 
 # Internal Imports
-from roz import msgs
+
 
 # Create various augmented classes for Roz-specific configuration things
 class DatabaseTarget(ligmos.utils.classes.baseTarget):
@@ -166,6 +166,33 @@ def load_saved_bias(instrument, binning):
     except Exception as error:
         print(error)
         raise DeveloperWarning(f"File Not Found!  Add {fname} to Paths.data") from error
+
+
+def parse_lois_ampids(hdr):
+    """parse_lois_ampids Parse the LOIS amplifier IDs
+
+    LOIS is particular about how it records which amplifiers are used to read
+    out the CCD.  Most of the time, users will use a single amplifier, whose ID
+    is recorded in the 'AMPID' FITS keyword.  If, however, more than one
+    amplifier is used, 'AMPID' is not present, and the amplifier combination
+    must be reconstructed from the present 'AMPIDnn' keywords.
+
+    Parameters
+    ----------
+    hdr : `astropy.io.fits.Header`
+        The FITS header for which the amplifier IDs are to be parsed
+
+    Returns
+    -------
+    `str`
+        The amplifier designation(s) used
+    """
+    # Basic 1-amplifier case:
+    if int(hdr["NUMAMP"]) == 1:
+        return f"{hdr['AMPID'].strip()}"
+
+    # Else, parse out all of the "AMPIDnn" keywords, join and return
+    return "".join([val.strip() for kwd, val in hdr.items() if "AMPID" in kwd])
 
 
 def read_instrument_table():
@@ -494,18 +521,15 @@ def wrap_trim_oscan(ccd):
 
     # Use the individual amplifier BIAS and TRIM sections to process
     amp_nums = [kwd[-2:] for kwd in hdr.keys() if "AMPID" in kwd]
-    clean_data = ccd.data.copy()
     for amp_num in amp_nums:
         yrange, xrange = slice_from_string(hdr[f"TRIM{amp_num}"], fits_convention=True)
-        clean_data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
+        ccd.data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
             ccd, hdr[f"BIAS{amp_num}"], hdr[f"TRIM{amp_num}"]
-        )
-    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
+        ).data
 
-    # Return the final sliced thing
-    return ccdproc.trim_image(
-        clean_data[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop]
-    )
+    # Return the final trimmed image
+    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
+    return ccdproc.trim_image(ccd[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop])
 
 
 def write_saved_bias(ccd, instrument, binning):

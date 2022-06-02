@@ -58,14 +58,18 @@ class CalibrationDatabase:
         Dictionary of instrument flags from utils.set_instrument_flags()
     proc_dir : `str` or `pathlib.Path`
         Path to the processing directory
-    nightname: `str`
+    nightname : `str`
         Name of the night (e.g., `lmi/20210106b` or `deveny/20220221a`)
+    config : `tuple`
+        Dectector configuration, consisting of (ccd_bin, amp_id)
     calib_container: `process_calibrations.CalibContainer`
         Calibration Container Class from adjoining module; contains the
         various calibration metadata tables
     """
 
-    def __init__(self, inst_flags, proc_dir, nightname, binning, calib_container):
+    def __init__(self, inst_flags, proc_dir, nightname, config, calib_container):
+        ccd_bin, amp_id = config
+
         # Set instance attributes
         self.proc_dir = proc_dir
 
@@ -73,7 +77,8 @@ class CalibrationDatabase:
         self.v_report = {
             "nightname": nightname,
             "flags": inst_flags,
-            "binning": binning.replace(" ", "x"),
+            "binning": ccd_bin.replace(" ", "x"),
+            "amplifier": amp_id,
         }
 
         # Place the metadata tables into a dictionary; init empty validated dict

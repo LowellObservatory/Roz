@@ -283,7 +283,7 @@ def divine_instrument(directory=None, fits_files=None):
         Lowercase string of the contents of the FITS `INSTRUME` keyword
     """
     if not any([directory, fits_files]):
-        raise utils.InputError("Either `directory` or `fits_files` is required.")
+        msgs.error("Either `directory` or `fits_files` is required.")
 
     if directory and not fits_files:
         # Get the list of normal FITS files in the directory
@@ -348,8 +348,7 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
 
     return_object = {}
 
-    # Keep these items separate for now, in case future instruments need one
-    #  but not the others
+    # Process each instrument flag separately:
     if inst_flag["get_bias"]:
         # Gather any bias frames (OBSTYPE=`bias` or EXPTIME=0) FULL FRAME ONLY
         fn_list = []
@@ -385,22 +384,39 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
         bin_list = sorted(list(filter(None, bin_list)))
         return_object["bin_list"] = bin_list
 
+    if inst_flag["check_amp"]:
+        # Get the complete list of amplifier configurations
+        amp_configs = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
+        # Return a sorted list of the unique configurations
+        return_object["amp_config"] = sorted(list(set(amp_configs)))
+
+    # Concatenate the filename list, as we'll need it regardless
+    all_fns = [
+        os.path.basename(fn)
+        for fn in list(
+            np.concatenate(
+                [val for key, val in return_object.items() if "_fn" in key]
+            ).flat
+        )
+    ]
+
     # ===============================================================#
-    # If we only want the filenames, flatten out the fn lists and return
+    # If we only want the filenames, print a summary and return the names
     if fnames_only:
-        # Append all the filename lists onto `fn_list`; Print out Frame Summary
-        fn_list = []
-        msgs.table(f"{'*'*19}")
+        # Print out Frame Summary
+        msgs.table("*" * 19)
         msgs.table("* -Frame Summary- *")
         for key, val in return_object.items():
-            if key.find("_fn") != -1:
+            if "_fn" in key:
                 msgs.table(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
-                fn_list.append(val)
         msgs.table("*" * 19)
         # Flatten and return the BASENAME only
-        return [os.path.basename(fn) for fn in list(np.concatenate(fn_list).flat)]
+        return all_fns
 
-    # Otherwise, return the accumulated dictionary
+    # Otherwise, create a combined IFC, and return the accumulated dictionary
+    return_object["allcal_cl"] = ccdproc.ImageFileCollection(
+        location=directory if all_fns else None, filenames=all_fns
+    )
     return return_object
 
 
@@ -483,4 +499,4 @@ def set_instrument_flags(inst):
         if row["instrument"] == inst:
             return dict(zip(row.colnames, row))
 
-    raise utils.DeveloperWarning("Error: this line should never run.")
+    msgs.error("Error: this line should never run.")

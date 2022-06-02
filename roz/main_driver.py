@@ -184,7 +184,7 @@ class Run:
         if hasattr(self, method) and callable(func := getattr(self, method)):
             func()
 
-    def run_cal(self, bin_list="1x1"):
+    def run_cal(self):
         """run_cal Run Roz on the Instrument Calibration frames
 
         Collect the calibration frames for the instrument represented by this
@@ -193,9 +193,6 @@ class Run:
         analyze the frames for irregularities compared to historical data, and
         send alerts, if necessary.  If desired, also update the appropriate
         Confluence page(s) for user support.
-
-        Keyword argument `bin_list` is a default in case `check_bin` is not
-        specified in the instrument flags.
         """
         # Collect the calibration frames within the processing directory
         calibs = process_frames.CalibContainer(
@@ -204,39 +201,36 @@ class Run:
             mem_limit=self.mem_limit,
         )
 
-        # Copy over `bin_list`, if returned from the above routine
-        bin_list = calibs.frame_dict.get(
-            "bin_list", [bin_list] if isinstance(bin_list, str) else bin_list
-        )
-
-        # Loop through the CCD binning schemes used
-        for ccd_bin in bin_list:
+        # Loop through the CCD configuration schemes used
+        for config in calibs.unique_detector_configs:
+            ccd_bin, amp_id = config
 
             # Print out a nice status message for those interested
             print("")
             msgs.info(
-                f"Processing the database for {ccd_bin.replace(' ', 'x')} binning..."
+                f"Processing the database for {ccd_bin.replace(' ', 'x')} "
+                f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
             )
 
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
-                calibs.process_bias(ccd_bin)
+                calibs.process_bias(config)
 
             # Process the DARK frames to produce a reduced frame and statistics
             if self.flags["get_dark"]:
-                calibs.process_dark(ccd_bin)
+                calibs.process_dark(config)
 
             # Process the DOME (& SKY?) FLAT frames to produce statistics
             if self.flags["get_flat"]:
-                calibs.process_domeflat(ccd_bin)
-                calibs.process_skyflat(ccd_bin)
+                calibs.process_domeflat(config)
+                calibs.process_skyflat(config)
 
             # Take the metadata from the calibration frames and produce DATABASE
             database = database_manager.CalibrationDatabase(
                 self.flags,
                 self.dumbwaiter.dirs["proc"],
                 self.dumbwaiter.nightname,
-                ccd_bin,
+                config,
                 calib_container=calibs,
             )
             # Validate the metadata tables
@@ -248,8 +242,8 @@ class Run:
             # Write the contents to InfluxDB
             database.write_to_influxdb(testing=self.skip_db_write)
 
-            # Update the LMI Filter Information page on Confluence
-            if self.flags["instrument"].lower() == "lmi":
+            # Update the LMI Filter Information page on Confluence if single-amplifier
+            if self.flags["instrument"].lower() == "lmi" and len(amp_id) == 1:
                 # Images for all binnings, values only for 2x2 binning
                 lmi_confluence_table.update_filter_characterization(
                     database, png_only=(ccd_bin != "2 2"), delete_existing=True

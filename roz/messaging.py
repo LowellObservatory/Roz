@@ -268,9 +268,8 @@ class Messages:
         """
         Print a test message
         """
-        if self._verbosity == 2:
-            premsg = f"{self._start}{self._white_blue}[TEST]    ::{self._end} "
-            self._print(premsg, msg)
+        premsg = f"{self._start}{self._white_blue}[TEST]    ::{self._end} "
+        self._print(premsg, msg)
 
     def warn(self, msg):
         """
