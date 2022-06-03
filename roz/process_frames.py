@@ -218,7 +218,7 @@ class CalibContainer(_ContainerBase):
         )
 
         # Loop through files
-        bias_ccds, metadata, coord_arrays = [], [], None
+        bias_fns, metadata, coord_arrays = [], [], None
         for ccd, fname in bias_cl.ccds(bitpix=16, return_fname=True):
 
             hdr = ccd.header
@@ -236,8 +236,10 @@ class CalibContainer(_ContainerBase):
             metadata.append(base_metadata_dict(hdr, data, quadsurf))
 
             # Fit the overscan section, subtract it, then trim the image
-            #  Append this to a list, update the progress bar and repeat!
-            bias_ccds.append(utils.wrap_trim_oscan(ccd))
+            ccd = utils.wrap_trim_oscan(ccd)
+            #  Write back to file, update the progress bar and repeat!
+            ccd.write(fname, overwrite=True)
+            bias_fns.append(fname)
             progress_bar.update(1)
 
         progress_bar.close()
@@ -250,7 +252,7 @@ class CalibContainer(_ContainerBase):
             # Silence RuntimeWarning issued related to means of empty slices
             warnings.simplefilter("ignore", RuntimeWarning)
             combined = ccdproc.combine(
-                bias_ccds,
+                bias_fns,
                 method=combine_method,
                 sigma_clip=True,
                 mem_limit=self.mem_limit,
