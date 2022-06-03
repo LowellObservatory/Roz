@@ -174,6 +174,7 @@ class Run:
         # Parse KWARGS -- Debugging options that can be removed when in production
         self.kwargs = kwargs
         self.skip_db_write = kwargs.get("skip_db_write", False)
+        self.no_confluence = kwargs.get("no_confluence", False)
 
     def process(self):
         """proc Process the files specified in the Dumbwaiter
@@ -243,7 +244,11 @@ class Run:
             database.write_to_influxdb(testing=self.skip_db_write)
 
             # Update the LMI Filter Information page on Confluence if single-amplifier
-            if self.flags["instrument"].lower() == "lmi" and len(amp_id) == 1:
+            if (
+                self.flags["instrument"].lower() == "lmi"
+                and len(amp_id) == 1
+                and not self.no_confluence
+            ):
                 # Images for all binnings, values only for 2x2 binning
                 lmi_confluence_table.update_filter_characterization(
                     database, png_only=(ccd_bin != "2 2"), delete_existing=False
@@ -323,6 +328,9 @@ def entry_point():
         help="Skip writing to the InfluxDB",
     )
     parser.add_argument(
+        "--no_confluence", action="store_true", help="Do not update Confluence"
+    )
+    parser.add_argument(
         "--nocal",
         action="store_true",
         help="Do not process the calibration frames",
@@ -344,6 +352,7 @@ def entry_point():
         no_prob=not pargs.use_problems,
         all_time=pargs.all_time,
         no_cold=pargs.no_cold,
+        no_confluence=pargs.no_confluence,
         skip_db_write=pargs.skip_db,
         mem_limit=1.024e9 * pargs.ram,
     )
