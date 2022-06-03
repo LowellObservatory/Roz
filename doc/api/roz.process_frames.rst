@@ -1,7 +1,7 @@
-roz.lmi\_confluence module
+roz.process\_frames module
 ==========================
 
-.. automodule:: roz.lmi_confluence
+.. automodule:: roz.process_frames
    :members:
    :private-members:
    :undoc-members:

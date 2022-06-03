@@ -7,14 +7,14 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   roz.alerting
    roz.database_manager
    roz.gather_frames
    roz.graphics_maker
-   roz.lmi_confluence
+   roz.lmi_confluence_table
    roz.main_driver
    roz.messaging
-   roz.process_calibrations
-   roz.process_science
+   roz.process_frames
    roz.utils
    roz.validate_statistics
 

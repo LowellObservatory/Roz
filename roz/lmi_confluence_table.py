@@ -260,6 +260,12 @@ def modify_lmi_dynamic_table(
     if debug:
         lmi_filt.pprint()
 
+    # TODO: Make sure we only make a "LATEST" PNG (and return a filename) if
+    #       we are actually updating the column in the HTML table.  As of
+    #       6/2/22, it seems that PNG filenames are being returned whether
+    #       or not the table is being updated.
+
+
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i, filt in enumerate(utils.FILTER_LIST["LMI"]):

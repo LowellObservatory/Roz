@@ -246,7 +246,7 @@ class Run:
             if self.flags["instrument"].lower() == "lmi" and len(amp_id) == 1:
                 # Images for all binnings, values only for 2x2 binning
                 lmi_confluence_table.update_filter_characterization(
-                    database, png_only=(ccd_bin != "2 2"), delete_existing=True
+                    database, png_only=(ccd_bin != "2 2"), delete_existing=False
                 )
 
     def run_sci(self):
