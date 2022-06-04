@@ -155,9 +155,11 @@ class Dumbwaiter:
             try:
                 shutil.copy2(self.dirs["data"].joinpath(frame), self.dirs["proc"])
             except FileNotFoundError as err:
-                msgs.error(f"Expected file was not found in the data directory:"
-                           f"{self.dirs['data'].joinpath(frame)}.{msgs.newline()}"
-                           f"{err}")
+                msgs.error(
+                    f"Expected file was not found in the data directory:"
+                    f"{self.dirs['data'].joinpath(frame)}.{msgs.newline()}"
+                    f"{err}"
+                )
             progress_bar.update(1)
         progress_bar.close()
 

@@ -182,6 +182,18 @@ class CalibContainer(_ContainerBase):
         self.bias_frame = None
         self.dark_frame = None
 
+    def reset_config(self):
+        """reset_config _summary_
+
+        Reset the configuration-specific attributes as None
+        """
+        self.bias_meta = None
+        self.dark_meta = None
+        self.flat_meta = None
+        self.skyf_meta = None
+        self.bias_frame = None
+        self.dark_frame = None
+
     def process_bias(self, config, combine_method="average"):
         """Process and combine available bias frames
 
@@ -237,7 +249,11 @@ class CalibContainer(_ContainerBase):
 
             # Fit the overscan section, subtract it, then trim the image
             ccd = utils.wrap_trim_oscan(ccd)
-            #  Write back to file, update the progress bar and repeat!
+            # Write back to file, update the progress bar and repeat!
+            # NOTE: We don't keep the CCDData objects in memory because it is a
+            #       bit of a memory leak, and the ccdproc.combine() method
+            #       rejiggers the CCDData objects internally in a way that
+            #       actually doubles the amount of memory used.
             ccd.write(fname, overwrite=True)
             bias_fns.append(fname)
             progress_bar.update(1)

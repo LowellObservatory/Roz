@@ -265,7 +265,6 @@ def modify_lmi_dynamic_table(
     #       6/2/22, it seems that PNG filenames are being returned whether
     #       or not the table is being updated.
 
-
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i, filt in enumerate(utils.FILTER_LIST["LMI"]):

@@ -213,6 +213,9 @@ class Run:
                 f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
             )
 
+            # Reset the metadata tables and calib frames for this configuration
+            calibs.reset_config()
+
             # Process the BIAS frames to produce a reduced frame and statistics
             if self.flags["get_bias"]:
                 calibs.process_bias(config)
