@@ -28,7 +28,6 @@ import astropy.modeling.models
 import astropy.nddata
 import astropy.table
 import ccdproc
-import johnnyfive
 import numpy as np
 from pkg_resources import resource_filename
 
@@ -138,6 +137,7 @@ def load_saved_bias(instrument, config):
     -------
     `astropy.nddata.CCDData`
         The (canned) combined, overscan-subtracted bias frame
+        If no saved bias exists, return `None`
     """
     # Split out the tuple
     ccd_bin, amp_id = config
@@ -150,11 +150,13 @@ def load_saved_bias(instrument, config):
         msgs.info(f"Reading in saved file {fname}...")
         return astropy.nddata.CCDData.read(Paths.data.joinpath(fname))
 
-    # Otherwise, construct a blank (zeros) frame of the appropriate size
-    icl_kwargs = parse_ampconfig(amp_id)
-    johnnyfive.print_dict(icl_kwargs)
-
-    raise FileNotFoundError(f"File Not Found!  Add {fname} to Paths.data")
+    # If nothing exists, print a warning and return None
+    msgs.warn(
+        f"Saved BIAS not found for {instrument.upper()} with "
+        f"{ccd_bin.replace(' ','x')} binning and amplifer "
+        f"{amp_id}.{msgs.newline()}Skipping bias subraction!"
+    )
+    return None
 
 
 def parse_ampconfig(amp_config):

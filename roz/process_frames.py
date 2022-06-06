@@ -333,7 +333,7 @@ class CalibContainer(_ContainerBase):
 
         # Check for actual bias frame, else make something up
         if not self.bias_frame:
-            msgs.info("No appropriate bias frames passed; loading saved BIAS...")
+            msgs.info("No bias frame(s) for this config; loading saved BIAS...")
             self.bias_frame = utils.load_saved_bias(self.flags["instrument"], config)
         else:
             # Write this bias to disk for future use
@@ -358,9 +358,11 @@ class CalibContainer(_ContainerBase):
             # Add a "short filename" to the header for use further along
             hdr["SHORT_FN"] = fname.split(os.sep)[-1]
 
-            # Fit & subtract the overscan section, trim the image, subtract bias
+            # Fit & subtract the overscan section, trim the image.
             ccd = utils.wrap_trim_oscan(ccd)
-            ccd = ccdproc.subtract_bias(ccd, self.bias_frame)
+            # If a bias exists, subtract it
+            if self.bias_frame:
+                ccd = ccdproc.subtract_bias(ccd, self.bias_frame)
 
             # If a DARK frame was passed, scale and subtract
             if self.dark_frame:
