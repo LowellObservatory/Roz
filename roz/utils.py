@@ -35,9 +35,21 @@ from pkg_resources import resource_filename
 import ligmos
 
 # Internal Imports
-from roz import msgs
+
 
 # Create various augmented classes for Roz-specific configuration things
+class AlertTarget(ligmos.utils.classes.baseTarget):
+    """
+    For roz.conf:[rozSetup]
+    """
+
+    def __init__(self):
+        # Gather up the properties from the base class
+        super().__init__()
+        # New attributes
+        self.slack_channel = None
+
+
 class DatabaseTarget(ligmos.utils.classes.baseTarget):
     """
     For roz.conf:[databaseSetup] and roz.conf:[q_rozdata]
@@ -118,45 +130,6 @@ FILTER_LIST = {
 
 # Fold Mirror Names
 LDT_FMS = ["A", "B", "C", "D"]
-
-
-def load_saved_bias(instrument, config):
-    """load_saved_bias Load a saved (canned) bias frame
-
-    In the event that a data set does not contain a concomitant bias frame(s),
-    load in a saved (canned) frame for use with processing the flat frames.
-
-    Parameters
-    ----------
-    instrument : `str`
-        Instrument name from instrument_flags()
-    config : `tuple`
-        (Instrument binning from CCDSUM, AMPIDs)
-
-    Returns
-    -------
-    `astropy.nddata.CCDData`
-        The (canned) combined, overscan-subtracted bias frame
-        If no saved bias exists, return `None`
-    """
-    # Split out the tuple
-    ccd_bin, amp_id = config
-
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
-
-    # If the proper filename exists, read it in and return
-    if Paths.data.joinpath(fname).is_file():
-        msgs.info(f"Reading in saved file {fname}...")
-        return astropy.nddata.CCDData.read(Paths.data.joinpath(fname))
-
-    # If nothing exists, print a warning and return None
-    msgs.warn(
-        f"Saved BIAS not found for {instrument.upper()} with "
-        f"{ccd_bin.replace(' ','x')} binning and amplifer "
-        f"{amp_id}.{msgs.newline()}Skipping bias subraction!"
-    )
-    return None
 
 
 def parse_ampconfig(amp_config):
@@ -252,6 +225,8 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
         ConfClass = FilterTarget
     elif confname == "q_rozdata":
         ConfClass = ligmos.utils.classes.databaseQuery
+    elif confname == "alertSetup":
+        ConfClass = AlertTarget
     else:
         ConfClass = ligmos.utils.classes.baseTarget
 
@@ -551,29 +526,6 @@ def wrap_trim_oscan(ccd):
         hdr["TRIMSEC"], fits_convention=True
     )
     return ccdproc.trim_image(ccd[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop])
-
-
-def write_saved_bias(ccd, instrument, config):
-    """write_saved_bias Write a saved (canned) bias frame
-
-    Write a bias frame to disk for use with other nights' data that has
-    no bias.
-
-    Parameters
-    ----------
-    ccd : `astropy.nddata.CCDData`
-        The (canned) combined, overscan-subtracted bias frame to write
-    instrument : `str`
-        Instrument name from instrument_flags()
-    config : `tuple`
-        (Instrument binning from CCDSUM, AMPIDs)
-    """
-    # Split out the tuple
-    ccd_bin, amp_id = config
-
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
-    ccd.write(Paths.data.joinpath(fname), overwrite=True)
 
 
 # Quadric Surface Functions ==================================================#

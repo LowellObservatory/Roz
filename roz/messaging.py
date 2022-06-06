@@ -35,6 +35,7 @@ import johnnyfive
 
 # Internal Imports
 import roz
+from roz import utils
 
 
 class RozError(Exception):
@@ -314,6 +315,11 @@ class RozSlack(johnnyfive.SlackChannel):
     johnnyfive : _type_
         _description_
     """
+
+    def __init__(self):
+        # Set up the channel from info in the configuration file
+        alert_info = utils.read_ligmos_conffiles("alertSetup")
+        super().__init__(alert_info.slack_channel)
 
     def send(self, msg):
         """send _summary_

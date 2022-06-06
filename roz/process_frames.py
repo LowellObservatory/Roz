@@ -334,10 +334,10 @@ class CalibContainer(_ContainerBase):
         # Check for actual bias frame, else make something up
         if not self.bias_frame:
             msgs.info("No bias frame(s) for this config; loading saved BIAS...")
-            self.bias_frame = utils.load_saved_bias(self.flags["instrument"], config)
+            self.bias_frame = load_saved_bias(self.flags["instrument"], config)
         else:
             # Write this bias to disk for future use
-            utils.write_saved_bias(self.bias_frame, self.flags["instrument"], config)
+            write_saved_bias(self.bias_frame, self.flags["instrument"], config)
 
         if self.debug:
             msgs.info("Processing dome flat frames...")
@@ -526,3 +526,66 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     #     metadict[f"qs_{m}"] = quadsurf[i]
 
     return metadict
+
+
+# Read / Write Archived Frames ===============================================#
+def load_saved_bias(instrument, config):
+    """load_saved_bias Load a saved (canned) bias frame
+
+    In the event that a data set does not contain a concomitant bias frame(s),
+    load in a saved (canned) frame for use with processing the flat frames.
+
+    Parameters
+    ----------
+    instrument : `str`
+        Instrument name from instrument_flags()
+    config : `tuple`
+        (Instrument binning from CCDSUM, AMPIDs)
+
+    Returns
+    -------
+    `astropy.nddata.CCDData`
+        The (canned) combined, overscan-subtracted bias frame
+        If no saved bias exists, return `None`
+    """
+    # Split out the tuple
+    ccd_bin, amp_id = config
+
+    # Build bias filename
+    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+
+    # If the proper filename exists, read it in and return
+    if utils.Paths.data.joinpath(fname).is_file():
+        msgs.info(f"Reading in saved file {fname}...")
+        return astropy.nddata.CCDData.read(utils.Paths.data.joinpath(fname))
+
+    # If nothing exists, print a warning and return None
+    msgs.warn(
+        f"Saved BIAS not found for {instrument.upper()} with "
+        f"{ccd_bin.replace(' ','x')} binning and amplifer "
+        f"{amp_id}.{msgs.newline()}Skipping bias subraction!"
+    )
+    return None
+
+
+def write_saved_bias(ccd, instrument, config):
+    """write_saved_bias Write a saved (canned) bias frame
+
+    Write a bias frame to disk for use with other nights' data that has
+    no bias.
+
+    Parameters
+    ----------
+    ccd : `astropy.nddata.CCDData`
+        The (canned) combined, overscan-subtracted bias frame to write
+    instrument : `str`
+        Instrument name from instrument_flags()
+    config : `tuple`
+        (Instrument binning from CCDSUM, AMPIDs)
+    """
+    # Split out the tuple
+    ccd_bin, amp_id = config
+
+    # Build bias filename
+    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+    ccd.write(utils.Paths.data.joinpath(fname), overwrite=True)

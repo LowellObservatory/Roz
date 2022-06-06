@@ -2,6 +2,9 @@
 processing_dir = None
 storage_dir = None
 
+[alertSetup]
+slack_channel = None
+
 [lmifilertSetup]
 space = LDTOI
 page_title = LMI Filter Characterization 2

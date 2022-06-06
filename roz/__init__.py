@@ -39,7 +39,7 @@ __version__ = version
 
 # Import and instantiate the logger
 msgs = messaging.Messages()
-slack = messaging.RozSlack("bot_test")
+slack = messaging.RozSlack()
 
 # Send all signals to messages to be dealt with (i.e. someone hits ctrl+c)
 def signal_handler(signalnum, handler):
