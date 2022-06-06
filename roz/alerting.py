@@ -22,7 +22,7 @@ This module primarily trades in... not quite sure yet.
 import os
 
 # 3rd Party Libraries
-from astropy.table import Table
+import astropy.table
 
 # Lowell Libraries
 
@@ -90,7 +90,7 @@ def post_pngs(metadata_tables, directory, inst_flags):
 
             # Loop through Filters
             for filt in metadata_tables[ftype]:
-                if isinstance(metadata_tables[ftype][filt], Table):
+                if isinstance(metadata_tables[ftype][filt], astropy.table.Table):
 
                     # Grab frames marked as "PROBLEM"
                     mask = metadata_tables[ftype][filt]["problem"] == 1

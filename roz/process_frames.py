@@ -30,8 +30,8 @@ import os
 import warnings
 
 # 3rd Party Libraries
-from astropy.stats import mad_std
-from astropy.table import Table
+import astropy.stats
+import astropy.table
 import astropy.wcs
 import ccdproc
 import numpy as np
@@ -77,7 +77,7 @@ class _ContainerBase:
         # Init other things
         self.frame_dict = {}
 
-    def _check_ifc(self, frametype, ccd_bin, amp_config):
+    def _check_ifc(self, frametype, config):
         """Check the IFC being processed
 
         This is a DRY block, used in both process_bias and process_flats.  It
@@ -99,6 +99,7 @@ class _ContainerBase:
             Filtered ImageFileCollection, ready for processing
 
         """
+        ccd_bin, amp_config = config
         ifc = self.frame_dict[frametype]
 
         # Error checking for binning
@@ -111,14 +112,7 @@ class _ContainerBase:
         if not ifc.files:
             return ifc
 
-        # Parse the `amp_config` into something the ImageFileCollection can filter
-        if len(amp_config) == 1:
-            kwargs = {"numamp": 1, "ampid": amp_config}
-        else:
-            kwargs = {"numamp": len(amp_config)}
-            for amp in amp_config:
-                # Use `ord()` to convert the letter into a number
-                kwargs[f"ampid{ord(amp) - 64:02d}"] = amp
+        kwargs = utils.parse_ampconfig(amp_config)
 
         # Double-check that we're processing FULL FRAMEs of identical config only
         return ifc.filter(ccdsum=ccd_bin, subarrno=0, **kwargs)
@@ -142,6 +136,18 @@ class _ContainerBase:
             for amp in sorted(list(set(amplist))):
                 configs.append((ccd_bin, amp))
         return configs
+
+    def reset_config(self):
+        """reset_config _summary_
+
+        Reset the configuration-specific attributes as None
+
+        Loop through the instance attributes, and set all those ending in
+        "_meta" or "_frame" to None.
+        """
+        for attr in dir(self):
+            if attr.endswith("_meta") or attr.endswith("_frame"):
+                setattr(self, attr, None)
 
 
 class CalibContainer(_ContainerBase):
@@ -182,18 +188,6 @@ class CalibContainer(_ContainerBase):
         self.bias_frame = None
         self.dark_frame = None
 
-    def reset_config(self):
-        """reset_config _summary_
-
-        Reset the configuration-specific attributes as None
-        """
-        self.bias_meta = None
-        self.dark_meta = None
-        self.flat_meta = None
-        self.skyf_meta = None
-        self.bias_frame = None
-        self.dark_frame = None
-
     def process_bias(self, config, combine_method="average"):
         """Process and combine available bias frames
 
@@ -214,9 +208,8 @@ class CalibContainer(_ContainerBase):
             The combined, overscan-subtracted bias frame (if
             `produce_combined == True` else None)
         """
-        ccd_bin, amp_id = config
         # Parse instance attributes into expected variables
-        bias_cl = self._check_ifc("bias_cl", ccd_bin, amp_id)
+        bias_cl = self._check_ifc("bias_cl", config)
         produce_combined = self.flags["get_flat"]
 
         if not bias_cl.files:
@@ -272,13 +265,13 @@ class CalibContainer(_ContainerBase):
                 method=combine_method,
                 sigma_clip=True,
                 mem_limit=self.mem_limit,
-                sigma_clip_dev_func=mad_std,
+                sigma_clip_dev_func=astropy.stats.mad_std,
             )
             # Reinstate RuntimeWarning
             warnings.simplefilter("default", RuntimeWarning)
 
         # Stuff into instance attributes
-        self.bias_meta = Table(metadata)
+        self.bias_meta = astropy.table.Table(metadata)
         self.bias_frame = combined
 
     def process_dark(self, config, combine_method="average"):
@@ -287,9 +280,8 @@ class CalibContainer(_ContainerBase):
         NOTE: Not yet implemented -- Boilerplate below is from process_bias
             tqdm color should be "#736d67"
         """
-        ccd_bin, amp_id = config
         # Parse instance attributes into expected variables
-        dark_cl = self._check_ifc("dark_cl", ccd_bin, amp_id)
+        dark_cl = self._check_ifc("dark_cl", config)
         produce_combined = self.flags["get_flat"]
 
         if not dark_cl.files:
@@ -310,13 +302,13 @@ class CalibContainer(_ContainerBase):
                 method=combine_method,
                 sigma_clip=True,
                 mem_limit=self.mem_limit,
-                sigma_clip_dev_func=mad_std,
+                sigma_clip_dev_func=astropy.stats.mad_std,
             )
             # Reinstate RuntimeWarning
             warnings.simplefilter("default", RuntimeWarning)
 
         # Stuff into instance attributes
-        self.dark_meta = Table(metadata)
+        self.dark_meta = astropy.table.Table(metadata)
         self.dark_frame = combined
 
     def process_domeflat(self, config):
@@ -334,19 +326,18 @@ class CalibContainer(_ContainerBase):
         `astropy.table.Table`
             The table of relevant metadata and statistics for each frame
         """
-        ccd_bin, amp_id = config
         # Check for existance of flats with this binning, else retun empty Table()
-        domeflat_cl = self._check_ifc("domeflat_cl", ccd_bin, amp_id)
+        domeflat_cl = self._check_ifc("domeflat_cl", config)
         if not domeflat_cl.files:
             return
 
         # Check for actual bias frame, else make something up
         if not self.bias_frame:
             msgs.info("No appropriate bias frames passed; loading saved BIAS...")
-            self.bias_frame = utils.load_saved_bias(self.flags["instrument"], ccd_bin)
+            self.bias_frame = utils.load_saved_bias(self.flags["instrument"], config)
         else:
             # Write this bias to disk for future use
-            utils.write_saved_bias(self.bias_frame, self.flags["instrument"], ccd_bin)
+            utils.write_saved_bias(self.bias_frame, self.flags["instrument"], config)
 
         if self.debug:
             msgs.info("Processing dome flat frames...")
@@ -401,7 +392,7 @@ class CalibContainer(_ContainerBase):
         progress_bar.close()
 
         # Convert the list of dicts into a Table and return
-        self.flat_meta = Table(metadata)
+        self.flat_meta = astropy.table.Table(metadata)
 
     def process_skyflat(self, config):
         """Process the sky flat fields and return statistics
@@ -411,7 +402,7 @@ class CalibContainer(_ContainerBase):
         """
         ccd_bin, amp_id = config
         [ccd_bin, amp_id]
-        self.skyf_meta = Table()
+        self.skyf_meta = astropy.table.Table()
 
 
 class ScienceContainer(_ContainerBase):

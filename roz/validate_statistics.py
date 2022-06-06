@@ -24,7 +24,6 @@ and the internal database objects (`roz.database_manager.HistoricalData` and
 """
 
 # Built-In Libraries
-import warnings
 
 # 3rd Party Libraries
 import numpy as np
@@ -32,7 +31,6 @@ import numpy as np
 # Internal Imports
 from roz import database_manager
 from roz import msgs
-from roz import utils
 
 
 # Calibration Validation Functions ===========================================#
@@ -193,11 +191,10 @@ def perform_calibration_validation(
     # Check `scheme`
     # TODO: As additional validation schemes are developed, change this
     if scheme not in ["simple", "none"]:
-        warnings.warn(
+        msgs.warn(
             "Only 'simple' and 'none' validation of calibration frames are "
             f"available this time.  `{scheme}` not supported.  "
-            "(Using 'simple'...)",
-            utils.DeveloperWarning,
+            "(Using 'simple'...)"
         )
         scheme = "simple"
 

@@ -13,7 +13,6 @@
 
 
 # Imports for signal and log handling
-from email.headerregistry import MessageIDHeader
 import os
 import signal
 import sys

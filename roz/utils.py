@@ -26,9 +26,9 @@ import pathlib
 # 3rd Party Libraries
 import astropy.modeling.models
 import astropy.nddata
-from astropy.table import Table
+import astropy.table
 import ccdproc
-from ccdproc.utils.slices import slice_from_string
+import johnnyfive
 import numpy as np
 from pkg_resources import resource_filename
 
@@ -36,7 +36,7 @@ from pkg_resources import resource_filename
 import ligmos
 
 # Internal Imports
-
+from roz import msgs
 
 # Create various augmented classes for Roz-specific configuration things
 class DatabaseTarget(ligmos.utils.classes.baseTarget):
@@ -108,7 +108,7 @@ class Paths:
 
 # List of Imager Filters (augment, as needed for other instruments)
 FILTER_LIST = {
-    "LMI": list(Table.read(Paths.ecsv_filters)["FITS Header Value"]),
+    "LMI": list(astropy.table.Table.read(Paths.ecsv_filters)["FITS Header Value"]),
     "DEVENY": ["OPEN"],
     "NIHTS": ["OPEN"],
     "ET1": ["U", "B", "V", "R", "I", "g'", "r'", "i'"],
@@ -120,16 +120,8 @@ FILTER_LIST = {
 # Fold Mirror Names
 LDT_FMS = ["A", "B", "C", "D"]
 
-# Create an error class to use
-class InputError(ValueError):
-    """InputError Locally defined error that inherits ValueError"""
 
-
-class DeveloperWarning(UserWarning):
-    """DeveloperWarning Locally defined warning directed at Roz developers"""
-
-
-def load_saved_bias(instrument, binning):
+def load_saved_bias(instrument, config):
     """load_saved_bias Load a saved (canned) bias frame
 
     In the event that a data set does not contain a concomitant bias frame(s),
@@ -139,33 +131,56 @@ def load_saved_bias(instrument, binning):
     ----------
     instrument : `str`
         Instrument name from instrument_flags()
-    binning : `str`
-        Instrument binning from CCDSUM
+    config : `tuple`
+        (Instrument binning from CCDSUM, AMPIDs)
 
     Returns
     -------
     `astropy.nddata.CCDData`
         The (canned) combined, overscan-subtracted bias frame
-
-    Raises
-    ------
-    FileNotFoundError
-        If the desired canned frame does not exist in Paths.data, raise this
-        error with a note to the Developer to add said file.
     """
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    # Split out the tuple
+    ccd_bin, amp_id = config
 
-    print(f"Reading in saved file {fname}...")
-    try:
+    # Build bias filename
+    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+
+    # If the proper filename exists, read it in and return
+    if Paths.data.joinpath(fname).is_file():
+        msgs.info(f"Reading in saved file {fname}...")
         return astropy.nddata.CCDData.read(Paths.data.joinpath(fname))
 
-    # TODO: Should also have a way to return a blank (zeros) frame of the
-    #       appropriate size in the event that a bias does not or will not
-    #       exist.
-    except Exception as error:
-        print(error)
-        raise DeveloperWarning(f"File Not Found!  Add {fname} to Paths.data") from error
+    # Otherwise, construct a blank (zeros) frame of the appropriate size
+    icl_kwargs = parse_ampconfig(amp_id)
+    johnnyfive.print_dict(icl_kwargs)
+
+    raise FileNotFoundError(f"File Not Found!  Add {fname} to Paths.data")
+
+
+def parse_ampconfig(amp_config):
+    """parse_ampconfig _summary_
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    amp_config : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    # Parse the `amp_config` into something the ImageFileCollection can filter
+    if len(amp_config) == 1:
+        kwargs = {"numamp": 1, "ampid": amp_config}
+    else:
+        kwargs = {"numamp": len(amp_config)}
+        for amp in amp_config:
+            # Use `ord()` to convert the letter into a number
+            kwargs[f"ampid{ord(amp) - 64:02d}"] = amp
+    return kwargs
 
 
 def parse_lois_ampids(hdr):
@@ -203,7 +218,7 @@ def read_instrument_table():
     `astropy.table.Table`
         The instrument flags table
     """
-    return Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
+    return astropy.table.Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
 
 
 def read_ligmos_conffiles(confname, conffile="roz.conf"):
@@ -358,7 +373,7 @@ def table_sort_on_list(table, colname, sort_list):
         If the `sort_list` is not the same length as the table
     """
     # Check that the input parameters are of the proper type
-    if not isinstance(table, Table):
+    if not isinstance(table, astropy.table.Table):
         raise TypeError(
             "table must be of type astropy.table.Table not " f"{type(table)}"
         )
@@ -430,8 +445,8 @@ def trim_oscan(ccd, biassec, trimsec):
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Convert the FITS bias & trim sections into slice classes for use
-    _, xb = slice_from_string(biassec, fits_convention=True)
-    yt, xt = slice_from_string(trimsec, fits_convention=True)
+    _, xb = ccdproc.utils.slices.slice_from_string(biassec, fits_convention=True)
+    yt, xt = ccdproc.utils.slices.slice_from_string(trimsec, fits_convention=True)
 
     # First trim off the top & bottom rows
     ccd = ccdproc.trim_image(ccd[yt.start : yt.stop, :])
@@ -522,17 +537,21 @@ def wrap_trim_oscan(ccd):
     # Use the individual amplifier BIAS and TRIM sections to process
     amp_nums = [kwd[-2:] for kwd in hdr.keys() if "AMPID" in kwd]
     for amp_num in amp_nums:
-        yrange, xrange = slice_from_string(hdr[f"TRIM{amp_num}"], fits_convention=True)
+        yrange, xrange = ccdproc.utils.slices.slice_from_string(
+            hdr[f"TRIM{amp_num}"], fits_convention=True
+        )
         ccd.data[yrange.start : yrange.stop, xrange.start : xrange.stop] = trim_oscan(
             ccd, hdr[f"BIAS{amp_num}"], hdr[f"TRIM{amp_num}"]
         ).data
 
     # Return the final trimmed image
-    ytrim, xtrim = slice_from_string(hdr["TRIMSEC"], fits_convention=True)
+    ytrim, xtrim = ccdproc.utils.slices.slice_from_string(
+        hdr["TRIMSEC"], fits_convention=True
+    )
     return ccdproc.trim_image(ccd[ytrim.start : ytrim.stop, xtrim.start : xtrim.stop])
 
 
-def write_saved_bias(ccd, instrument, binning):
+def write_saved_bias(ccd, instrument, config):
     """write_saved_bias Write a saved (canned) bias frame
 
     Write a bias frame to disk for use with other nights' data that has
@@ -544,11 +563,14 @@ def write_saved_bias(ccd, instrument, binning):
         The (canned) combined, overscan-subtracted bias frame to write
     instrument : `str`
         Instrument name from instrument_flags()
-    binning : `str`
-        Instrument binning from CCDSUM
+    config : `tuple`
+        (Instrument binning from CCDSUM, AMPIDs)
     """
+    # Split out the tuple
+    ccd_bin, amp_id = config
+
     # Build bias filename
-    fname = f"bias_{instrument.lower()}_{binning.replace(' ','x')}.fits"
+    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
     ccd.write(Paths.data.joinpath(fname), overwrite=True)
 
 

@@ -27,8 +27,8 @@ This module primarily trades in its own classes.
 import warnings
 
 # 3rd Party Libraries
-from astropy.table import Table
-from influxdb import DataFrameClient
+import astropy.table
+import influxdb
 import numpy as np
 
 # Lowell Libraries
@@ -37,6 +37,7 @@ import ligmos
 
 # Internal Imports
 from roz import alerting
+from roz import msgs
 from roz import utils
 from roz import validate_statistics
 
@@ -155,10 +156,9 @@ class CalibrationDatabase:
         try:
             filter_list = utils.FILTER_LIST[instrument]
         except KeyError:
-            warnings.warn(
+            msgs.warn(
                 f"No filter list set for instrument {instrument} "
-                "in utils.py!  Using ['OPEN'].",
-                utils.DeveloperWarning,
+                "in utils.py!  Using ['OPEN']."
             )
             filter_list = ["OPEN"]
 
@@ -314,7 +314,7 @@ class HistoricalData:
         self.query = query[list(query.keys())[0]]
 
         # Build the InfluxDB Data Frame Client:
-        self.idfc = DataFrameClient(
+        self.idfc = influxdb.DataFrameClient(
             host=self.query.database.host,
             port=self.query.database.port,
             username=self.query.database.user,
@@ -350,7 +350,7 @@ class HistoricalData:
         # If `results` is empty, assign a (nearly) empty table
         if results == {}:
             warnings.warn("The InfluxDB query returned no results!")
-            self.results = Table(
+            self.results = astropy.table.Table(
                 names=("timestamp", "instrument", "frametype"),
                 dtype=("O", "U12", "U12"),
             )
@@ -363,7 +363,7 @@ class HistoricalData:
         timestamps = results[self.query.metricname].index.to_pydatetime()
 
         # Convert to a single AstroPy Table; add timestamps as additional column
-        self.results = Table.from_pandas(results[self.query.metricname])
+        self.results = astropy.table.Table.from_pandas(results[self.query.metricname])
         self.results["timestamp"] = timestamps
 
     def metric_n(self, metric, no_prob=True, **kwargs):

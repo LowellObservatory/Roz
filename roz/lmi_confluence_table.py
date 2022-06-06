@@ -27,7 +27,7 @@ import warnings
 
 # 3rd Party Libraries
 import astropy.io.votable
-from astropy.table import join, Column, Table
+import astropy.table
 import bs4
 import numpy as np
 
@@ -231,25 +231,31 @@ def modify_lmi_dynamic_table(
     # Check if the dynamic-portion FITS table is extant
     if os.path.isfile(utils.Paths.lmi_dyntable):
         # Read it in!
-        dyntable = Table.read(utils.Paths.lmi_dyntable)
+        dyntable = astropy.table.Table.read(utils.Paths.lmi_dyntable)
 
     else:
         # Make a blank table, including the lmi_filters for correspondence
         nrow = len(utils.FILTER_LIST["LMI"])
-        dyntable = Table(
+        dyntable = astropy.table.Table(
             [
-                Column(utils.FILTER_LIST["LMI"], name="Filter"),
-                Column(name="Latest Image", length=nrow, dtype="U256"),
-                Column(name="UT Date of Latest Flat", length=nrow, dtype="U128"),
-                Column(name="Count Rate (ADU/s)", length=nrow, dtype=float),
-                Column(name="Exptime for 20k cts (s)", length=nrow, dtype=float),
+                astropy.table.Column(utils.FILTER_LIST["LMI"], name="Filter"),
+                astropy.table.Column(name="Latest Image", length=nrow, dtype="U256"),
+                astropy.table.Column(
+                    name="UT Date of Latest Flat", length=nrow, dtype="U128"
+                ),
+                astropy.table.Column(
+                    name="Count Rate (ADU/s)", length=nrow, dtype=float
+                ),
+                astropy.table.Column(
+                    name="Exptime for 20k cts (s)", length=nrow, dtype=float
+                ),
             ]
         )
 
     # Merge the static and dynamic portions together
     #  The astropy.table function join() combines tables based on common keys,
     #  however, it also sorts the table...
-    lmi_filt = join(lmi_filt, dyntable, join_type="left", keys="Filter")
+    lmi_filt = astropy.table.join(lmi_filt, dyntable, join_type="left", keys="Filter")
     # Undo the alpha sorting done by .join()
     lmi_filt = utils.table_sort_on_list(
         lmi_filt, "FITS Header Value", utils.FILTER_LIST["LMI"]
@@ -312,7 +318,7 @@ def modify_lmi_dynamic_table(
             lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
 
     # Split off the dyntable portion again, and write it back to disk for later
-    dyntable = Table(
+    dyntable = astropy.table.Table(
         [
             lmi_filt["Filter"],
             lmi_filt["Latest Image"],
@@ -331,10 +337,10 @@ def modify_lmi_dynamic_table(
     dyntable.write(utils.Paths.lmi_dyntable, overwrite=True)
 
     # Add formatting constraints to the `lmi_filt` table columns
-    lmi_filt["Count Rate (ADU/s)"] = Column(
+    lmi_filt["Count Rate (ADU/s)"] = astropy.table.Column(
         lmi_filt["Count Rate (ADU/s)"].filled(0), format=utils.two_sigfig
     )
-    lmi_filt["Exptime for 20k cts (s)"] = Column(
+    lmi_filt["Exptime for 20k cts (s)"] = astropy.table.Column(
         lmi_filt["Exptime for 20k cts (s)"].filled(0), format=utils.two_sigfig
     )
 
@@ -536,8 +542,8 @@ def load_lmi_static_table(table_type="ecsv"):
 
     elif table_type == "ecsv":
         # Read in the ECSV tables (LMI Filter Info and the HTML section headings)
-        filter_table = Table.read(utils.Paths.ecsv_filters)
-        section_head = Table.read(utils.Paths.ecsv_sechead)
+        filter_table = astropy.table.Table.read(utils.Paths.ecsv_filters)
+        section_head = astropy.table.Table.read(utils.Paths.ecsv_sechead)
 
     else:
         msgs.error(f"Table type {table_type} not recognized!")
@@ -581,21 +587,21 @@ def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
         pass
 
 
-def purge_page_attachments(args=None):
-    """purge_page_attachments Quick script for clearing accumulated attachments
+# def purge_page_attachments(args=None):
+#     """purge_page_attachments Quick script for clearing accumulated attachments
 
-    Console Script for the quick cleaning of accumulated attachment cruft
-    """
-    # Instantiate a ConfluencePage object for the LMI Filter Page
-    page_info = utils.read_ligmos_conffiles("lmifilterSetup")
-    lmi_filter_info = johnnyfive.ConfluencePage(page_info.space, page_info.page_title)
+#     Console Script for the quick cleaning of accumulated attachment cruft
+#     """
+#     # Instantiate a ConfluencePage object for the LMI Filter Page
+#     page_info = utils.read_ligmos_conffiles("lmifilterSetup")
+#     lmi_filter_info = johnnyfive.ConfluencePage(page_info.space, page_info.page_title)
 
-    # Get the attachments, and parse out the filename "titles" from the returned object
-    attachments = lmi_filter_info.get_page_attachments(limit=200)
-    titles = [result["title"] for result in attachments["results"]]
+#     # Get the attachments, and parse out the filename "titles" from the returned object
+#     attachments = lmi_filter_info.get_page_attachments(limit=200)
+#     titles = [result["title"] for result in attachments["results"]]
 
-    # Say something about what we're up to, then get to it
-    print(f"Puring {len(titles)} attachments from {page_info.page_title}...")
-    for title in titles:
-        print(f"Deleting {title}...")
-        lmi_filter_info.delete_attachment(title)
+#     # Say something about what we're up to, then get to it
+#     print(f"Puring {len(titles)} attachments from {page_info.page_title}...")
+#     for title in titles:
+#         print(f"Deleting {title}...")
+#         lmi_filter_info.delete_attachment(title)

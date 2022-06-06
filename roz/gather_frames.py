@@ -30,7 +30,7 @@ import tarfile
 import warnings
 
 # 3rd Party Libraries
-from astropy.io.fits import getheader
+import astropy.io.fits
 from astropy.utils.exceptions import AstropyUserWarning
 import ccdproc
 import numpy as np
@@ -193,7 +193,9 @@ class Dumbwaiter:
         #  is most likely to be taken AFTER 00:00UT) and extract from DATE-OBS
         else:
             utdate = (
-                getheader(self.dirs["proc"].joinpath(self.frames[-1]))["DATE-OBS"]
+                astropy.io.fits.getheader(self.dirs["proc"].joinpath(self.frames[-1]))[
+                    "DATE-OBS"
+                ]
                 .split("T")[0]
                 .replace("-", "")
             )
@@ -301,7 +303,7 @@ def divine_instrument(directory=None, fits_files=None):
         try:
             # If we're good to go...
             if fitsfile.is_file():
-                return getheader(fitsfile)["instrume"].lower()
+                return astropy.io.fits.getheader(fitsfile)["instrume"].lower()
         except KeyError:
             continue
 

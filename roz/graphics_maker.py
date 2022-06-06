@@ -25,8 +25,8 @@ import os
 from pathlib import Path
 
 # 3rd Party Libraries
-from astropy.nddata import CCDData
-from astropy.visualization import AsymmetricPercentileInterval
+import astropy.nddata
+import astropy.visualization
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -87,7 +87,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     """
     # Read in the image, with error checking
     try:
-        ccd = CCDData.read(img_fn)
+        ccd = astropy.nddata.CCDData.read(img_fn)
     except OSError as exception:
         alerting.send_alert(
             f"Could not open {img_fn} because of {exception}.",
@@ -175,5 +175,7 @@ def get_image_intensity_limits(ccd):
         pmin, pmax = 0, 100
 
     # Compute the iterval and return
-    interval = AsymmetricPercentileInterval(pmin, pmax, n_samples=10000)
+    interval = astropy.visualization.AsymmetricPercentileInterval(
+        pmin, pmax, n_samples=10000
+    )
     return interval.get_limits(ccd.data)
