@@ -264,8 +264,8 @@ def perform_calibration_validation(
 
     # Build some quick dictionaries containing the Gaussian statistics
     n_vals = {check: hist.metric_n(check, no_prob=no_prob) for check in metrics}
-    mu = {check: hist.metric_mean(check, no_prob=no_prob) for check in metrics}
-    sig = {check: hist.metric_stddev(check, no_prob=no_prob) for check in metrics}
+    mu_val = {check: hist.metric_mean(check, no_prob=no_prob) for check in metrics}
+    sig_va = {check: hist.metric_stddev(check, no_prob=no_prob) for check in metrics}
 
     # Make empty arrays to hold 'problem' and 'obstruction' flags
     p_flag = np.zeros(len(meta_table), dtype=np.int8)
@@ -284,14 +284,15 @@ def perform_calibration_validation(
     for i, row in enumerate(meta_table):
         report[(tag := f"FRAME_{row['obserno']:03d}")] = {}
 
-        # Then, loop over the list of metrics in bias_meta that should be compared
+        # Then, loop over the list of validatable metrics in the metadata table
         for check in metrics:
+
             # If fewer than 30 comparison frames in the DB, skip
             if n_vals[check] < 30:
                 continue
 
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
-            deviation = np.abs(row[check] - mu[check]) / np.max([sig[check], 1e-3])
+            deviation = np.abs(row[check] - mu_val[check]) / np.max([sig_va[check], 1e-3])
             if deviation > sigma_thresh:
                 report[tag].update(
                     {
@@ -304,6 +305,7 @@ def perform_calibration_validation(
                 ftype_status = "PROBLEM"
                 # Add `p_flag` for this frame
                 p_flag[i] = 1
+                # If this is a POSITION metric, also set the "OBSTRUCTION" flag
                 if "pos" in check:
                     o_flag[i] = 1
 
@@ -413,7 +415,7 @@ def build_problem_report(report_dict):
                 # Loop through discrepant items
                 for i, (key2, val) in enumerate(fdict.items()):
                     if "pos" in key2:
-                        report += f"Possible Obstruction: {key2}"
+                        report += f"Possible Obstruction: {key2}  "
                     else:
                         report += f"{key2}: {val:.2f}σ  "
                     # Keep the report readable

@@ -105,12 +105,13 @@ def main(
 
             # If empty, send notification and move along
             if dumbwaiter.empty:
-                alerting.send_alert(
-                    f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
-                    f"does not contain any sequential {dumbwaiter.frameclass} "
-                    "FITS files",
-                    "main_driver.main()",
-                )
+                if not kwargs.get("no_slack_empty", False):
+                    alerting.send_alert(
+                        f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
+                        f"does not contain any sequential {dumbwaiter.frameclass} "
+                        "FITS files",
+                        "main_driver.main()",
+                    )
                 continue
 
             # Copy over the sorted frames to processing, and package for cold storage
@@ -339,6 +340,11 @@ def entry_point():
         help="Do not process the calibration frames",
     )
     parser.add_argument(
+        "--silence_empty_alerts",
+        action="store_true",
+        help="Do not send Slack alerts on empty directories",
+    )
+    parser.add_argument(
         "--sci",
         action="store_true",
         help="Process the science frames, too?  (Not yet implemented)",
@@ -357,5 +363,6 @@ def entry_point():
         no_cold=pargs.no_cold,
         no_confluence=pargs.no_confluence,
         skip_db_write=pargs.skip_db,
+        no_slack_empty=pargs.silence_empty_alerts,
         mem_limit=1.024e9 * pargs.ram,
     )
