@@ -342,7 +342,7 @@ class HistoricalData:
             self.query, tags=self.tagdict, all_time=all_time, debug=debug
         )
         if debug:
-            print(f"This is the query string:\n{query_str}")
+            msgs.test(f"This is the query string:\n{query_str}")
 
         # Get the results of the query in a safe way:
         results = johnnyfive.safe_service_connect(self.idfc.query, query_str)
@@ -610,11 +610,11 @@ def build_influxdb_query(dbq, tags=None, all_time=False, debug=False):
         The InfluxDB-compliant query string
     """
     if dbq.database.type.lower() != "influxdb":
-        print("Error: Database must be of type `influxdb`!")
+        msgs.warn("Database must be of type `influxdb`!")
         return None
 
     if debug is True:
-        print(
+        msgs.test(
             f"Searching for {dbq.fields} in {dbq.tablename}.{dbq.metricname} "
             f"on {dbq.database.host}:{dbq.database.port}"
         )
@@ -622,12 +622,16 @@ def build_influxdb_query(dbq, tags=None, all_time=False, debug=False):
     # Begin by specifying we want ALL THE FIELDS from the Metric Name
     query = f'SELECT * FROM "{dbq.metricname}"'
 
-    # Add the Time Range: Namely the most recent `dtime` hours
-    if not all_time:
+    # Add the Time Range:
+    if all_time:
+        # Everything before now
+        query += " WHERE time < now()"
+    else:
+        # Namely the most recent `dtime` hours
         try:
             dtime = int(dbq.rangehours)
         except ValueError:
-            print(f"Can't convert {dbq.rangehours} to int... using ~1.5yrs")
+            msgs.warn(f"Can't convert {dbq.rangehours} to int... using ~1.5yrs")
             dtime = 13000
         query += f" WHERE time > now() - {dtime}h"
 
