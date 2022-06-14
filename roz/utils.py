@@ -270,6 +270,8 @@ def scrub_isot_dateobs(dt_str):
     `datetime.datetime`
         The datetime object corresponding to the DATE-OBS input string
     """
+    # Clean all leading / trailing whitespace
+    dt_str = dt_str.strip()
     try:
         # fromisoformat() expects a 6-digit microsecond field; append zeros
         if (n_micro := len(dt_str.split(".")[-1])) < 6:

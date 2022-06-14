@@ -22,7 +22,6 @@ This module primarily trades in internal databse objects
 
 # Built-In Libraries
 import datetime
-import os
 import warnings
 
 # 3rd Party Libraries
@@ -97,8 +96,11 @@ def update_filter_characterization(
         debug=debug,
     )
 
+    # If nothing changed, return now
+    if not png_fn:
+        return
+
     # Remove the attachment on the Confluence page before uploading the new one
-    # TODO: Need to decide if this step is necessary IN PRODUCTION -- maybe no?
     if delete_existing:
         lmi_filter_info.delete_attachment(utils.Paths.html_table_fn)
 
@@ -131,7 +133,7 @@ def update_filter_characterization(
         )
         msgs.info(f"Uploaded: {png}")
 
-    # Print a happy little message
+    # Print a happy little message if we actually did anything
     msgs.info(f"Successfully updated the Confluence page `{page_info.page_title}`")
 
 
@@ -182,11 +184,13 @@ def update_lmi_filter_table(
     if debug:
         lmi_filt.pprint()
 
-    # Use the AstroPy Table `lmi_filt` to construct the HTML table and
-    #  write it to disk
-    construct_lmi_html_table(
-        lmi_filt, section_head, filename, link_text="Image Link", debug=debug
-    )
+    # If anything was updated, there will be something in `png_fn`:
+    if png_fn:
+        # Use the AstroPy Table `lmi_filt` to construct the HTML table
+        #   and write it to disk
+        construct_lmi_html_table(
+            lmi_filt, section_head, filename, link_text="Image Link", debug=debug
+        )
 
     # Return list of PNG filenames
     return png_fn
@@ -197,17 +201,22 @@ def modify_lmi_dynamic_table(
 ):
     """modify_lmi_dynamic_table Modify the dynamic portions of the table
 
-    This function augments the static table (from the XML file) with dynamic
-    information contained in the `database`.
+    Read in, modify, then write out the dynamic portion of the HTML table, and
+    finally join with the static postion of the table (from the XML file)
+    before returning.  This function modifies the dynamic portion of the table
+    with information contained in the `database`.
 
-    It should be noted that the Count Rate and Exptime columns are generated
-    solely from the last night's flats.  So, if something funny was going on
-    for those frames, the quoted values for these columns will be incorrect
-    until closer-to-nominal flats are collected again.
+    This function checks whether the countrates are within a reasonable level
+    before adjusting the countrate or exptime columns.
 
-    The use of `join(join_type=left)` means that the HTML table produced and
-    the saved `dyntable` will always have the same rows at the current
-    lmi_filter_table.[xml,ecsv] file.
+    Before returning, the function joins the dynamic table with the static
+    portion though use of the `astropy.table.join(join_type="left")` function.
+    This ensures that the HTML table produced and the saved `dyntable` will
+    always habve the same rows as the current lmi_filter_table.[xml,ecsv] file.
+
+    NOTE: If there are changes to the LMI filter complement that need to be
+          reflected in the HTML table, those changes must be made to BOTH the
+          ECSV and XML tables.
 
     Parameters
     ----------
@@ -228,67 +237,78 @@ def modify_lmi_dynamic_table(
     png_fn : `list`
         List of the PNG filenames created during this run
     """
-    # Check if the dynamic-portion FITS table is extant
-    if os.path.isfile(utils.Paths.lmi_dyntable):
-        # Read it in!
+    # Read in the dynamic-portion FITS table, if extant
+    if utils.Paths.lmi_dyntable.is_file():
         dyntable = astropy.table.Table.read(utils.Paths.lmi_dyntable)
 
     else:
         # Make a blank table, including the lmi_filters for correspondence
-        nrow = len(utils.FILTER_LIST["LMI"])
         dyntable = astropy.table.Table(
-            [
-                astropy.table.Column(utils.FILTER_LIST["LMI"], name="Filter"),
-                astropy.table.Column(name="Latest Image", length=nrow, dtype="U256"),
-                astropy.table.Column(
-                    name="UT Date of Latest Flat", length=nrow, dtype="U128"
-                ),
-                astropy.table.Column(
-                    name="Count Rate (ADU/s)", length=nrow, dtype=float
-                ),
-                astropy.table.Column(
-                    name="Exptime for 20k cts (s)", length=nrow, dtype=float
-                ),
-            ]
+            data=np.zeros(
+                len(utils.FILTER_LIST["LMI"]),
+                dtype=[
+                    ("Filter", "U128"),
+                    ("Latest Image", "U256"),
+                    ("UT Date of Latest Flat", "U128"),
+                    ("Count Rate (ADU/s)", float),
+                    ("Exptime for 20k cts (s)", float),
+                ],
+            )
         )
+        dyntable["Filter"] = utils.FILTER_LIST["LMI"]
 
-    # Merge the static and dynamic portions together
-    #  The astropy.table function join() combines tables based on common keys,
-    #  however, it also sorts the table...
+    # Merge the static and dynamic portions together to ensure conformity
+    #   The astropy.table function join() combines tables based on common keys,
+    #   however, it also sorts the table...
     lmi_filt = astropy.table.join(lmi_filt, dyntable, join_type="left", keys="Filter")
-    # Undo the alpha sorting done by .join()
+    #   Undo the alpha sorting done by .join()
     lmi_filt = utils.table_sort_on_list(
         lmi_filt, "FITS Header Value", utils.FILTER_LIST["LMI"]
     )
-    # Make sure the `Latest Image` column has enough space for long URLs
+    #   Make sure the `Latest Image` column has enough space for long URLs
     lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
 
     if debug:
         lmi_filt.pprint()
 
-    # TODO: Make sure we only make a "LATEST" PNG (and return a filename) if
-    #       we are actually updating the column in the HTML table.  As of
-    #       6/2/22, it seems that PNG filenames are being returned whether
-    #       or not the table is being updated.
-
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i, filt in enumerate(utils.FILTER_LIST["LMI"]):
+
         # Skip filters not used in this data set (also check for `database.flat`)
         if not database.v_tables["flat"] or not database.v_tables["flat"][filt]:
             continue
 
-        # But, only update if the DATOBS of this flat is LATER than what's
-        #  already in the table.  If OLD > NEW, skip.
-        new_date = database.v_tables["flat"][filt]["dateobs"][-1].split("T")[0]
-        if not isinstance(
-            lmi_filt["UT Date of Latest Flat"][i], np.ma.core.MaskedConstant
+        # Only update if the DATOBS of this flat is LATER than extant value
+        incoming_date = utils.scrub_isot_dateobs(
+            database.v_tables["flat"][filt]["dateobs"][-1]
+        )
+        # There are 3 possible scenarios here:
+        #   1. There is no existing date, so insert
+        #   2. The existing date is older than the incoming date, so replace
+        #   3. The existing date is newer than the incoming date, so skip
+
+        # Case 1
+        if isinstance(lmi_filt["UT Date of Latest Flat"][i], np.ma.core.MaskedConstant):
+            # The incoming date stands
+            if debug:
+                msgs.test(f"Filter {filt}: Case 1")
+
+        # Case 2
+        elif (
+            utils.scrub_isot_dateobs(lmi_filt["UT Date of Latest Flat"][i])
+            < incoming_date
         ):
-            if existing_date := lmi_filt["UT Date of Latest Flat"][i].strip():
-                if datetime.datetime.strptime(
-                    existing_date, "%Y-%m-%d"
-                ) >= datetime.datetime.strptime(new_date, "%Y-%m-%d"):
-                    continue
+            # The incoming date replaces the extant date
+            if debug:
+                msgs.test(f"Filter {filt}: Case 2")
+
+        # Case 3
+        else:
+            # The existing date is newer; skip this filter
+            if debug:
+                msgs.test(f"Filter {filt}: Case 3")
+            continue
 
         # Check whether the correct flat lamps were used (as judged by count rate)
         good_lamps = check_lamp_countrates(database.v_tables["flat"][filt])
@@ -297,25 +317,27 @@ def modify_lmi_dynamic_table(
 
         # Call the PNG-maker to PNG-ify the latest image (if good); record PNG's filename
         if any(good_lamps):
-            fname = database.proc_dir.joinpath(
-                database.v_tables["flat"][filt]["filename"][good_lamps][-1]
-            )
             png_fn.append(
-                graphics_maker.make_png_thumbnail(fname, database.v_report["flags"])
+                graphics_maker.make_png_thumbnail(
+                    database.proc_dir.joinpath(
+                        database.v_tables["flat"][filt]["filename"][good_lamps][-1]
+                    ),
+                    database.v_report["flags"],
+                )
             )
 
             # Update the dynamic columns
             lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-            lmi_filt["UT Date of Latest Flat"][i] = new_date
+            lmi_filt["UT Date of Latest Flat"][i] = incoming_date
 
-        # Compute the expected count rates
-        if not png_only and any(good_lamps):
-            lmi_filt["Count Rate (ADU/s)"][i] = (
-                count_rate := np.mean(
-                    database.v_tables["flat"][filt]["crop_med"][good_lamps]
+            # Compute the expected count rates, if specified for GOOD LAMPS
+            if not png_only:
+                lmi_filt["Count Rate (ADU/s)"][i] = (
+                    count_rate := np.mean(
+                        database.v_tables["flat"][filt]["crop_med"][good_lamps]
+                    )
                 )
-            )
-            lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
+                lmi_filt["Exptime for 20k cts (s)"][i] = 20000.0 / count_rate
 
     # Split off the dyntable portion again, and write it back to disk for later
     dyntable = astropy.table.Table(

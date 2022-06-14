@@ -26,7 +26,6 @@ dictionaries (`dict`).
 """
 
 # Built-In Libraries
-import os
 import warnings
 
 # 3rd Party Libraries
@@ -226,10 +225,13 @@ class CalibContainer(_ContainerBase):
         bias_fns, metadata, coord_arrays = [], [], None
         for ccd, fname in bias_cl.ccds(bitpix=16, return_fname=True):
 
+            # Convert the filename into the full path
+            fname = self.directory.joinpath(fname)
+
             hdr = ccd.header
             # For BIAS set header FILTERS keyword to "DARK"
             hdr["FILTERS"] = "DARK"
-            hdr["SHORT_FN"] = fname.split(os.sep)[-1]
+            hdr["SHORT_FN"] = fname.name
             data = ccd.data[
                 ccdproc.utils.slices.slice_from_string(
                     hdr["TRIMSEC"], fits_convention=True
@@ -354,9 +356,12 @@ class CalibContainer(_ContainerBase):
         metadata, coord_arrays = [], None
         for ccd, fname in domeflat_cl.ccds(bitpix=16, return_fname=True):
 
+            # Convert the filename into the full path
+            fname = self.directory.joinpath(fname)
+
             hdr = ccd.header
             # Add a "short filename" to the header for use further along
-            hdr["SHORT_FN"] = fname.split(os.sep)[-1]
+            hdr["SHORT_FN"] = fname.name
 
             # Fit & subtract the overscan section, trim the image.
             ccd = utils.wrap_trim_oscan(ccd)

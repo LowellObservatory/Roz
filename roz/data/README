@@ -1,0 +1,21 @@
+README for roz.data
+2022-06-13
+
+The static portions of the LMI Filter Information Table are contained in two
+forms:
+  * ECSV Format: The table information and section heads are contained in
+                 separate files:
+        - ``lmi_filter_table.ecsv``
+        - ``lmi_table_sechead.ecsv``
+   * XML Format: Both portions of the above table are also contained in a
+                 single VO-Table XML file:
+        - lmi_filter_table.xml
+
+If the LMI filter complement changes, both versions of the static table need
+to be updated.  The dynamic table (stored in the un-tracked
+lmi_dynamic_filter.ecsv) will follow any changes in the static table.  This
+tracking is performed in the function
+``roz.lmi_confluence_table.modify_lmi_dynamic_table()``.
+
+The file ``lmi_filter_table.css`` contains style-sheet information for
+inclusion with the HTML table prior to posting to Confluence.

@@ -292,7 +292,9 @@ def perform_calibration_validation(
                 continue
 
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
-            deviation = np.abs(row[check] - mu_val[check]) / np.max([sig_va[check], 1e-3])
+            deviation = np.abs(row[check] - mu_val[check]) / np.max(
+                [sig_va[check], 1e-3]
+            )
             if deviation > sigma_thresh:
                 report[tag].update(
                     {
