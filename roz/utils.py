@@ -424,22 +424,22 @@ def trim_oscan(ccd, biassec, trimsec):
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Convert the FITS bias & trim sections into slice classes for use
-    _, xb = ccdproc.utils.slices.slice_from_string(biassec, fits_convention=True)
-    yt, xt = ccdproc.utils.slices.slice_from_string(trimsec, fits_convention=True)
+    _, x_b = ccdproc.utils.slices.slice_from_string(biassec, fits_convention=True)
+    y_t, x_t = ccdproc.utils.slices.slice_from_string(trimsec, fits_convention=True)
 
     # First trim off the top & bottom rows
-    ccd = ccdproc.trim_image(ccd[yt.start : yt.stop, :])
+    ccd = ccdproc.trim_image(ccd[y_t.start : y_t.stop, :])
 
     # Model & Subtract the overscan
     ccd = ccdproc.subtract_overscan(
         ccd,
-        overscan=ccd[:, xb.start : xb.stop],
+        overscan=ccd[:, x_b.start : x_b.stop],
         median=True,
         model=astropy.modeling.models.Chebyshev1D(1),
     )
 
     # Trim the overscan & return
-    return ccdproc.trim_image(ccd[:, xt.start : xt.stop])
+    return ccdproc.trim_image(ccd[:, x_t.start : x_t.stop])
 
 
 def two_sigfig(value):
@@ -556,6 +556,9 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
         coeff[5] = Quadratic cross-term in xy
     where the last three are only returned if `fit_quad == True`
 
+    NOTE: To deal with possible NaN's in the input `data`, use np.nansum()
+          in place of np.sum() when building the RHS of the matrix equation.
+
     Parameters
     ----------
     data : `numpy.ndarray`
@@ -620,17 +623,17 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
 
     # Top half:
     right_hand_side[:3] = [
-        np.sum(data),
-        np.sum(xd := np.multiply(c_arr["x_coord_arr"], data)),
-        np.sum(yd := np.multiply(c_arr["y_coord_arr"], data)),
+        np.nansum(data),
+        np.nansum(x_d := np.multiply(c_arr["x_coord_arr"], data)),
+        np.nansum(y_d := np.multiply(c_arr["y_coord_arr"], data)),
     ]
 
     if fit_quad:
         # Bottom half:
         right_hand_side[3:] = [
-            np.sum(np.multiply(c_arr["x_coord_arr"], xd)),
-            np.sum(np.multiply(c_arr["y_coord_arr"], yd)),
-            np.sum(np.multiply(c_arr["x_coord_arr"], yd)),
+            np.nansum(np.multiply(c_arr["x_coord_arr"], x_d)),
+            np.nansum(np.multiply(c_arr["y_coord_arr"], y_d)),
+            np.nansum(np.multiply(c_arr["x_coord_arr"], y_d)),
         ]
 
     # Here's where the magic of matrix multiplication happens!
@@ -688,21 +691,21 @@ def produce_coordinate_arrays(shape):
         "n_pixels": x_arr.size,
         "sum_x": np.sum(x_arr),
         "sum_y": np.sum(y_arr),
-        "sum_x2": np.sum(x2 := np.multiply(x_arr, x_arr)),
-        "sum_xy": np.sum(xy := np.multiply(x_arr, y_arr)),
-        "sum_y2": np.sum(y2 := np.multiply(y_arr, y_arr)),
-        "sum_x3": np.sum(np.multiply(x2, x_arr)),
-        "sum_x2y": np.sum(np.multiply(x2, y_arr)),
-        "sum_xy2": np.sum(np.multiply(x_arr, y2)),
-        "sum_y3": np.sum(np.multiply(y2, y_arr)),
-        "sum_x4": np.sum(np.multiply(x2, x2)),
-        "sum_x3y": np.sum(np.multiply(x2, xy)),
-        "sum_x2y2": np.sum(np.multiply(x2, y2)),
-        "sum_xy3": np.sum(np.multiply(xy, y2)),
-        "sum_y4": np.sum(np.multiply(y2, y2)),
-        "x2": x2,
-        "xy": xy,
-        "y2": y2,
+        "sum_x2": np.sum(x_2 := np.multiply(x_arr, x_arr)),
+        "sum_xy": np.sum(x_y := np.multiply(x_arr, y_arr)),
+        "sum_y2": np.sum(y_2 := np.multiply(y_arr, y_arr)),
+        "sum_x3": np.sum(np.multiply(x_2, x_arr)),
+        "sum_x2y": np.sum(np.multiply(x_2, y_arr)),
+        "sum_xy2": np.sum(np.multiply(x_arr, y_2)),
+        "sum_y3": np.sum(np.multiply(y_2, y_arr)),
+        "sum_x4": np.sum(np.multiply(x_2, x_2)),
+        "sum_x3y": np.sum(np.multiply(x_2, x_y)),
+        "sum_x2y2": np.sum(np.multiply(x_2, y_2)),
+        "sum_xy3": np.sum(np.multiply(x_y, y_2)),
+        "sum_y4": np.sum(np.multiply(y_2, y_2)),
+        "x2": x_2,
+        "xy": x_y,
+        "y2": y_2,
     }
 
 

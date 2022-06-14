@@ -365,6 +365,7 @@ class HistoricalData:
         # Convert to a single AstroPy Table; add timestamps as additional column
         self.results = astropy.table.Table.from_pandas(results[self.query.metricname])
         self.results["timestamp"] = timestamps
+        # msgs.test(f"InfluxDB query results column names: {self.results.colnames}")
 
     def metric_n(self, metric, no_prob=True, **kwargs):
         """metric_n Find the length of the returned metric
@@ -533,7 +534,7 @@ class HistoricalData:
 
         Returns
         -------
-        `astropy.table.Column` or `np.nan`
+        `astropy.table.Column` or `list`
             The specified column of the InfluxDB result table -- or NaN, if
             the metric is empty or does not exist.
         """
@@ -553,8 +554,8 @@ class HistoricalData:
 
         # If the specifid metric is not in the table, return NaN
         if metric not in results.colnames:
-            warnings.warn(f"The metric `{metric}` is not in the results table!")
-            return np.nan
+            msgs.warn(f"The metric `{metric}` is not in the results table!")
+            return [np.nan]
 
         # Trim out rows marked as "PROBLEM"
         if no_prob:

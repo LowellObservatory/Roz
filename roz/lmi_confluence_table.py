@@ -265,8 +265,11 @@ def modify_lmi_dynamic_table(
     lmi_filt = utils.table_sort_on_list(
         lmi_filt, "FITS Header Value", utils.FILTER_LIST["LMI"]
     )
-    #   Make sure the `Latest Image` column has enough space for long URLs
+    #   Make sure the `Latest Image` and `UT Date` columns are long enough
     lmi_filt["Latest Image"] = lmi_filt["Latest Image"].astype("U256")
+    lmi_filt["UT Date of Latest Flat"] = lmi_filt["UT Date of Latest Flat"].astype(
+        "U128"
+    )
 
     if debug:
         lmi_filt.pprint()

@@ -255,6 +255,13 @@ class CalibContainer(_ContainerBase):
 
         progress_bar.close()
 
+        if not bias_fns:
+            msgs.error(
+                f"No unprocessed bias frames found in the processing{msgs.newline()}"
+                f"directory.  Make sure a clean set of raw images are{msgs.newline()}"
+                "imported for processing."
+            )
+
         # Convert the list of dicts into a Table and return, plus combined bias
         combined = None
         if produce_combined:
@@ -271,6 +278,13 @@ class CalibContainer(_ContainerBase):
             )
             # Reinstate RuntimeWarning
             warnings.simplefilter("default", RuntimeWarning)
+
+        # For some reason, the combined bias sometimes is not completely finite
+        if np.sum(np.isfinite(combined)) != combined.size:
+            msgs.test(
+                "Percentage of finite elements in combined bias: "
+                f"{np.sum(np.isfinite(combined))/combined.size*100:.2f}%"
+            )
 
         # Stuff into instance attributes
         self.bias_meta = astropy.table.Table(metadata)
@@ -356,12 +370,9 @@ class CalibContainer(_ContainerBase):
         metadata, coord_arrays = [], None
         for ccd, fname in domeflat_cl.ccds(bitpix=16, return_fname=True):
 
-            # Convert the filename into the full path
-            fname = self.directory.joinpath(fname)
-
             hdr = ccd.header
             # Add a "short filename" to the header for use further along
-            hdr["SHORT_FN"] = fname.name
+            hdr["SHORT_FN"] = fname
 
             # Fit & subtract the overscan section, trim the image.
             ccd = utils.wrap_trim_oscan(ccd)
@@ -377,10 +388,17 @@ class CalibContainer(_ContainerBase):
             # Work entirely in COUNT RATE -- ergo divide by exptime
             count_rate = ccd.divide(hdr["EXPTIME"])
 
-            # Statistics, statistics, statistics!!!!
-            quadsurf, coord_arrays = utils.fit_quadric_surface(count_rate, coord_arrays)
+            # if np.sum(np.isfinite(count_rate)) != count_rate.size:
+            #     msgs.test(
+            #         "Percentage of finite elements in processed flat: "
+            #         f"{np.sum(np.isfinite(count_rate))/count_rate.size*100:.2f}%"
+            #     )
 
-            metadict = base_metadata_dict(hdr, count_rate, quadsurf)
+            # Statistics!  Pass only the DATA portion of the CCDData object
+            quadsurf, coord_arrays = utils.fit_quadric_surface(
+                count_rate.data, coord_arrays
+            )
+            metadict = base_metadata_dict(hdr, count_rate.data, quadsurf)
 
             # Additional fields for flats: Stuff that can block the light path
             #  Do type-forcing to make InfluxDB happy
@@ -481,8 +499,8 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     ----------
     hdr : `astropy.io.fits.Header`
         FITS header for this frame
-    data : `numpy.ndarray` or `astropy.nddata.CCDData`
-        FITS image data for this frame
+    data : `numpy.ndarray`
+        FITS image data for this frame -- NOT `astropy.nddata.CCDData`
     crop : `int`, optional
         Size of the border around the edge of the frame to crop off
         [Default: 100]
@@ -515,10 +533,11 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
         "tempamb": float(hdr["TEMPAMB"]),
         "cropsize": int(crop),
     }
+    # Use the np.nan[stat] functions in case of upstream NaN's.
     for name, the_slice in zip(["frame", "crop"], [allslice, cropslice]):
-        metadict[f"{name}_avg"] = np.mean(data[the_slice])
-        metadict[f"{name}_med"] = np.ma.median(data[the_slice])
-        metadict[f"{name}_std"] = np.std(data[the_slice])
+        metadict[f"{name}_avg"] = np.nanmean(data[the_slice])
+        metadict[f"{name}_med"] = np.nanmedian(data[the_slice])
+        metadict[f"{name}_std"] = np.nanstd(data[the_slice])
     for key, val in human_readable.items():
         metadict[f"qs_{key}"] = val
     lin_flat, quad_flat = utils.compute_flatness(
@@ -527,9 +546,7 @@ def base_metadata_dict(hdr, data, quadsurf, crop=100):
     metadict["lin_flat"] = lin_flat
     metadict["quad_flat"] = quad_flat
 
-    # for i, m in enumerate(['b','x','y','xx','yy','xy']):
-    #     metadict[f"qs_{m}"] = quadsurf[i]
-
+    # Return!
     return metadict
 
 
