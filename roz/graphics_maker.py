@@ -101,13 +101,16 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     elif isinstance(img_fn, Path):
         img_fn = img_fn.name
 
-    # Construct the output filename from the image header
     hdr = ccd.header
+    # Get the UT DATE -- forcing to be post-5pm MST
+    ut_date = utils.scrub_isot_dateobs(hdr["DATE-OBS"], add_hours=3).strftime("%Y%m%d")
+
+    # Construct the output filename from the image header
     png_fn = [hdr["INSTRUME"].lower()]
     # TODO: Not strictly correct, if we want this routine to also make
     #       thumbnails of bais frames... needs thought.  For now, though...
     png_fn.append(filt := hdr["FILTERS"] if inst_flags["get_flat"] else "")
-    png_fn.append(hdr["DATE-OBS"].split("T")[0].replace("-", ""))
+    png_fn.append(ut_date)
     png_fn.append(f"{hdr['OBSERNO']:04d}")
     png_fn.append("png")
     png_fn = ".".join(png_fn)
@@ -131,7 +134,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
         hdr["OBSTYPE"],
         hdr["CCDSUM"].strip().replace(" ", "x"),
         filt,
-        hdr["DATE-OBS"].split("T")[0],
+        ut_date,
         img_fn,
     ]
     axis.set_title("   ".join(title), y=-0.00, pad=-14, fontsize=tsz)

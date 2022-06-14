@@ -237,7 +237,7 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
     return ligconf
 
 
-def scrub_isot_dateobs(dt_str):
+def scrub_isot_dateobs(dt_str, add_hours=0):
     """scrub_isot_dateobs Scrub the input DATE-OBS for ingestion by datetime
 
     First of all, strict ISO 8601 format requires a 6-digit "microsecond" field
@@ -264,6 +264,8 @@ def scrub_isot_dateobs(dt_str):
     ----------
     dt_str : `str`
         Input datetime string from the DATE-OBS header keyword
+    add_hours : `int`
+        Number of hours to add to the datetime  [Default: 0]
 
     Returns
     -------
@@ -276,7 +278,9 @@ def scrub_isot_dateobs(dt_str):
         # fromisoformat() expects a 6-digit microsecond field; append zeros
         if (n_micro := len(dt_str.split(".")[-1])) < 6:
             dt_str += "0" * (6 - n_micro)
-        return datetime.datetime.fromisoformat(dt_str)
+        return datetime.datetime.fromisoformat(dt_str) + datetime.timedelta(
+            hours=add_hours
+        )
     except ValueError:
         # Split out all pieces of the datetime, and recompile
         date, time = dt_str.split("T")
@@ -298,7 +302,9 @@ def scrub_isot_dateobs(dt_str):
         # Reconstitute the DATE-OBS string
         date = f"{int(yea):04d}-{int(mon):02d}-{int(day):02d}"
         time = f"{int(hou):02d}:{int(mnt):02d}:{float(sec):09.6f}"
-        return datetime.datetime.fromisoformat(f"{date}T{time}")
+        return datetime.datetime.fromisoformat(f"{date}T{time}") + datetime.timedelta(
+            hours=add_hours
+        )
 
 
 def subpath(path_to_dir):

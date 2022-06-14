@@ -283,8 +283,9 @@ def modify_lmi_dynamic_table(
             continue
 
         # Only update if the DATOBS of this flat is LATER than extant value
+        # NOTE: Add several hours to the header DATEOBS to ensure it's past 5pm MST
         incoming_date = utils.scrub_isot_dateobs(
-            database.v_tables["flat"][filt]["dateobs"][-1]
+            database.v_tables["flat"][filt]["dateobs"][-1], add_hours=3
         )
         # There are 3 possible scenarios here:
         #   1. There is no existing date, so insert
