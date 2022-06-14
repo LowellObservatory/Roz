@@ -388,12 +388,6 @@ class CalibContainer(_ContainerBase):
             # Work entirely in COUNT RATE -- ergo divide by exptime
             count_rate = ccd.divide(hdr["EXPTIME"])
 
-            # if np.sum(np.isfinite(count_rate)) != count_rate.size:
-            #     msgs.test(
-            #         "Percentage of finite elements in processed flat: "
-            #         f"{np.sum(np.isfinite(count_rate))/count_rate.size*100:.2f}%"
-            #     )
-
             # Statistics!  Pass only the DATA portion of the CCDData object
             quadsurf, coord_arrays = utils.fit_quadric_surface(
                 count_rate.data, coord_arrays
@@ -425,8 +419,7 @@ class CalibContainer(_ContainerBase):
         NOTE: Not yet implemented --
             tqdm color should be "#d8c3e1" (skybluepink)
         """
-        ccd_bin, amp_id = config
-        [ccd_bin, amp_id]
+        _, _ = config
         self.skyf_meta = astropy.table.Table()
 
 

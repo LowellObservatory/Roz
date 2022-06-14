@@ -331,7 +331,7 @@ def modify_lmi_dynamic_table(
 
             # Update the dynamic columns
             lmi_filt["Latest Image"][i] = f"{attachment_url}{png_fn[-1]}?api=v2"
-            lmi_filt["UT Date of Latest Flat"][i] = incoming_date
+            lmi_filt["UT Date of Latest Flat"][i] = incoming_date.strftime("%Y-%m-%d")
 
             # Compute the expected count rates, if specified for GOOD LAMPS
             if not png_only:
