@@ -82,12 +82,12 @@ def validate_calibration_metadata(
         validation scheme
     """
     # Build the `scheme_str` to return (to be printed in the Problem Report)
-    if scheme == "simple":
-        scheme_str = (
-            f"Statistical deviation threshold: {sigma_thresh}σ from historical values"
-        )
-    elif scheme == "none":
+    if scheme == "none":
         scheme_str = "No data validation performed"
+    elif scheme == "simple":
+        scheme_str = (
+            f"Statistical deviation threshold: ±{sigma_thresh:.1f}σ from historical values"
+        )
     else:
         scheme_str = "Scheme not implemented"
 
@@ -351,6 +351,10 @@ def build_problem_report(report_dict):
 
     Parse through the report dictionary to build a string
 
+    TODO: The setup of this problem report is predicated on the SIMPLE
+          validation method.  If additional validation methods are
+          added in the future, this function may need to be modified.
+
     This is the format of the report dictionary, from `vs.perform_validation()`:
         Top-level keys: [nightname, flags, binning, frame_reports]
         Under frame_reports: [bias, flat, (etc.)]
@@ -419,7 +423,7 @@ def build_problem_report(report_dict):
                     if "pos" in key2:
                         report += f"Possible Obstruction: {key2}  "
                     else:
-                        report += f"{key2}: {val:.2f}σ  "
+                        report += f"{key2}: {val:+.2f}σ  "
                     # Keep the report readable
                     if (i + 1) % 4 == 0:
                         report += "\n    "
