@@ -419,7 +419,9 @@ def check_lamp_countrates(table):
 
     Only receives the table associated with a single filter.
 
-    Define Minimum Count Rates for each filter under the correct lamps:
+    Define Minimum Count Rates for each filter under the correct lamps.
+
+    Use the FITS Header Value for the filters
 
     Parameters
     ----------
@@ -436,27 +438,15 @@ def check_lamp_countrates(table):
     if (filt := table["filter"][0]) in ["U", "B", "V", "R", "I"]:
         min_count = 1500
     # Sloan Filters:
-    elif filt in ["SDSS u'", "SDSS g'", "SDSS r'", "SDSS i'", "SDSS z'"]:
+    elif filt in ["SDSS-U", "SDSS-G", "SDSS-R", "SDSS-I", "SDSS-Z"]:
         min_count = 2000
     # Other Broadband Filters:
-    elif filt == "V+R":
+    elif filt == "VR":
         min_count = 5000
-    elif filt == "Yish":
+    elif filt == "YISH":
         min_count = 500
     # Comet Filters:
-    elif filt in [
-        "Ultraviolet Continuum",
-        "Blue Continuum",
-        "Green Continuum",
-        "Red Continuum",
-        "C2",
-        "C3",
-        "CN",
-        "CO+",
-        "H2O+",
-        "OH",
-        "NH",
-    ]:
+    elif filt in ["UC", "BC", "GC", "RC", "C2", "C3", "CN", "CO+", "H2O+", "OH", "NH"]:
         min_count = 200
     # Everything else, don't check
     else:
