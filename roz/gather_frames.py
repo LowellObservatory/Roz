@@ -247,20 +247,27 @@ class Dumbwaiter:
         icl = ccdproc.ImageFileCollection(
             location=self.dirs["proc"], filenames=self.frames
         )
-        # Pull the subtable based on FITS header keywords
-        summary = icl.summary[
-            "obserno", "imagetyp", "filters", "ccdsum", "numamp", "ampid"
-        ]
+
+        # Pull the README subtable based on FITS header keywords
+        readme = icl.summary["obserno", "imagetyp", "filters", "ccdsum", "numamp"]
+
+        if "ampid" in icl.summary.colnames:
+            # For single-amplifier readouts
+            readme["ampid"] = icl.summary["ampid"]
+        else:
+            # For multi-amplifier readouts
+            readme["ampid"] = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
+
         # Convert those to the InfluxDB tags used with Roz
-        summary.rename_columns(
+        readme.rename_columns(
             ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
         )
         # Write it out!
-        summary.write(
+        readme.write(
             self.dirs["proc"].joinpath("README.txt"), format="ascii.fixed_width"
         )
         if debug:
-            summary.pprint()
+            readme.pprint()
 
 
 # Non-Class Functions ========================================================#
