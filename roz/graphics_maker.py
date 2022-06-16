@@ -134,7 +134,8 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
         hdr["OBSTYPE"],
         hdr["CCDSUM"].strip().replace(" ", "x"),
         filt,
-        ut_date,
+        f"{hdr['EXPTIME']}s",
+        f"{ut_date}UT",
         img_fn,
     ]
     axis.set_title("   ".join(title), y=-0.00, pad=-14, fontsize=tsz)

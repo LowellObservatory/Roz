@@ -85,9 +85,7 @@ def validate_calibration_metadata(
     if scheme == "none":
         scheme_str = "No data validation performed"
     elif scheme == "simple":
-        scheme_str = (
-            f"Statistical deviation threshold: ±{sigma_thresh:.1f}σ from historical values"
-        )
+        scheme_str = f"Statistical deviation threshold: ±{sigma_thresh:.1f}σ from historical values"
     else:
         scheme_str = "Scheme not implemented"
 
@@ -292,10 +290,8 @@ def perform_calibration_validation(
                 continue
 
             # Greater than 3 sigma deviation, alert  [also avoid divide by zero]
-            deviation = np.abs(row[check] - mu_val[check]) / np.max(
-                [sig_va[check], 1e-3]
-            )
-            if deviation > sigma_thresh:
+            deviation = (row[check] - mu_val[check]) / np.max([sig_va[check], 1e-3])
+            if np.abs(deviation) > sigma_thresh:
                 report[tag].update(
                     {
                         "timestamp": row["dateobs"],
@@ -386,10 +382,10 @@ def build_problem_report(report_dict):
 
     # Okay, let's build the problem report!
     report = (
-        f"Problem Report for directory {report_dict['nightname']}, "
-        f"binning {report_dict['binning']}\n"
+        f"Problem Report for directory {report_dict['nightname']}\n"
         f"Site: {report_dict['flags']['site'].upper()}, "
-        f"Instrument: {report_dict['flags']['instrument'].upper()}\n"
+        f"Instrument: {report_dict['flags']['instrument'].upper()}, "
+        f"Binning: {report_dict['binning']}\n"
         f"{report_dict['valid_scheme']}*.*."
     )
     # Loop through frame types first:
