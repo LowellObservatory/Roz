@@ -21,8 +21,7 @@ This module primarily trades in... hope?
 """
 
 # Built-In Libraries
-import os
-from pathlib import Path
+import pathlib
 
 # 3rd Party Libraries
 import astropy.nddata
@@ -97,29 +96,32 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
 
     # Since we use the filename (sans path) in the graphic title...
     if isinstance(img_fn, str):
-        img_fn = img_fn.split(os.path.sep)[-1]
-    elif isinstance(img_fn, Path):
-        img_fn = img_fn.name
+        img_fn = pathlib.Path(img_fn)
+    img_fn = img_fn.name
 
-    hdr = ccd.header
     # Get the UT DATE -- forcing to be post-5pm MST
-    ut_date = utils.scrub_isot_dateobs(hdr["DATE-OBS"], add_hours=3).strftime("%Y%m%d")
+    ut_date = utils.scrub_isot_dateobs(ccd.header["DATE-OBS"], add_hours=3).strftime(
+        "%Y%m%d"
+    )
 
     # Construct the output filename from the image header
-    png_fn = [hdr["INSTRUME"].lower()]
-    # TODO: Not strictly correct, if we want this routine to also make
-    #       thumbnails of bais frames... needs thought.  For now, though...
-    png_fn.append(filt := hdr["FILTERS"] if inst_flags["get_flat"] else "")
-    png_fn.append(ut_date)
-    png_fn.append(f"{hdr['OBSERNO']:04d}")
-    png_fn.append("png")
-    png_fn = ".".join(png_fn)
+    png_fn = ".".join(
+        [
+            ccd.header["INSTRUME"].lower(),
+            # TODO: Not strictly correct, if we want this routine to also make
+            #       thumbnails of bais frames... needs thought.  For now...
+            filt := ccd.header["FILTERS"] if inst_flags["get_flat"] else "",
+            ut_date,
+            f"{ccd.header['OBSERNO']:04d}",
+            "png",
+        ]
+    )
     if debug:
         print(f"This is the PNG filename!  {png_fn}")
 
     # Set up the plot environment
     _, axis = plt.subplots(figsize=(5, 5.2))
-    tsz = 10
+    tsz = 8
 
     # Plotting percentile limits -- convert to image intensity limits
     vmin, vmax = get_image_intensity_limits(ccd)
@@ -130,11 +132,11 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     # Set the title and don't draw any axes
     title = [
         "*Problem*" if problem else "*Latest*" if latest else "*Nominal*",
-        hdr["INSTRUME"].upper(),
-        hdr["OBSTYPE"],
-        hdr["CCDSUM"].strip().replace(" ", "x"),
+        ccd.header["INSTRUME"].upper(),
+        ccd.header["OBSTYPE"],
+        ccd.header["CCDSUM"].strip().replace(" ", "x"),
         filt,
-        f"{hdr['EXPTIME']}s",
+        f"{ccd.header['EXPTIME']}s",
         f"{ut_date}UT",
         img_fn,
     ]
