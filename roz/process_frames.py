@@ -239,7 +239,9 @@ class CalibContainer(_ContainerBase):
             ]
 
             # Statistics, statistics, statistics!!!!
-            quadsurf, coord_arrays = utils.fit_quadric_surface(data, coord_arrays)
+            quadsurf, coord_arrays = utils.fit_quadric_surface(
+                data, coord_arrays, fit_quad=False
+            )
             metadata.append(base_metadata_dict(hdr, data, quadsurf))
 
             # Fit the overscan section, subtract it, then trim the image
@@ -390,7 +392,7 @@ class CalibContainer(_ContainerBase):
 
             # Statistics!  Pass only the DATA portion of the CCDData object
             quadsurf, coord_arrays = utils.fit_quadric_surface(
-                count_rate.data, coord_arrays
+                count_rate.data, coord_arrays, fit_quad=False
             )
             metadict = base_metadata_dict(hdr, count_rate.data, quadsurf)
 

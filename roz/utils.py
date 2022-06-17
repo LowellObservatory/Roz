@@ -560,7 +560,7 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
         coeff[3] = Quadratic term in x
         coeff[4] = Quadratic term in y
         coeff[5] = Quadratic cross-term in xy
-    where the last three are only returned if `fit_quad == True`
+    where the last three are only fit and nonzero if `fit_quad == True`
 
     NOTE: To deal with possible NaN's in the input `data`, use np.nansum()
           in place of np.sum() when building the RHS of the matrix equation.
@@ -726,11 +726,11 @@ def compute_human_readable_surface(coefficients):
         y = x'*sin(th) + y'*cos(th)
 
     Rotate this into standard form of:
-        z = x'^2/a^2 + y'^2/b^2 + x'/c + y'/d + F
-    where a = semimajor axis (slower-changing direction) -> x'
-          b = semiminor axis (faster-changing direction) -> y'
-          c = 1 / slope along x'  (Scale of the change, like a,b)
-          d = 1 / slope along y'  (Scale of the change, like a,b)
+        z = (a')x'^2 + (b')y'^2 + (c')x' + (d')y' + F
+    where a' = quadratic coefficient along x'
+          b' = quadratic coefficient along y'
+          c' = slope along x'
+          d' = slope along y'
 
     https://courses.lumenlearning.com/ivytech-collegealgebra/chapter/
     writing-equations-of-rotated-conics-in-standard-form/
@@ -745,9 +745,13 @@ def compute_human_readable_surface(coefficients):
     `dict`
         Dictionary of human-readable quantities
     """
-
-    # Parse the coefficients from the quadric surface into standard form
-    F, D, E, A, C, B = tuple(coefficients)
+    # Separate unpacking depending on whether it was a linear or quadric fit
+    if len(coefficients) == 3:
+        F, D, E = coefficients
+        A = B = C = 0
+    else:
+        # Parse the coefficients from the quadric surface into standard form
+        F, D, E, A, C, B = coefficients
 
     # Compute the rotation of the axes of the surface away from x-y
     theta = 0.5 * np.arctan2(B, A - C)
@@ -765,19 +769,16 @@ def compute_human_readable_surface(coefficients):
         sinth = np.sin(theta)
 
         # Compute the rotated coefficients
-        #  xpxp == coefficient on x'^2 in Standard Form
-        #  ypyp == coefficient on y'^2 in Standard Form
-        xpxp = A * costh**2 + B * sinth * costh + C * sinth**2
-        ypyp = A * sinth**2 - B * sinth * costh + C * costh**2
+        #  a_prime == coefficient on x'^2 in Standard Form
+        #  b_prime == coefficient on y'^2 in Standard Form
+        a_prime = A * costh**2 + B * sinth * costh + C * sinth**2
+        b_prime = A * sinth**2 - B * sinth * costh + C * costh**2
 
-        # Convert to "semimajor" and "semiminor" axes from Standard Form
-        semimaj = 1 / np.sqrt(np.absolute(xpxp))
-        semimin = 1 / np.sqrt(np.absolute(ypyp))
-
-        # Check orientation (s.t. semimajor axis is larger than semiminor)
-        if semimaj > semimin:
+        # Check orientation
+        #   (x' corresponds to the "semimajor" axis of an ellipse)
+        if np.abs(a_prime) <= np.abs(b_prime):
             good_orient = True
-        elif all(np.isfinite([semimaj, semimin])):
+        elif all(np.isfinite([a_prime, b_prime])):
             theta += np.pi / 2.0
         else:
             # If either of the above is non-finite, just move on.
@@ -790,14 +791,16 @@ def compute_human_readable_surface(coefficients):
     # Convert values into human-readable things
     return {
         "rot": np.rad2deg(theta),
-        "maj": semimaj,
-        "min": semimin,
-        "bma": 1.0 / (D * costh + E * sinth),
-        "bmi": 1.0 / (-D * sinth + E * costh),
+        "maj": a_prime,
+        "min": b_prime,
+        "bma": D * costh + E * sinth,
+        "bmi": -D * sinth + E * costh,
         "zpt": F,
-        "open": int(np.sign(xpxp)) if np.sign(xpxp) == np.sign(ypyp) else 0,
-        "typ": f"Elliptic Paraboloid {'Up' if np.sign(xpxp) == 1 else 'Down'}"
-        if np.sign(xpxp) == np.sign(ypyp)
+        "open": int(np.sign(a_prime)) if np.sign(a_prime) == np.sign(b_prime) else 0,
+        "typ": "Plane"
+        if a_prime == 0 and b_prime == 0
+        else f"Elliptic Paraboloid {'Up' if np.sign(a_prime) == 1 else 'Down'}"
+        if np.sign(a_prime) == np.sign(b_prime)
         else "Hyperbolic Paraboloid",
     }
 
@@ -839,25 +842,30 @@ def compute_flatness(human, shape, stddev):
 
     Returns
     -------
-    `float`, `float`
-        Tuple of flatness stat for linear tilt, flatness stat for quadratic
-        curvature.
+    lin_flat : `float`
+        Linear flatness statistic
+    quad_flat : `float`
+        Quadratic flatness statistic
     """
     # Frame minimum dimension
-    dim_min = np.minimum(shape[0], shape[1])
+    npix_min = np.minimum(shape[0], shape[1])
 
-    # The keys 'maj' and 'min' refer to the # of pixels until the quadradic
-    #  changes by 1 sigma from the center of the paraboloid.  Multiply by the
-    #  standard deviation to yield a value for use.
-    # TODO: This is not strictly correct, since the quadratic will actually
-    #       reach the value of the standard deviation much faster than this
-    #       linear approximation.  Need to think about how to handle this
-    #       more correctly.
-    pix_quad = human["min"] * stddev
+    # The keys 'bma', 'bmin' refer to the linear slopes of the fit surface,
+    #  which have a meaning of change in value per pixel.  Dividing the slope
+    #  by the image standard deviation yields a change in value scaled to the
+    #  STDDEV per pixel.  Dividing the number of pixels in the narrow dimension
+    #  of the detector by this scaled slope yields a linear flatness metric
+    #  that has meaning of "# sigma change in value across the narrow range
+    #  of the detector".  We use the steeper slope of the two returned.
+    lin_flat = (
+        npix_min * np.maximum(np.abs(human["bma"]), np.abs(human["bmi"])) / stddev
+    )
 
-    # Get the lower pixel count of the two linear axes (distance to 1 sigma)
-    pix_lin = np.minimum(np.absolute(human["bma"]), np.absolute(human["bmi"])) * stddev
+    # The keys 'maj' and 'min' refer to the quadratic coefficients of the fit
+    #  surface, which have a meaning of something like the change in value per
+    #  pixel^2.  Using the same logic as above...
+    quad_flat = (
+        npix_min**2 * np.maximum(np.abs(human["maj"]), np.abs(human["min"])) / stddev
+    )
 
-    # TODO: Sometimes one or the other of these yield a warning:
-    #       RuntimeWarning: divide by zero encountered in true_divide
-    return dim_min / pix_lin, dim_min / pix_quad
+    return lin_flat, quad_flat
