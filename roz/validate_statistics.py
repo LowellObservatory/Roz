@@ -244,9 +244,15 @@ def perform_calibration_validation(
         for metric in meta_table.colnames
         if any(s in metric for s in ["qs_", "crop_", "frame_", "_flat", "pos"])
     ]
-    # Remove less helpful quadric surface metrics from the validation
-    for removal in ["qs_maj", "qs_bma", "qs_open", "qs_rot"]:
-        metrics.remove(removal)
+
+    # Remove duplicative quadric surface metrics from the validation
+    removal = ["qs_zpt"]
+    # Remove patently helpful quadric surface metrics from the validation
+    removal += ["qs_maj", "qs_bma", "qs_open", "qs_rot"]
+    # Remove false-positive quadric surface metrics from the validation
+    removal += ["qs_min", "qs_bmi", "lin_flat", "quad_flat"]
+    for remove in removal:
+        metrics.remove(remove)
 
     # Pull the Historical Data matching this set
     hist = database_manager.HistoricalData(
