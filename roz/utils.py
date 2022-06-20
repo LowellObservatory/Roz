@@ -565,6 +565,48 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     NOTE: To deal with possible NaN's in the input `data`, use np.nansum()
           in place of np.sum() when building the RHS of the matrix equation.
 
+    To illustrate where power is emphasized in the LINEAR vs QUADRATIC fits,
+    consider the matrices associated with the two cases for a 2x2 binned LMI
+    array size:
+
+    LINEAR matrix:
+     9.4e+06 -4.7e+06 -4.7e+06     0       0       0
+    -4.7e+06  7.4e+12  2.4e+06     0       0       0
+    -4.7e+06  2.4e+06  7.4e+12     0       0       0
+       0        0        0         1       0       0
+       0        0        0         0       1       0
+       0        0        0         0       0       1
+
+    LINEAR inverse matrix:
+     1.1e-07  6.7e-14  6.8e-14     0       0       0
+     6.7e-14  1.3e-13    0         0       0       0
+     6.8e-14    0      1.4e-13     0       0       0
+       0        0        0         1       0       0
+       0        0        0         0       1       0
+       0        0        0         0       0       1
+
+    Here, the linear terms in X and Y are independent of each other and depend
+    only on themselves and the total data sum.
+
+    For the quadratic case, the linear terms are largely the same, but there is
+    some power slosh into/out of the quadratic terms:
+
+    QUADRATIC matrix:
+     9.4e+06 -4.7e+06 -4.7e+06  7.4e+12  7.4e+12  2.4e+06
+    -4.7e+06  7.4e+12  2.4e+06 -1.1e+13 -3.7e+12 -3.7e+12
+    -4.7e+06  2.4e+06  7.4e+12 -3.7e+12 -1.1e+13 -3.7e+12
+     7.4e+12 -1.1e+13 -3.7e+12  1.1e+19  5.8e+18  5.6e+12
+     7.4e+12 -3.7e+12 -1.1e+13  5.8e+18  1.0e+19  5.5e+12
+     2.4e+06 -3.7e+12 -3.7e+12  5.6e+12  5.5e+12  5.8e+18
+
+    QUADRATIC inverse matrix:
+     3.7e-07 -1.0e-13 -1.0e-13 -1.7e-13 -1.7e-13  4.3e-20
+    -1.0e-13  1.3e-13  4.3e-20  2.1e-19  1.1e-34  8.6e-20
+    -1.0e-13  4.3e-20  1.4e-13 -7.1e-33  2.2e-19  8.6e-20
+    -1.7e-13  2.1e-19  1.5e-29  2.1e-19  8.5e-35  3.6e-35
+    -1.7e-13  1.4e-34  2.2e-19  1.4e-34  2.2e-19 -8.7e-36
+     4.3e-20  8.6e-20  8.6e-20  5.3e-36 -2.7e-41  1.7e-19
+
     Parameters
     ----------
     data : `numpy.ndarray`
@@ -590,8 +632,10 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     """
     # Construct the matrix for use with the LEAST SQUARES FIT
     #  np.dot(mat, fitvec) = RHS
-    n_terms = 6 if fit_quad else 3
-    matrix = np.empty((n_terms, n_terms))
+
+    # Set up the matrix as an indentity matrix, and fill in the portions needed
+    n_terms = 6
+    matrix = np.identity(n_terms)
 
     # Produce the coordinate arrays, if not fed an existing dict OR if the
     #  array size is different (occasional edge case)
@@ -624,8 +668,8 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
             [c_arr["sum_x3y"], c_arr["sum_xy3"], c_arr["sum_x2y2"]],
         ]
 
-    # The right-hand side of the matrix equation:
-    right_hand_side = np.empty(n_terms)
+    # The right-hand side of the matrix equation (start as zeros, fill in):
+    right_hand_side = np.zeros(n_terms)
 
     # Top half:
     right_hand_side[:3] = [
@@ -745,13 +789,8 @@ def compute_human_readable_surface(coefficients):
     `dict`
         Dictionary of human-readable quantities
     """
-    # Separate unpacking depending on whether it was a linear or quadric fit
-    if len(coefficients) == 3:
-        F, D, E = coefficients
-        A = B = C = 0
-    else:
-        # Parse the coefficients from the quadric surface into standard form
-        F, D, E, A, C, B = coefficients
+    # Parse the coefficients from the quadric surface into standard form
+    F, D, E, A, C, B = coefficients
 
     # Compute the rotation of the axes of the surface away from x-y
     theta = 0.5 * np.arctan2(B, A - C)
