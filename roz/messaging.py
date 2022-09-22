@@ -12,7 +12,7 @@
 
 This module is part of the Roz package, written at Lowell Observatory.
 
-This module steals unrepentantly from `pypeit.pypmsgs`, with gratitude to
+This module steals unrepentantly from :obj:`~pypeit.pypmsgs`, with gratitude to
 those authors.
 
 If problems are found at any point in the code base, alerts are issued via
@@ -52,15 +52,15 @@ class Messages:
     Parameters
     ----------
     log : str or None
-      Name of saved log file (no log will be saved if log=="")
-    verbosity : int (0,1,2)
-      Level of verbosity:
-        0 = No output
-        1 = Minimal output
-        2 = All output (default)
+        Name of saved log file (no log will be saved if log=="")
+    verbosity : int
+        Level of verbosity:
+            0 = No output
+            1 = Minimal output
+            2 = All output (default)
     colors : bool
-      If true, the screen output will have colors, otherwise
-      normal screen output will be displayed
+        If true, the screen output will have colors, otherwise
+        normal screen output will be displayed
     """
 
     def __init__(self, log=None, verbosity=None, colors=True):
@@ -306,7 +306,7 @@ class Messages:
 
 
 class RozSlack(johnnyfive.SlackChannel):
-    """RozSlack _summary_
+    """Class for communicating via a Slack channel
 
     _extended_summary_
 

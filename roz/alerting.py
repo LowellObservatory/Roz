@@ -16,6 +16,9 @@ If problems are found at any point in the code base, alerts are issued via
 email/slack for humans to check on.
 
 This module primarily trades in... not quite sure yet.
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -37,13 +40,14 @@ MACHINE = os.uname()[1].split(".")[0]
 
 
 def send_alert(alert_type, caller=None, no_slack=False):
-    """send_alert Send out an alert
+    """Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
-    lig.nanni@lowell.edu, or over Slack, or both, or something different?
+    lig`dot`nanni`at`lowell`dot`edu, or over Slack, or both, or something
+    different?
 
     There are various types of alerts that can be sent... maybe choose the
-    medium based on the input `alertclass`?
+    medium based on the input ``alertclass``?
     """
 
     msgs.warn(f"{alert_type.replace('`','')}: {caller}")
@@ -53,13 +57,13 @@ def send_alert(alert_type, caller=None, no_slack=False):
 
 
 def post_report(report):
-    """post_report Post the Problem Report to Slack
+    """Post the Problem Report to Slack
 
     _extended_summary_
 
     Parameters
     ----------
-    report : `str`
+    report : str
         The problem report, as a string with occasional newlines
     """
     slack.send(f"Problem report from Roz on `{MACHINE}`:")
@@ -73,15 +77,15 @@ def post_report(report):
 
 
 def post_pngs(metadata_tables, directory, inst_flags):
-    """post_pngs Post the problematic PNGs to Slack
+    """Post the problematic PNGs to Slack
 
     _extended_summary_
 
     Parameters
     ----------
-    metadata_tables : `dict`
+    metadata_tables : dict
         _description_
-    directory : `pathlib.Path`
+    directory : :obj:`pathlib.Path`
         Path to the processing directory
     """
     # Loop through Frame Types

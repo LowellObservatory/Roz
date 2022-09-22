@@ -20,6 +20,9 @@ modules, as needed.  There should, therefore, be little need for cross-calling
 between the other non-utility modules in this package.
 
 This module primarily trades in... driving?
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -46,10 +49,10 @@ def main(
     mem_limit=8.192e9,
     **kwargs,
 ):
-    """main This is the main function.
+    """This is the main function.
 
     This function takes the directory input, determines the instrument
-    in question, and calls the appropriate run_*() function.
+    in question, and calls the appropriate ``run_*()`` function.
 
     In the future, if Roz is employed to analyze more than calibration frames,
     other argmuments to this function will be needed, and other driving
@@ -57,29 +60,29 @@ def main(
 
     Parameters
     ----------
-    directory : `str` or `pathlib.Path` or `list` of either, optional
-        The directory or directories upon which to operate [Default: None]
-    do_science : `bool`, optional
-        Also do QA on science frames?  [Default: False]
-    sigma_thresh : `float`, optional
+    directory : str or :obj:`pathlib.Path` or list, optional
+        The directory or directories upon which to operate (Default: None)
+    do_science : bool, optional
+        Also do QA on science frames?  (Default: False)
+    sigma_thresh : float, optional
         The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
-    validation_scheme : `str`, optional
-        The frame validation scheme to use  [Default: simple]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
-
-    ---- Various debugging keyword arguments (to be removed later)
-    skip_cals : `bool`, optional
-        Do not process the calibration frames.  [Default: False]
-    no_cold : `bool`, optional
-        Pass to `skip_cold` in gf.Dumbwaiter.cold_storage()  [Default: False]
-    no_prob : `bool`, optional
-        Only use metrics not marked as "problem" by previous validation
-        [Default: True]
-    all_time : `bool`, optional
-        For validation of current frames, compare against all matches,
-        regardless of the timestamp [Default: False]
+        "problematic"  (Default: 3.0)
+    validation_scheme : str, optional
+        The frame validation scheme to use  (Default: "simple")
+    mem_limit : float, optional
+        Memory limit for the image combination routine (Default: 8.192e9 bytes)
+    skip_cals : bool, optional
+        DEBUG KWARG OPTION.  Do not process the calibration frames. (Default:
+        False)
+    no_cold : bool, optional
+        DEBUG KWARG OPTION.  Pass to ``skip_cold`` in
+        :func:`~roz.gather_frames.Dumbwaiter.cold_storage`  (Default: False)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
     """
     # Check if the input `directories` is just a string; --> list
     if isinstance(directories, str):
@@ -131,29 +134,27 @@ def main(
 
 # Run Functions ==============================================================#
 class Run:
-    """Run Class for Running the Processing
+    """Class for Running the Processing
 
     _extended_summary_
 
     Parameters
     ----------
-    waiter : `roz.gather_frames.Dumbwaiter`
+    waiter : :obj:`~roz.gather_frames.Dumbwaiter`
         The dumbwaiter holding the incoming files for processing
-    sigma_thresh : `float`, optional
+    sigma_thresh : float, optional
         The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
-    validation_scheme : `str`, optional
-        The frame validation scheme to use  [Default: simple]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine.  [Default: None]
-
-    ---- Various debugging keyword arguments (to be removed later)
-    no_prob : `bool`, optional
-        Only use metrics not marked as "problem" by previous validation
-        [Default: True]
-    all_time : `bool`, optional
-        For validation of current frames, compare against all matches,
-        regardless of the timestamp [Default: False]
+        "problematic"  (Default: 3.0)
+    validation_scheme : str, optional
+        The frame validation scheme to use  (Default: "simple")
+    mem_limit : float, optional
+        Memory limit for the image combination routine.  (Default: None)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
 
     """
 
@@ -178,23 +179,24 @@ class Run:
         self.no_confluence = kwargs.get("no_confluence", False)
 
     def process(self):
-        """proc Process the files specified in the Dumbwaiter
+        """Process the files specified in the Dumbwaiter
 
-        Chooses which run_* method to call based on the `frameclass`
+        Chooses which ``run_*`` method to call based on the ``frameclass``
         """
         method = f"run_{self.dumbwaiter.frameclass[:3]}"
         if hasattr(self, method) and callable(func := getattr(self, method)):
             func()
 
     def run_cal(self):
-        """run_cal Run Roz on the Instrument Calibration frames
+        """Run Roz on the Instrument Calibration frames
 
         Collect the calibration frames for the instrument represented by this
-        Dumbwaiter, process them, and collect statistics into a
-        `CalibrationDatabase` object.  Upload the data to an InfluxDB database,
-        analyze the frames for irregularities compared to historical data, and
-        send alerts, if necessary.  If desired, also update the appropriate
-        Confluence page(s) for user support.
+        :class:`~roz.gather_frames.Dumbwaiter`, process them, and collect
+        statistics into a :class:`~roz.database_manager.CalibrationDatabase`
+        object.  Upload the data to an InfluxDB database, analyze the frames
+        for irregularities compared to historical data, and send alerts, if
+        necessary.  If desired, also update the appropriate Confluence page(s)
+        for user support.
         """
         # Collect the calibration frames within the processing directory
         calibs = process_frames.CalibContainer(
@@ -259,7 +261,7 @@ class Run:
                 )
 
     def run_sci(self):
-        """run_cal Run Roz on the Instrument Science frames
+        """Run Roz on the Instrument Science frames
 
         _extended_summary_
         """
@@ -268,15 +270,25 @@ class Run:
             "main_driver.Run.run_sci()",
         )
 
+    def run_asc(self):
+        """Run Roz on the All-Sky Camera frames
+
+        _extended_summary_
+        """
+        alerting.send_alert(
+            f"Warning: `run_asc` is not yet implemented; `{self.dumbwaiter.nightname}`",
+            "main_driver.Run.run_asc()",
+        )
+
 
 # Console Script Entry Point =================================================#
 def entry_point():
-    """entry_point Command-line script entry point
+    """Command-line script entry point
 
     Parameters
     ----------
-    args : `Any`, optional
-        Command-line arguments passed in [Default: None]
+    args : Any, optional
+        Command-line arguments passed in (Default: None)
     """
     # Parse command line arguments
     parser = argparse.ArgumentParser(

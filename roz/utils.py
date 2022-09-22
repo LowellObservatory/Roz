@@ -16,6 +16,9 @@ This module contains various utility routines and global variables from across
 the package.
 
 This module primarily trades in... utility?
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -37,64 +40,9 @@ import ligmos
 # Internal Imports
 
 
-# Create various augmented classes for Roz-specific configuration things
-class AlertTarget(ligmos.utils.classes.baseTarget):
-    """
-    For roz.conf:[rozSetup]
-    """
-
-    def __init__(self):
-        # Gather up the properties from the base class
-        super().__init__()
-        # New attributes
-        self.slack_channel = None
-
-
-class DatabaseTarget(ligmos.utils.classes.baseTarget):
-    """
-    For roz.conf:[databaseSetup] and roz.conf:[q_rozdata]
-    """
-
-    def __init__(self):
-        # Gather up the properties from the base class
-        super().__init__()
-        # New attributes
-        self.tablename = None
-        self.metricname = None
-
-
-class SetupTarget(ligmos.utils.classes.baseTarget):
-    """
-    For roz.conf:[rozSetup]
-    """
-
-    def __init__(self):
-        # Gather up the properties from the base class
-        super().__init__()
-        # New attributes
-        self.processing_dir = None
-        self.coldstorage_dir = None
-
-
-class FilterTarget(ligmos.utils.classes.baseTarget):
-    """
-    For roz.conf:[lmifilterSetup]
-    """
-
-    def __init__(self):
-        # Gather up the properties from the base class
-        super().__init__()
-        # New attributes
-        self.space = None
-        self.page_title = None
-
-
 # Classes to hold useful information
 class Paths:
-    """Paths
-
-    [extended_summary]
-    """
+    """Class that holds the various paths needed"""
 
     # Main data & config directories
     config = pathlib.Path(resource_filename("roz", "config"))
@@ -133,19 +81,17 @@ LDT_FMS = ["A", "B", "C", "D"]
 
 
 def parse_ampconfig(amp_config):
-    """parse_ampconfig _summary_
-
-    _extended_summary_
+    """Parse the amplifier configuration for LMI
 
     Parameters
     ----------
-    amp_config : _type_
-        _description_
+    amp_config : str
+        The amplifier configuration used for a frame
 
     Returns
     -------
-    _type_
-        _description_
+    dict
+        The keyword dictionary that can be parsed by `ccdproc.ImageFileCollection`_
     """
     # Parse the `amp_config` into something the ImageFileCollection can filter
     if len(amp_config) == 1:
@@ -159,7 +105,7 @@ def parse_ampconfig(amp_config):
 
 
 def parse_lois_ampids(hdr):
-    """parse_lois_ampids Parse the LOIS amplifier IDs
+    """Parse the LOIS amplifier IDs
 
     LOIS is particular about how it records which amplifiers are used to read
     out the CCD.  Most of the time, users will use a single amplifier, whose ID
@@ -169,12 +115,12 @@ def parse_lois_ampids(hdr):
 
     Parameters
     ----------
-    hdr : `astropy.io.fits.Header`
+    hdr : `astropy.io.fits.Header`_
         The FITS header for which the amplifier IDs are to be parsed
 
     Returns
     -------
-    `str`
+    str
         The amplifier designation(s) used
     """
     # Basic 1-amplifier case:
@@ -186,18 +132,18 @@ def parse_lois_ampids(hdr):
 
 
 def read_instrument_table():
-    """read_instrument_table Read in the instrument table
+    """Read in the instrument table
 
     Returns
     -------
-    `astropy.table.Table`
+    `astropy.table.Table`_
         The instrument flags table
     """
     return astropy.table.Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
 
 
 def read_ligmos_conffiles(confname, conffile="roz.conf"):
-    """read_ligmos_conffiles Read a configuration file using LIGMOS
+    """Read a configuration file using LIGMOS
 
     Having this as a separate function may be a bit of an overkill, but it
     makes it easier to keep the ligmos imports only in one place, and
@@ -205,28 +151,77 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
 
     Parameters
     ----------
-    confname : `str`
+    confname : str
         Name of the table within the configuration file to parse
-    conffile : `str`, optional
-        Name of the configuration file to parse  [Default: 'roz.conf']
+    conffile : str, optional
+        Name of the configuration file to parse  (Default: "roz.conf")
 
     Returns
     -------
-    `ligmos.utils.classes.baseTarget`
+    :class:`ligmos.utils.classes.baseTarget`
         An object with arrtibutes matching the keys in the associated
         configuration file.
     """
+
+    # Create various augmented classes for Roz-specific configuration things
+    class _AlertTarget(ligmos.utils.classes.baseTarget):
+        """
+        For roz.conf:[rozSetup]
+        """
+
+        def __init__(self):
+            # Gather up the properties from the base class
+            super().__init__()
+            # New attributes
+            self.slack_channel = None
+
+    class _DatabaseTarget(ligmos.utils.classes.baseTarget):
+        """
+        For roz.conf:[databaseSetup] and roz.conf:[q_rozdata]
+        """
+
+        def __init__(self):
+            # Gather up the properties from the base class
+            super().__init__()
+            # New attributes
+            self.tablename = None
+            self.metricname = None
+
+    class _SetupTarget(ligmos.utils.classes.baseTarget):
+        """
+        For roz.conf:[rozSetup]
+        """
+
+        def __init__(self):
+            # Gather up the properties from the base class
+            super().__init__()
+            # New attributes
+            self.processing_dir = None
+            self.coldstorage_dir = None
+
+    class _FilterTarget(ligmos.utils.classes.baseTarget):
+        """
+        For roz.conf:[lmifilterSetup]
+        """
+
+        def __init__(self):
+            # Gather up the properties from the base class
+            super().__init__()
+            # New attributes
+            self.space = None
+            self.page_title = None
+
     # Case out the class to use:
     if confname == "databaseSetup":
-        ConfClass = DatabaseTarget
+        ConfClass = _DatabaseTarget
     elif confname == "rozSetup":
-        ConfClass = SetupTarget
+        ConfClass = _SetupTarget
     elif confname == "lmifilterSetup":
-        ConfClass = FilterTarget
+        ConfClass = _FilterTarget
     elif confname == "q_rozdata":
         ConfClass = ligmos.utils.classes.databaseQuery
     elif confname == "alertSetup":
-        ConfClass = AlertTarget
+        ConfClass = _AlertTarget
     else:
         ConfClass = ligmos.utils.classes.baseTarget
 
@@ -238,38 +233,38 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
 
 
 def scrub_isot_dateobs(dt_str, add_hours=0):
-    """scrub_isot_dateobs Scrub the input DATE-OBS for ingestion by datetime
+    """Scrub the input DATE-OBS for ingestion by datetime
 
     First of all, strict ISO 8601 format requires a 6-digit "microsecond" field
     as the fractional portion of the seconds.  In the DATE-OBS field, lois only
     prints two digits for the fractional second.  The main scrub here adds
     additional trailing zeroes to satifsy the formatting requirements of
-    `datetime.datetime.fromisoformat()`.
+    :obj:`datetime.datetime.fromisoformat`.
 
     While this yields happy results for the majority of cases, sometimes lois
     has roundoff abnormalities in the time string written to the DATE-OBS
     header keyword.  For example, "2020-01-30T13:17:010.00" was written, where
     the seconds have 3 digits -- presumably the seconds field was constructed
-    with a leading zero because `sec` was < 10, but when rounded for printing
+    with a leading zero because ``sec`` was < 10, but when rounded for printing
     yielded "10.00", producing a complete seconds field of "010.00".
 
     These kinds of abnormalities cause the standard python datetime parsers to
-    freak out with `ValueError`s.  This function attempts to return the
-    datetime directly, but then scrubs any values cause a `ValueError`.
+    freak out with ``ValueError`` s.  This function attempts to return the
+    datetime directly, but then scrubs any values cause a ``ValueError``.
 
     The scrubbing consists of deconstructing the string into its components,
     then carefully reconstructing it into proper ISO 8601 format.
 
     Parameters
     ----------
-    dt_str : `str`
+    dt_str : str
         Input datetime string from the DATE-OBS header keyword
-    add_hours : `int`
-        Number of hours to add to the datetime  [Default: 0]
+    add_hours : int
+        Number of hours to add to the datetime  (Default: 0)
 
     Returns
     -------
-    `datetime.datetime`
+    :obj:`datetime.datetime`
         The datetime object corresponding to the DATE-OBS input string
     """
     # Clean all leading / trailing whitespace
@@ -308,7 +303,7 @@ def scrub_isot_dateobs(dt_str, add_hours=0):
 
 
 def subpath(path_to_dir):
-    """subpath Simple function to return the instrument/date part of the path
+    """Simple function to return the instrument/date part of the path
 
     The instrument/date part of the path should be independent of machine
     on which Roz is running, so the notes posted to Slack, etc., will neither
@@ -316,13 +311,13 @@ def subpath(path_to_dir):
 
     Parameters
     ----------
-    path_to_dir : `str` or `pathlib.Path`
+    path_to_dir : str, :obj:`pathlib.Path`
         The full path to the directory of interest
 
     Returns
     -------
-    `str`
-        The `instrument/date` portion of the full path
+    str
+        The ``instrument/date`` portion of the full path
     """
     if isinstance(path_to_dir, str):
         path_to_dir = pathlib.Path(path_to_dir)
@@ -330,24 +325,24 @@ def subpath(path_to_dir):
 
 
 def table_sort_on_list(table, colname, sort_list):
-    """table_sort_on_list Sort an AstroPy Table according to a list
+    """Sort an AstroPy Table according to a list
 
-    The actual sorting of the table is code taken directly from Astropy v5.0
-    (astropy.table.table.py).  This function does an arbitrary sort based on
-    an input list.
+    The actual sorting of the table is code taken directly from `Astropy v5.0
+    <https://docs.astropy.org/en/stable/_modules/astropy/table/table.html>`_.
+    This function does an arbitrary sort based on an input list.
 
     Parameters
     ----------
-    table : `astropy.table.Table`
+    table : `astropy.table.Table`_
         The table to sort
-    colname : `str`
+    colname : str
         The column name to sort on
-    sort_list : `list`
-        The list of values to sort with such that table[colname] == sort_list
+    sort_list : list
+        The list of values to sort with such that ``table[colname] == sort_list``
 
     Returns
     -------
-    `astropy.table.Table`
+    `astropy.table.Table`_
         The sorted table
 
     Raises
@@ -355,7 +350,7 @@ def table_sort_on_list(table, colname, sort_list):
     TypeError
         If the input table is not really a table
     ValueError
-        If the `sort_list` is not the same length as the table
+        If the ``sort_list`` is not the same length as the table
     """
     # Check that the input parameters are of the proper type
     if not isinstance(table, astropy.table.Table):
@@ -391,42 +386,44 @@ def table_sort_on_list(table, colname, sort_list):
 
 
 def trim_oscan(ccd, biassec, trimsec):
-    """trim_oscan Subtract the overscan region and trim image to desired size
+    """Subtract the overscan region and trim image to desired size
 
-    The CCDPROC function subtract_overscan() expects the TRIMSEC of the image
+    The function `ccdproc.subtract_overscan`_ expects the TRIMSEC of the image
     (the part you want to keep) to span the entirety of one dimension, with the
     BIASSEC (overscan section) being at the end of the other dimension.
     Both LMI and DeVeny have edge effects on all sides of their respective
     chips, and so the TRIMSEC and BIASSEC do not meet the expectations of
-    subtract_overscan().
+    `ccdproc.subtract_overscan`_.
 
     Therefore, this function is a wrapper to first remove the undesired ROWS
-    from top and bottom, then perform the subtract_overscan() fitting and
-    subtraction, followed by trimming off the now-spent overscan region.
+    from top and bottom, then perform the `ccdproc.subtract_overscan`_ fitting
+    and subtraction, followed by trimming off the now-spent overscan region.
 
     At present, the overscan region is modeled with a first-order Chebyshev
     one-dimensional polynomial.  The model used can be changed in the future
     or allowed as a input, as desired.
 
-    NOTE: This function explicitly assumes that the chip is read out ROW-by-ROW
-          and that overscan pixels are in each ROW.  Some instruments may have
-          the native orientation such that the CCD is read out along COLUMNS;
-          if such an instrument is added to this package, the present routine
-          will need to be modified to include a rotation such that the order
-          of operations below is correctly applied to such data.
+    .. note::
+
+        This function explicitly assumes that the chip is read out ROW-by-ROW
+        and that overscan pixels are in each ROW.  Some instruments may have
+        the native orientation such that the CCD is read out along COLUMNS;
+        if such an instrument is added to this package, the present routine
+        will need to be modified to include a rotation such that the order
+        of operations below is correctly applied to such data.
 
     Parameters
     ----------
-    ccd : `astropy.nddata.CCDData`
+    ccd : `astropy.nddata.CCDData`_
         The CCDData object upon which to operate
-    biassec : `str`
+    biassec : str
         String containing the FITS-convention overscan section coordinates
-    trimsec : `str`
+    trimsec : str
         String containing the FITS-convention data section coordinates
 
     Returns
     -------
-    `astropy.nddata.CCDData`
+    `astropy.nddata.CCDData`_
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Convert the FITS bias & trim sections into slice classes for use
@@ -449,27 +446,30 @@ def trim_oscan(ccd, biassec, trimsec):
 
 
 def two_sigfig(value):
-    """two_sigfig String representation of a float at 2 significant figures
+    """String representation of a float at 2 significant figures
 
     Simple utility function to return a 2-sigfig representation of a float.
 
-    Limitation: At present, at most 2 decimal places are shown.  Therefore,
-                this function will not work as expected for values < 0.1
+    .. note::
 
-                If I can figure out dynamic format specifiers, this limitation
-                can be removed.
+        There is a limitation at present that at most 2 decimal places are
+        shown.  Therefore, this function will not work as expected for
+        values < 0.1
 
-                Also, zero is represented as '-----' rather than numerically.
+        If I can figure out dynamic format specifiers, this limitation
+        can be removed.
+
+        Also, zero is represented as ``-----`` rather than numerically.
 
     Parameters
     ----------
-    value : `float`
+    value : float
         Input value to be stringified
 
     Returns
     -------
-    `str`
-        String representation of `value` at two significant figures
+    str
+        String representation of ``value`` at two significant figures
     """
     # If zero, return a 'N/A' type string
     if value <= 0 or isinstance(value, np.ma.core.MaskedConstant):
@@ -491,25 +491,26 @@ def two_sigfig(value):
 
 
 def wrap_trim_oscan(ccd):
-    """wrap_trim_oscan Wrap the trim_oscan() function to handle multiple amps
+    """Wrap the :func:`roz.utils.trim_oscan()` function to handle multiple amps
 
     This function will perform the magic of stitching together multi-amplifier
     reads.  There may be instrument-specific issues related to this, but it is
     likely that only LMI will ever bet read out in multi-amplifier mode.
 
-    TODO: Whether here or somewhere else, should convert things to electrons
-          via the GAIN.  Might not be necessary within the context of Roz, but
-          will be necessary for science frame analysis with multiple amplifier
-          reads.
+    .. note::
+        TODO: Whether here or somewhere else, should convert things to electrons
+        via the GAIN.  Might not be necessary within the context of Roz, but
+        will be necessary for science frame analysis with multiple amplifier
+        reads.
 
     Parameters
     ----------
-    ccd : `astropy.nddata.CCDData`
+    ccd : `astropy.nddata.CCDData`_
         The CCDData object upon which to operate
 
     Returns
     -------
-    `astropy.nddata.CCDData`
+    `astropy.nddata.CCDData`_
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Shorthand
@@ -538,52 +539,61 @@ def wrap_trim_oscan(ccd):
 
 # Quadric Surface Functions ==================================================#
 def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
-    """fit_quadric_surface Fit a quadric surface to an image array
+    """Fit a quadric surface to an image array
 
     Performs a **LEAST SQUARES FIT** of a (plane or) quadric surface to an
-    input image array.  The basic equation is:
+    input image array.  The basic equation is::
+
             matrix ## fit_coeff = right_hand_side
 
     In specific, the quadric surface fit is either an elliptic or hyperbolic
-    paraboloid (of arbitrary orientation), since the resulting equation is:
+    paraboloid (of arbitrary orientation), since the resulting equation is::
+
         z = a0 + a1•x + a2•y + a3•x^2 + a4•y^2 + a5•xy
+
     https://en.wikipedia.org/wiki/Quadric
     https://en.wikipedia.org/wiki/Paraboloid
 
     This routine computes the `matrix` needed, as well as the right_hand_side.
     The fit coefficients are found by miltiplying matrix^(-1) by the RHS.
 
-    Fit coefficients are:
+    Fit coefficients are::
+
         coeff[0] = Baseline offset
         coeff[1] = Linear term in x
         coeff[2] = Linear term in y
         coeff[3] = Quadratic term in x
         coeff[4] = Quadratic term in y
         coeff[5] = Quadratic cross-term in xy
-    where the last three are only fit and nonzero if `fit_quad == True`
 
-    NOTE: To deal with possible NaN's in the input `data`, use np.nansum()
-          in place of np.sum() when building the RHS of the matrix equation.
+    where the last three are only fit and nonzero if ``fit_quad == True``
+
+    .. note::
+
+        To deal with possible NaN's in the input ``data``, use `numpy.nansum`_
+        in place of `numpy.sum`_ when building the RHS of the matrix equation.
 
     To illustrate where power is emphasized in the LINEAR vs QUADRATIC fits,
     consider the matrices associated with the two cases for a 2x2 binned LMI
     array size:
 
-    LINEAR matrix:
-     9.4e+06 -4.7e+06 -4.7e+06     0       0       0
-    -4.7e+06  7.4e+12  2.4e+06     0       0       0
-    -4.7e+06  2.4e+06  7.4e+12     0       0       0
-       0        0        0         1       0       0
-       0        0        0         0       1       0
-       0        0        0         0       0       1
+    LINEAR matrix::
 
-    LINEAR inverse matrix:
-     1.1e-07  6.7e-14  6.8e-14     0       0       0
-     6.7e-14  1.3e-13    0         0       0       0
-     6.8e-14    0      1.4e-13     0       0       0
-       0        0        0         1       0       0
-       0        0        0         0       1       0
-       0        0        0         0       0       1
+        9.4e+06 -4.7e+06 -4.7e+06     0       0       0
+        -4.7e+06  7.4e+12  2.4e+06     0       0       0
+        -4.7e+06  2.4e+06  7.4e+12     0       0       0
+        0        0        0         1       0       0
+        0        0        0         0       1       0
+        0        0        0         0       0       1
+
+    LINEAR inverse matrix::
+
+        1.1e-07  6.7e-14  6.8e-14     0       0       0
+        6.7e-14  1.3e-13    0         0       0       0
+        6.8e-14    0      1.4e-13     0       0       0
+        0        0        0         1       0       0
+        0        0        0         0       1       0
+        0        0        0         0       0       1
 
     Here, the linear terms in X and Y are independent of each other and depend
     only on themselves and the total data sum.
@@ -591,42 +601,44 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
     For the quadratic case, the linear terms are largely the same, but there is
     some power slosh into/out of the quadratic terms:
 
-    QUADRATIC matrix:
-     9.4e+06 -4.7e+06 -4.7e+06  7.4e+12  7.4e+12  2.4e+06
-    -4.7e+06  7.4e+12  2.4e+06 -1.1e+13 -3.7e+12 -3.7e+12
-    -4.7e+06  2.4e+06  7.4e+12 -3.7e+12 -1.1e+13 -3.7e+12
-     7.4e+12 -1.1e+13 -3.7e+12  1.1e+19  5.8e+18  5.6e+12
-     7.4e+12 -3.7e+12 -1.1e+13  5.8e+18  1.0e+19  5.5e+12
-     2.4e+06 -3.7e+12 -3.7e+12  5.6e+12  5.5e+12  5.8e+18
+    QUADRATIC matrix::
 
-    QUADRATIC inverse matrix:
-     3.7e-07 -1.0e-13 -1.0e-13 -1.7e-13 -1.7e-13  4.3e-20
-    -1.0e-13  1.3e-13  4.3e-20  2.1e-19  1.1e-34  8.6e-20
-    -1.0e-13  4.3e-20  1.4e-13 -7.1e-33  2.2e-19  8.6e-20
-    -1.7e-13  2.1e-19  1.5e-29  2.1e-19  8.5e-35  3.6e-35
-    -1.7e-13  1.4e-34  2.2e-19  1.4e-34  2.2e-19 -8.7e-36
-     4.3e-20  8.6e-20  8.6e-20  5.3e-36 -2.7e-41  1.7e-19
+        9.4e+06 -4.7e+06 -4.7e+06  7.4e+12  7.4e+12  2.4e+06
+        -4.7e+06  7.4e+12  2.4e+06 -1.1e+13 -3.7e+12 -3.7e+12
+        -4.7e+06  2.4e+06  7.4e+12 -3.7e+12 -1.1e+13 -3.7e+12
+        7.4e+12 -1.1e+13 -3.7e+12  1.1e+19  5.8e+18  5.6e+12
+        7.4e+12 -3.7e+12 -1.1e+13  5.8e+18  1.0e+19  5.5e+12
+        2.4e+06 -3.7e+12 -3.7e+12  5.6e+12  5.5e+12  5.8e+18
+
+    QUADRATIC inverse matrix::
+
+        3.7e-07 -1.0e-13 -1.0e-13 -1.7e-13 -1.7e-13  4.3e-20
+        -1.0e-13  1.3e-13  4.3e-20  2.1e-19  1.1e-34  8.6e-20
+        -1.0e-13  4.3e-20  1.4e-13 -7.1e-33  2.2e-19  8.6e-20
+        -1.7e-13  2.1e-19  1.5e-29  2.1e-19  8.5e-35  3.6e-35
+        -1.7e-13  1.4e-34  2.2e-19  1.4e-34  2.2e-19 -8.7e-36
+        4.3e-20  8.6e-20  8.6e-20  5.3e-36 -2.7e-41  1.7e-19
 
     Parameters
     ----------
-    data : `numpy.ndarray`
+    data : `numpy.ndarray`_
         The image (as a 2D array) to be fit with a surface
-    ca : `dict`, optional
+    ca : dict, optional
         Dictionary of coefficient arrays needed for creating the matrix
-        [Default: None]
-    fit_quad : `bool`, optional
-        Fit a quadric surface, rather than a plane, to the data [Default: True]
-    return_surface : `bool`, optional
+        (Default: None)
+    fit_quad : bool, optional
+        Fit a quadric surface, rather than a plane, to the data (Default: True)
+    return_surface : bool, optional
         Return the model surface, built up from the fit coefficients?
-        [Default: False]
+        (Default: False)
 
     Returns
     -------
-    `numpy.ndarray`
+    `numpy.ndarray`_
         Array of 3 (plane) or 6 (quadric surface) fit coefficients
-    `dict`
+    dict
         Dictionary of coefficient arrays needed for creating the matrix
-    `numpy.ndarray` (if `return_surface == True`)
+    `numpy.ndarray`_ (if `return_surface == True`)
         The 2D array modeling the surface ensconced in the first return.  Array
         is of same size as the input `data`.
     """
@@ -711,7 +723,7 @@ def fit_quadric_surface(data, c_arr=None, fit_quad=True, return_surface=False):
 
 
 def produce_coordinate_arrays(shape):
-    """produce_coordinate_arrays Produce the dictionary of coordinate arrays
+    """Produce the dictionary of coordinate arrays
 
     Since these coordinate arrays are dependent ONLY upon the SHAPE of the
     input array, when doing multiple fits of data arrays with the same size, it
@@ -719,12 +731,12 @@ def produce_coordinate_arrays(shape):
 
     Parameters
     ----------
-    shape : `tuple`
-        The .shape of the data (numpy ndarray)
+    shape : tuple
+        The ``.shape`` of the data (`numpy.ndarray`_)
 
     Returns
     -------
-    `dict`
+    dict
         Dictionary of coefficient arrays needed for creating the matrix
     """
     # Construct the arrays for doing the matrix magic -- origin in center
@@ -760,33 +772,38 @@ def produce_coordinate_arrays(shape):
 
 
 def compute_human_readable_surface(coefficients):
-    """compute_human_readable_surface Rotate surface into standard-ish form
+    """Rotate a quadric surface surface into standard-ish form
 
-    Use the standard form of:
+    Use the standard form of::
+
         z = Ax^2 + Bxy + Cy^ + Dx + Ey + F
 
-    Find the rotation when the axes of the surface are along x' and y':
+    Find the rotation when the axes of the surface are along x' and y'::
+
         x = x'*cos(th) - y'*sin(th)
         y = x'*sin(th) + y'*cos(th)
 
-    Rotate this into standard form of:
+    Rotate this into standard form of::
+
         z = (a')x'^2 + (b')y'^2 + (c')x' + (d')y' + F
-    where a' = quadratic coefficient along x'
+
+    where::
+
+          a' = quadratic coefficient along x'
           b' = quadratic coefficient along y'
           c' = slope along x'
           d' = slope along y'
 
-    https://courses.lumenlearning.com/ivytech-collegealgebra/chapter/
-    writing-equations-of-rotated-conics-in-standard-form/
+    https://courses.lumenlearning.com/ivytech-collegealgebra/chapter/writing-equations-of-rotated-conics-in-standard-form/
 
     Parameters
     ----------
-    coefficients : `numpy.ndarray`
-        Coefficients output from fit_quadric_surface()
+    coefficients : `numpy.ndarray`_
+        Coefficients output from :func:`~roz.utils.fit_quadric_surface`
 
     Returns
     -------
-    `dict`
+    dict
         Dictionary of human-readable quantities
     """
     # Parse the coefficients from the quadric surface into standard form
@@ -845,7 +862,7 @@ def compute_human_readable_surface(coefficients):
 
 
 def compute_flatness(human, shape, stddev):
-    """compute_flatness Compute "flatness" statistics
+    """Compute "flatness" statistics
 
     This function computes a pair of "flatness" statistics for calibration
     frames.  These are used as both a measure in themselves and as a marker
@@ -859,6 +876,9 @@ def compute_flatness(human, shape, stddev):
 
     For each of the linear (plane) and quadratic portions of the quadric
     surface fit, the flatness statistic is computed as:
+
+    .. code-block ::
+
         flatness = (smaller dimension, pix) / (change scale, pix per ADU) /
                    (standard deviation, ADU)
 
@@ -870,20 +890,20 @@ def compute_flatness(human, shape, stddev):
 
     Parameters
     ----------
-    human : `dict`
+    human : dict
         Dictionary of human-readable quantities from
-        compute_human_readable_surface()
-    shape : `int`,`int`
+        :func:`~roz.utils/compute_human_readable_surface`
+    shape : tuple
         Tuple of frame sizes (nx, ny)
-    stddev : `float`
+    stddev : float
         Standard deviation of the "crop" section of the frame, used as a scale
         aganist which the tilt or curvature nonflatness is measured.
 
     Returns
     -------
-    lin_flat : `float`
+    lin_flat : float
         Linear flatness statistic
-    quad_flat : `float`
+    quad_flat : float
         Quadratic flatness statistic
     """
     # Frame minimum dimension
