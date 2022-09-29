@@ -18,6 +18,9 @@ also be produced by the Grafana interface with the InfluxDB database that will
 house the actual data from Roz.
 
 This module primarily trades in... hope?
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -35,9 +38,11 @@ from roz import utils
 
 
 def plot_lmi_bias_temp(bias_values, temp_values, binning=None):
-    """plot_lmi_bias_temp [summary]
+    """Plot the LMI bias level versus temperature
 
-    [extended_summary]
+    .. TODO::
+        Make this function actually do something.
+
     """
     # Set up the plot environment
     _, axis = plt.subplots()
@@ -60,28 +65,28 @@ def plot_lmi_bias_temp(bias_values, temp_values, binning=None):
 
 
 def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=False):
-    """make_png_thumbnail Make PNG thumbnails of calibration frames
+    """Make PNG thumbnails of calibration frames
 
     These thumbnails will be uploaded to the Confluence page and will be
     linked to from the table created in Roz and uploaded.
 
     Parameters
     ----------
-    img_fn : `str` or `pathlib.Path`
+    img_fn : :obj:`str` or :obj:`pathlib.Path`
         The filename or path to the image for which a PNG will be created.
-    inst_flags : `dict`
+    inst_flags : dict
         The instrument flags dictionary.
-    latest : `bool`, optional
-        Label this image as a 'Latest' image rather than a 'Nominal' image.
-        [Default: True]
-    problem : `bool`, optional
-        If True, this overrides the `latest` flag and labels it as a 'Problem'
-    debug : `bool`, optional
-        Pring debugging statements?  [Default: False]
+    latest : bool, optional
+        Label this image as a "Latest" image rather than a "Nominal" image.
+        (Default: True)
+    problem : bool, optional
+        If True, this overrides the ``latest`` flag and labels it as a "Problem"
+    debug : bool, optional
+        Pring debugging statements?  (Default: False)
 
     Returns
     -------
-    `str`
+    str
         The filename (without path) of the PNG created.
     """
     # Read in the image, with error checking
@@ -157,18 +162,21 @@ def get_image_intensity_limits(ccd):
     """get_image_intensity_limits Return appropriate plot intensity limits
 
     Compute appropraite intensity ranges for plotting images based on the
-    FITS header keyword 'OBSTYPE'.
+    FITS header keyword ``OBSTYPE``.
+
+    .. TODO::
+        This function feels like it should be part of a larger Graphics class.
 
     Parameters
     ----------
-    image : `astropy.nddata.CCDData`
+    image : `astropy.nddata.CCDData`_
         The CCDData object for a frame
 
     Returns
     -------
-    `float`, `float`
+    tuple
         The minimum and maximum values in the data image that correspond to
-        the percentiles assigned by `OBSTYPE`.
+        the percentiles assigned by ``OBSTYPE``.
     """
     # Get the image type from the FITS header, and select the percentile range
     if ccd.header["OBSTYPE"] == "OBJECT":

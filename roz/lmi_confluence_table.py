@@ -14,10 +14,13 @@ This module is part of the Roz package, written at Lowell Observatory.
 
 This module takes the database objects produces elsewhere and prepares updated
 content tables for upload to Confluence.  The only function herein that should
-be called directly is update_filter_characterization().
+be called directly is :func:`update_filter_characterization`.
 
-This module primarily trades in internal databse objects
-(`roz.database_manager.CalibrationDatabase`).
+This module primarily trades in internal databse objects (`i.e.`,
+:class:`~roz.database_manager.CalibrationDatabase`).
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -48,7 +51,7 @@ __all__ = ["update_filter_characterization"]
 def update_filter_characterization(
     database, png_only=False, delete_existing=False, debug=False
 ):
-    """update_filter_characterization Update the Confluence Page
+    """Update the Confluence Page
 
     This routine is the main function in this module, and should be the only
     one called directly.  It updates the Confluence page for LMI Filter
@@ -56,16 +59,16 @@ def update_filter_characterization(
 
     Parameters
     ----------
-    database : `roz.database_manager.CalibrationDatabase`
+    database : :class:`~roz.database_manager.CalibrationDatabase`
         The database of calibration frames
-    png_only : `bool`, optional
+    png_only : bool, optional
         Only update the PNG image and not the countrate/exptime columns
-        [Default: False]
-    delete_existing : `bool`, optional
+        (Default: False)
+    delete_existing : bool, optional
         Delete the existing table on Confluence before upoading the new one?
-        [Defualt: False]  NOTE: Once in production, maybe turn this to True?
-    debug : `bool`, optional
-        Pring debugging statements?  [Default: False]
+        (Defualt: False)  NOTE: Once in production, maybe turn this to True?
+    debug : bool, optional
+        Pring debugging statements?  (Default: False)
     """
     # Silence JohnnyFive's PermissionWarning -- we know, and we don't care
     warnings.simplefilter("ignore", johnnyfive.PermissionWarning)
@@ -141,7 +144,7 @@ def update_filter_characterization(
 def update_lmi_filter_table(
     filename, database, attachment_url, png_only=False, debug=False
 ):
-    """update_lmi_filter_table Update the LMI Filter Information Table
+    """Update the LMI Filter Information Table
 
     Updates (on disk) the HTML table of LMI filter information for upload to
     Confluence.  This table is partially static (basic information about the
@@ -154,22 +157,22 @@ def update_lmi_filter_table(
 
     Parameters
     ----------
-    filename : `string`
+    filename : str
         Local filename of the HTML table to create or update
-    database : `roz.database_manager.CalibrationDatabase`
+    database : :class:`~roz.database_manager.CalibrationDatabase`
         The database of calibration frames
-    attachment_url : `str`
+    attachment_url : str
         The URL for attachments for this page in Confluence.  (Needed for
         creating the proper links within the HTML table.)
-    png_only : `bool`, optional
+    png_only : bool, optional
         Only update the PNG image and not the countrate/exptime columns
-        [Default: False]
-    debug : `bool`, optional
-        Print debugging statements? [Default: False]
+        (Default: False)
+    debug : bool, optional
+        Print debugging statements?  (Default: False)
 
     Returns
     -------
-    `list`
+    list
         List of PNG filenames created for this run.
     - on disk -
         Updates the HTML table stored in the data/ directory
@@ -199,42 +202,43 @@ def update_lmi_filter_table(
 def modify_lmi_dynamic_table(
     lmi_filt, database, attachment_url, png_only=False, debug=False
 ):
-    """modify_lmi_dynamic_table Modify the dynamic portions of the table
+    """Modify the dynamic portions of the table
 
     Read in, modify, then write out the dynamic portion of the HTML table, and
     finally join with the static postion of the table (from the XML file)
     before returning.  This function modifies the dynamic portion of the table
-    with information contained in the `database`.
+    with information contained in the ``database``.
 
     This function checks whether the countrates are within a reasonable level
     before adjusting the countrate or exptime columns.
 
     Before returning, the function joins the dynamic table with the static
-    portion though use of the `astropy.table.join(join_type="left")` function.
-    This ensures that the HTML table produced and the saved `dyntable` will
+    portion though use of the ``astropy.table.join(join_type="left")`` function.
+    This ensures that the HTML table produced and the saved ``dyntable`` will
     always habve the same rows as the current lmi_filter_table.[xml,ecsv] file.
 
-    NOTE: If there are changes to the LMI filter complement that need to be
-          reflected in the HTML table, those changes must be made to BOTH the
-          ECSV and XML tables.
+    .. note::
+        If there are changes to the LMI filter complement that need to be
+        reflected in the HTML table, those changes must be made to BOTH the
+        ECSV and XML tables.
 
     Parameters
     ----------
-    lmi_filt : `astropy.table.Table`
+    lmi_filt : `astropy.table.Table`_
         The AstroPy Table representation of the static portions of the LMI
         Filter Information table
-    database : `roz.database_manager.CalibrationDatabase`
+    database : :class:`~roz.database_manager.CalibrationDatabase`
         The database of calibration frames
-    attachment_url : `str`
+    attachment_url : =str
         The URL for attachments for this page in Confluence.
-    debug : `bool`, optional
-        Print debugging statements? [Default: False]
+    debug : bool, optional
+        Print debugging statements? (Default: False)
 
     Returns
     -------
-    lmi_filt : `astropy.table.Table`
+    lmi_filt : `astropy.table.Table`_
         The dynamically augmented LMI Filter Information Table
-    png_fn : `list`
+    png_fn : list
         List of the PNG filenames created during this run
     """
     # Read in the dynamic-portion FITS table, if extant
@@ -375,25 +379,25 @@ def modify_lmi_dynamic_table(
 
 # Utility Functions (Alphabetical) ===========================================#
 def add_html_section_header(soup, ncols, text, extra=""):
-    """add_html_section_header Construct Section Headings for the HTML Table
+    """Construct Section Headings for the HTML Table
 
     This is a bunch of BeautifulSoup tag stuff needed to make the section
     headings in the HTML table.  This function is purely a DRY block.
 
     Parameters
     ----------
-    soup : `bs4.BeautifulSoup`
+    soup : :obj:`bs4.BeautifulSoup`
         The BeautifulSoup parsed-HTML object
-    ncols : `int`
+    ncols : int
         Number of columns in the HTML table, needed for spanning
-    text : `str`
+    text : str
         The bold/underlined text for the header
-    extra : `str`, optional
+    extra : str, optional
         Regular text to appear after the bold/underlined text [Default: '']
 
     Returns
     -------
-    `bs4.element.Tag`
+    :obj:`bs4.element.Tag`
         The newly tagged row for insertion into the HTML table
     """
     # Create the new row tag, and everything that goes inside it
@@ -425,12 +429,12 @@ def check_lamp_countrates(table):
 
     Parameters
     ----------
-    table : `astropy.table.Table`
+    table : `astropy.table.Table`_
         Validated table of frames for this filter
 
     Returns
     -------
-    `np.ndarray`
+    `numpy.ndarray`_
         Boolean array indicating whether the count rate for this filter is
         appropriate (i.e., was the correct lamp used?).
     """
@@ -468,17 +472,17 @@ def construct_lmi_html_table(
 
     Parameters
     ----------
-    lmi_filt : `astropy.table.Table`
+    lmi_filt : `astropy.table.Table`_
         The LMI Filter Information table
-    section_head : `astropy.table.Table`
+    section_head : `astropy.table.Table`_
         The section headings for the HTML table
-    filename : `str`
+    filename : str
         The filename for the HTML table
-    link_text : `str`, optional
+    link_text : str, optional
         What the link text should say in the HTML document for PNG URLs.
-        [Default: 'Click Here']
-    debug : `bool`, optional
-        Print debugging statements? [Default: False]
+        (Default: "Click Here")
+    debug : bool, optional
+        Print debugging statements?  (Default: False)
     """
     # Count the number of columns for use with the HTML table stuff below
     ncols = len(lmi_filt.colnames)
@@ -526,7 +530,7 @@ def construct_lmi_html_table(
 
 
 def load_lmi_static_table(table_type="ecsv"):
-    """read_lmi_static_table Create the static portions of the LMI Filter Table
+    """Create / Load the static portions of the LMI Filter Table
 
     This function reads in the information for the static portion of the
     LMI Filter Table, including the section headers (and locations).
@@ -536,16 +540,16 @@ def load_lmi_static_table(table_type="ecsv"):
 
     Parameters
     ----------
-    table_type : `str`, optional
-        Type of table containing the data to be read in.  Choices are `ecsv`
-        for the ECSV YAML-based AstroPy Table version, or `xml` for the
-        XML-based VOTABLE protocol.  [Default: ecsv]
+    table_type : str, optional
+        Type of table containing the data to be read in.  Choices are ``ecsv``
+        for the ECSV YAML-based AstroPy Table version, or ``xml`` for the
+        XML-based VOTABLE protocol.  (Default: ``ecsv``)
 
     Returns
     -------
-    filter_table : `astropy.table.Table`
+    filter_table : `astropy.table.Table`_
         The basic portions of the AstroPy table for LMI Filter Information
-    section_head : `astropy.table.Table`
+    section_head : `astropy.table.Table`_
         The section headings for the HTML table
     """
     if table_type == "xml":
@@ -568,7 +572,7 @@ def load_lmi_static_table(table_type="ecsv"):
 
 
 def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
-    """wrap_plaintext_links Wrap bare URLs into hyperlinks
+    """Wrap bare URLs into hyperlinks
 
     Finds all elements in the parsed HTML file that are bare URLs, and
     converts them into hyperlinks with some bland link text like "Clik Here".
@@ -577,13 +581,13 @@ def wrap_plaintext_links(bs_tag, soup, link_text="Click Here"):
 
     Parameters
     ----------
-    bs_tag : `bs4.BeautifulSoup` or `bs4.element.Tag`
+    bs_tag : :obj:`bs4.BeautifulSoup` or :obj:`bs4.element.Tag`
         A BeautifulSoup object.
-    soup : `bs4.BeautifulSoup`
+    soup : :obj:`bs4.BeautifulSoup`
         The top-level BeautifulSoup object, needed for the recursive execution.
-    link_text : `str`, optional
+    link_text : str, optional
         What the link text should say in the HTML document.
-        [Default: 'Click Here']
+        (Default: "Click Here")
     """
     # The try/except catches bs_tag items that don't have children
     try:

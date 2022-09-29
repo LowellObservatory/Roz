@@ -19,6 +19,9 @@ If problems are found at any point in the code base, alerts are issued via
 email/slack for humans to check on.
 
 This module primarily trades in... not quite sure yet.
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
