@@ -247,10 +247,11 @@ def perform_calibration_validation(
 
     # Remove duplicative quadric surface metrics from the validation
     removal = ["qs_zpt"]
-    # Remove patently helpful quadric surface metrics from the validation
-    removal += ["qs_maj", "qs_bma", "qs_open", "qs_rot"]
+    # Remove patently unhelpful quadric surface metrics from the validation
+    removal += ["qs_open", "qs_rot"]
+    # removal += ["qs_maj", "qs_bma"]
     # Remove false-positive quadric surface metrics from the validation
-    removal += ["qs_min", "qs_bmi", "lin_flat", "quad_flat"]
+    # removal += ["qs_min", "qs_bmi", "lin_flat", "quad_flat"]
     for remove in removal:
         metrics.remove(remove)
 

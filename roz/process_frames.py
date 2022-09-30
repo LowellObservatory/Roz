@@ -240,7 +240,7 @@ class CalibContainer(_ContainerBase):
 
             # Statistics, statistics, statistics!!!!
             quadsurf, coord_arrays = utils.fit_quadric_surface(
-                data, coord_arrays, fit_quad=False
+                data, coord_arrays, fit_quad=True
             )
             metadata.append(base_metadata_dict(hdr, data, quadsurf))
 
@@ -392,7 +392,7 @@ class CalibContainer(_ContainerBase):
 
             # Statistics!  Pass only the DATA portion of the CCDData object
             quadsurf, coord_arrays = utils.fit_quadric_surface(
-                count_rate.data, coord_arrays, fit_quad=False
+                count_rate.data, coord_arrays, fit_quad=True
             )
             metadict = base_metadata_dict(hdr, count_rate.data, quadsurf)
 
