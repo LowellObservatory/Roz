@@ -8,21 +8,24 @@
 #
 #  @author: tbowers
 
-"""Process the Frames for 1 Night for specified instrument
+"""Process the Frames for One Night for specified instrument
 
 This module is part of the Roz package, written at Lowell Observatory.
 
 This module takes the gathered calibration/science frames from a night (as
-collected by roz.gather_frames) and performs basic data processing (bias &
+collected by :obj:`~roz.gather_frames`) and performs basic data processing (bias &
 overscan subtraction) before gathering statistics.  The statistics are then
-stuffed into a database object (from roz.database_manager) for later use.
+stuffed into a database object (from :obj:`~roz.database_manager`) for later use.
 
-Both Calibration and Science processing classes are included in this module.
+Classes for Calibration, Science, and AllSky frames are included in this module.
 
-This module primarily trades in AstroPy Table objects (`astropy.table.Table`)
-and CCDPROC Image File Collections (`ccdproc.ImageFileCollection`), along with
-the odd AstroPy CCDData object (`astropy.nddata.CCDData`) and basic python
-dictionaries (`dict`).
+This module primarily trades in AstroPy Table objects (`astropy.table.Table`_)
+and CCDPROC Image File Collections (`ccdproc.ImageFileCollection`_), along with
+the odd AstroPy CCDData object (`astropy.nddata.CCDData`_) and basic python
+dictionaries (:obj:`dict`).
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -41,6 +44,9 @@ from roz import gather_frames
 from roz import msgs
 from roz import utils
 
+# Set API Components
+__all__ = ["CalibContainer", "ScienceContainer", "AllSkyContainer"]
+
 # Silence Superflous AstroPy FITS Header Warnings
 warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
 
@@ -50,14 +56,15 @@ class _ContainerBase:
 
     Parameters
     ----------
-    directory : `pathlib.Path`
+    directory : :obj:`pathlib.Path`
         Processing directory
-    inst_flags : `dict`
-        Dictionary of instrument flags from utils.set_instrument_flags()
-    debug : `bool`, optional
-        Print debugging statements? [Default: True]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    inst_flags : dict
+        Dictionary of instrument flags from
+        :func:`~roz.gather_frames.Dumbwaiter.set_instrument_flags()`
+    debug : bool, optional
+        Print debugging statements? (Default: True)
+    mem_limit : float, optional
+        Memory limit for the image combination routine (Default: 8.192e9 bytes)
     """
 
     def __init__(
@@ -85,16 +92,16 @@ class _ContainerBase:
 
         Parameters
         ----------
-        frametype : `str`
+        frametype : str
             Frametype to pull from the frame_dict
-        ccd_bin : `str`
+        ccd_bin : str
             The binning to use for this routine
-        amp_config : `str`
+        amp_config : str
             The amplifier ID(s) to use for this routine
 
         Returns
         -------
-        `ccdproc.ImageFileCollection`
+        `ccdproc.ImageFileCollection`_
             Filtered ImageFileCollection, ready for processing
 
         """
@@ -122,14 +129,15 @@ class _ContainerBase:
 
         Returns
         -------
-        `list` of `tuple`
-            List of unique detector configurations, expressed as (ccd_bin, amp_id)
+        list
+            List of unique detector configurations, expressed as tuples of
+            ``(ccd_bin, amp_id)``
         """
         configs = []
         for ccd_bin in self.frame_dict.get("bin_list", ["1x1"]):
             amplist = [
                 utils.parse_lois_ampids(hdr)
-                for hdr in self.frame_dict["allcal_cl"].headers(ccdsum=ccd_bin)
+                for hdr in self.frame_dict["calibration_cl"].headers(ccdsum=ccd_bin)
             ]
             # Sorted list set to keep it identical between runs
             for amp in sorted(list(set(amplist))):
@@ -137,9 +145,7 @@ class _ContainerBase:
         return configs
 
     def reset_config(self):
-        """reset_config _summary_
-
-        Reset the configuration-specific attributes as None
+        """Reset the configuration-specific attributes to ``None``
 
         Loop through the instance attributes, and set all those ending in
         "_meta" or "_frame" to None.
@@ -147,6 +153,129 @@ class _ContainerBase:
         for attr in dir(self):
             if attr.endswith("_meta") or attr.endswith("_frame"):
                 setattr(self, attr, None)
+
+    # General Helper Functions -- Static Methods =============================#
+    @staticmethod
+    def base_metadata_dict(hdr, data, quadsurf, crop=100):
+        """Create the basic metadata dictionary
+
+        [extended_summary]
+
+        Parameters
+        ----------
+        hdr : `astropy.io.fits.Header`_
+            FITS header for this frame
+        data : `numpy.ndarray`_
+            FITS image data for this frame -- NOT `astropy.nddata.CCDData`_
+        crop : int, optional
+            Size of the border around the edge of the frame to crop off
+            (Default: 100)
+
+        Returns
+        -------
+        dict
+            The base metadata dictionary
+        """
+        # Make things easier by creating a slice for cropping
+        allslice = np.s_[:, :]
+        cropslice = np.s_[crop:-crop, crop:-crop]
+        human_readable = utils.compute_human_readable_surface(quadsurf)
+        human_readable.pop("typ")
+        shape = (hdr["naxis1"], hdr["naxis2"])
+
+        # TODO: Add error checking here to keep InfluxDB happy -- Maybe this is enough?
+        metadict = {
+            "dateobs": f"{hdr['DATE-OBS'].strip()}",
+            "instrument": f"{hdr['INSTRUME'].strip()}",
+            "frametype": f"{hdr['OBSTYPE'].strip()}",
+            "obserno": int(hdr["OBSERNO"]),
+            "filename": f"{hdr['SHORT_FN'].strip()}",
+            "binning": "x".join(hdr["CCDSUM"].split()),
+            "filter": f"{hdr['FILTERS'].strip()}",
+            "numamp": int(hdr["NUMAMP"]),
+            "ampid": utils.parse_lois_ampids(hdr),
+            "exptime": float(hdr["EXPTIME"]),
+            "mnttemp": float(hdr["MNTTEMP"]),
+            "tempamb": float(hdr["TEMPAMB"]),
+            "cropsize": int(crop),
+        }
+        # Use the np.nan[stat] functions in case of upstream NaN's.
+        for name, the_slice in zip(["frame", "crop"], [allslice, cropslice]):
+            metadict[f"{name}_avg"] = np.nanmean(data[the_slice])
+            metadict[f"{name}_med"] = np.nanmedian(data[the_slice])
+            metadict[f"{name}_std"] = np.nanstd(data[the_slice])
+        for key, val in human_readable.items():
+            metadict[f"qs_{key}"] = val
+        lin_flat, quad_flat = utils.compute_flatness(
+            human_readable, shape, metadict["crop_std"]
+        )
+        metadict["lin_flat"] = lin_flat
+        metadict["quad_flat"] = quad_flat
+
+        # Return!
+        return metadict
+
+    @staticmethod
+    def load_saved_bias(instrument, config):
+        """Load a saved (canned) bias frame
+
+        In the event that a data set does not contain a concomitant bias frame(s),
+        load in a saved (canned) frame for use with processing the flat frames.
+
+        Parameters
+        ----------
+        instrument : str
+            Instrument name from :obj:`instrument_flags()`
+        config : tuple
+            (Instrument binning from CCDSUM, AMPIDs)
+
+        Returns
+        -------
+        `astropy.nddata.CCDData`_
+            The (canned) combined, overscan-subtracted bias frame
+            If no saved bias exists, return ``None``
+        """
+        # Split out the tuple
+        ccd_bin, amp_id = config
+
+        # Build bias filename
+        fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+
+        # If the proper filename exists, read it in and return
+        if utils.Paths.data.joinpath(fname).is_file():
+            msgs.info(f"Reading in saved file {fname}...")
+            return astropy.nddata.CCDData.read(utils.Paths.data.joinpath(fname))
+
+        # If nothing exists, print a warning and return None
+        msgs.warn(
+            f"Saved BIAS not found for {instrument.upper()} with "
+            f"{ccd_bin.replace(' ','x')} binning and amplifer "
+            f"{amp_id}.{msgs.newline()}Skipping bias subraction!"
+        )
+        return None
+
+    @staticmethod
+    def write_saved_bias(ccd, instrument, config):
+        """Write a saved (canned) bias frame
+
+        Write a bias frame to disk for use with other nights' data that has
+        no bias.
+
+        Parameters
+        ----------
+        ccd : `astropy.nddata.CCDData`_
+            The (canned) combined, overscan-subtracted bias frame to write
+        instrument : str
+            Instrument name from instrument_flags()
+        config : tuple
+            (Instrument binning from CCDSUM, AMPIDs)
+        """
+        # Split out the tuple
+        ccd_bin, amp_id = config
+
+        # Build bias filename
+        fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+        ccd.write(utils.Paths.data.joinpath(fname), overwrite=True)
 
 
 class CalibContainer(_ContainerBase):
@@ -159,14 +288,15 @@ class CalibContainer(_ContainerBase):
 
     Parameters
     ----------
-    directory : `pathlib.Path`
+    directory : :obj:`pathlib.Path`
         Processing directory
-    inst_flags : `dict`
-        Dictionary of instrument flags from utils.set_instrument_flags()
-    debug : `bool`, optional
-        Print debugging statements? [Default: True]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    inst_flags : dict
+        Dictionary of instrument flags from
+        :func:`~roz.gather_frames.Dumbwaiter.set_instrument_flags()`
+    debug : bool, optional
+        Print debugging statements? (Default: True)
+    mem_limit : float, optional
+        Memory limit for the image combination routine (Default: 8.192e9 bytes)
     """
 
     def __init__(
@@ -177,7 +307,9 @@ class CalibContainer(_ContainerBase):
         super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
-        self.frame_dict = gather_frames.gather_cal_frames(self.directory, self.flags)
+        self.frame_dict = gather_frames.gather_calibration_frames(
+            self.directory, self.flags
+        )
 
         # Set up the various calibration output attritubes
         self.bias_meta = None
@@ -194,18 +326,18 @@ class CalibContainer(_ContainerBase):
 
         Parameters
         ----------
-        ccd_bin : `str`, optional
-            Binning of the CCD -- must be specified by the caller [Default: None]
-        combine_method : `str`, optional
-            Combination method to pass to `ccdp.combine()`  [Default: average]
+        ccd_bin : str, optional
+            Binning of the CCD -- must be specified by the caller (Default: None)
+        combine_method : str, optional
+            Combination method to pass to `ccdproc.combine`_  (Default: average)
 
         Returns
         -------
-        `astropy.table.Table`
+        `astropy.table.Table`_
             A table containing information about the bias frames for analysis
-        `astropy.nddata.CCDData` or `NoneType`
+        `astropy.nddata.CCDData`_ or NoneType
             The combined, overscan-subtracted bias frame (if
-            `produce_combined == True` else None)
+            ``produce_combined == True`` else None)
         """
         # Parse instance attributes into expected variables
         bias_cl = self._check_ifc("bias_cl", config)
@@ -242,7 +374,7 @@ class CalibContainer(_ContainerBase):
             quadsurf, coord_arrays = utils.fit_quadric_surface(
                 data, coord_arrays, fit_quad=True
             )
-            metadata.append(base_metadata_dict(hdr, data, quadsurf))
+            metadata.append(self.base_metadata_dict(hdr, data, quadsurf))
 
             # Fit the overscan section, subtract it, then trim the image
             ccd = utils.wrap_trim_oscan(ccd)
@@ -295,8 +427,10 @@ class CalibContainer(_ContainerBase):
     def process_dark(self, config, combine_method="average"):
         """Process and combine available dark frames
 
-        NOTE: Not yet implemented -- Boilerplate below is from process_bias
-            tqdm color should be "#736d67"
+        .. note::
+            Not yet implemented -- Boilerplate below is from process_bias
+
+            ``tqdm`` color should be ``#736d67``
         """
         # Parse instance attributes into expected variables
         dark_cl = self._check_ifc("dark_cl", config)
@@ -336,12 +470,12 @@ class CalibContainer(_ContainerBase):
 
         Parameters
         ----------
-        ccd_bin : `str`, optional
-            The binning to use for this routine [Default: None]
+        ccd_bin : str, optional
+            The binning to use for this routine (Default: None)
 
         Returns
         -------
-        `astropy.table.Table`
+        `astropy.table.Table`_
             The table of relevant metadata and statistics for each frame
         """
         # Check for existance of flats with this binning, else retun empty Table()
@@ -352,10 +486,10 @@ class CalibContainer(_ContainerBase):
         # Check for actual bias frame, else make something up
         if not self.bias_frame:
             msgs.info("No bias frame(s) for this config; loading saved BIAS...")
-            self.bias_frame = load_saved_bias(self.flags["instrument"], config)
+            self.bias_frame = self.load_saved_bias(self.flags["instrument"], config)
         else:
             # Write this bias to disk for future use
-            write_saved_bias(self.bias_frame, self.flags["instrument"], config)
+            self.write_saved_bias(self.bias_frame, self.flags["instrument"], config)
 
         if self.debug:
             msgs.info("Processing dome flat frames...")
@@ -394,7 +528,7 @@ class CalibContainer(_ContainerBase):
             quadsurf, coord_arrays = utils.fit_quadric_surface(
                 count_rate.data, coord_arrays, fit_quad=True
             )
-            metadict = base_metadata_dict(hdr, count_rate.data, quadsurf)
+            metadict = self.base_metadata_dict(hdr, count_rate.data, quadsurf)
 
             # Additional fields for flats: Stuff that can block the light path
             #  Do type-forcing to make InfluxDB happy
@@ -418,8 +552,10 @@ class CalibContainer(_ContainerBase):
     def process_skyflat(self, config):
         """Process the sky flat fields and return statistics
 
-        NOTE: Not yet implemented --
-            tqdm color should be "#d8c3e1" (skybluepink)
+        .. note::
+            Not yet implemented -- Boilerplate below is from process_bias
+
+            ``tqdm`` color should be ``#d8c3e1`` (skybluepink)
         """
         _, _ = config
         self.skyf_meta = astropy.table.Table()
@@ -435,14 +571,15 @@ class ScienceContainer(_ContainerBase):
 
     Parameters
     ----------
-    directory : `pathlib.Path`
+    directory : :obj:`pathlib.Path`
         Processing directory
-    inst_flags : `dict`
-        Dictionary of instrument flags from utils.set_instrument_flags()
-    debug : `bool`, optional
-        Print debugging statements? [Default: True]
-    mem_limit : `float`, optional
-        Memory limit for the image combination routine [Default: 8.192e9 bytes]
+    inst_flags : dict
+        Dictionary of instrument flags from
+        :func:`~roz.gather_frames.Dumbwaiter.set_instrument_flags()`
+    debug : bool, optional
+        Print debugging statements? (Default: True)
+    mem_limit : float, optional
+        Memory limit for the image combination routine (Default: 8.192e9 bytes)
     """
 
     def __init__(
@@ -453,12 +590,12 @@ class ScienceContainer(_ContainerBase):
         super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
-        self.frame_dict = gather_frames.gather_other_frames(
+        self.frame_dict = gather_frames.gather_science_frames(
             thing1=self.directory, thing2=self.flags
         )
 
     def process_science(self, ccd_bin):
-        """process_science _summary_
+        """Process the science frames
 
         _extended_summary_
 
@@ -471,7 +608,7 @@ class ScienceContainer(_ContainerBase):
             print(ccd_bin)
 
     def process_standard(self, ccd_bin):
-        """process_standard _summary_
+        """Process the photometric standard frames
 
         _extended_summary_
 
@@ -484,125 +621,47 @@ class ScienceContainer(_ContainerBase):
             print(ccd_bin)
 
 
-# Helper Functions (Alphabetical) ============================================#
-def base_metadata_dict(hdr, data, quadsurf, crop=100):
-    """base_metadata_dict Create the basic metadata dictionary
+class AllSkyContainer(_ContainerBase):
+    """Class for containing and processing All-Sky Camera frames
 
-    [extended_summary]
-
-    Parameters
-    ----------
-    hdr : `astropy.io.fits.Header`
-        FITS header for this frame
-    data : `numpy.ndarray`
-        FITS image data for this frame -- NOT `astropy.nddata.CCDData`
-    crop : `int`, optional
-        Size of the border around the edge of the frame to crop off
-        [Default: 100]
-
-    Returns
-    -------
-    `dict`
-        The base metadata dictionary
-    """
-    # Make things easier by creating a slice for cropping
-    allslice = np.s_[:, :]
-    cropslice = np.s_[crop:-crop, crop:-crop]
-    human_readable = utils.compute_human_readable_surface(quadsurf)
-    human_readable.pop("typ")
-    shape = (hdr["naxis1"], hdr["naxis2"])
-
-    # TODO: Add error checking here to keep InfluxDB happy -- Maybe this is enough?
-    metadict = {
-        "dateobs": f"{hdr['DATE-OBS'].strip()}",
-        "instrument": f"{hdr['INSTRUME'].strip()}",
-        "frametype": f"{hdr['OBSTYPE'].strip()}",
-        "obserno": int(hdr["OBSERNO"]),
-        "filename": f"{hdr['SHORT_FN'].strip()}",
-        "binning": "x".join(hdr["CCDSUM"].split()),
-        "filter": f"{hdr['FILTERS'].strip()}",
-        "numamp": int(hdr["NUMAMP"]),
-        "ampid": utils.parse_lois_ampids(hdr),
-        "exptime": float(hdr["EXPTIME"]),
-        "mnttemp": float(hdr["MNTTEMP"]),
-        "tempamb": float(hdr["TEMPAMB"]),
-        "cropsize": int(crop),
-    }
-    # Use the np.nan[stat] functions in case of upstream NaN's.
-    for name, the_slice in zip(["frame", "crop"], [allslice, cropslice]):
-        metadict[f"{name}_avg"] = np.nanmean(data[the_slice])
-        metadict[f"{name}_med"] = np.nanmedian(data[the_slice])
-        metadict[f"{name}_std"] = np.nanstd(data[the_slice])
-    for key, val in human_readable.items():
-        metadict[f"qs_{key}"] = val
-    lin_flat, quad_flat = utils.compute_flatness(
-        human_readable, shape, metadict["crop_std"]
-    )
-    metadict["lin_flat"] = lin_flat
-    metadict["quad_flat"] = quad_flat
-
-    # Return!
-    return metadict
-
-
-# Read / Write Archived Frames ===============================================#
-def load_saved_bias(instrument, config):
-    """load_saved_bias Load a saved (canned) bias frame
-
-    In the event that a data set does not contain a concomitant bias frame(s),
-    load in a saved (canned) frame for use with processing the flat frames.
+    This container holds the gathered all-sky frames in the processing
+    directory, as well as the necessary processing routines.  The class holds
+    the general information needed by all processing methods.
 
     Parameters
     ----------
-    instrument : `str`
-        Instrument name from instrument_flags()
-    config : `tuple`
-        (Instrument binning from CCDSUM, AMPIDs)
-
-    Returns
-    -------
-    `astropy.nddata.CCDData`
-        The (canned) combined, overscan-subtracted bias frame
-        If no saved bias exists, return `None`
+    directory : :obj:`pathlib.Path`
+        Processing directory
+    inst_flags : dict
+        Dictionary of instrument flags from
+        :func:`~roz.gather_frames.Dumbwaiter.set_instrument_flags()`
+    debug : bool, optional
+        Print debugging statements? (Default: True)
+    mem_limit : float, optional
+        Memory limit for the image combination routine (Default: 8.192e9 bytes)
     """
-    # Split out the tuple
-    ccd_bin, amp_id = config
 
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
 
-    # If the proper filename exists, read it in and return
-    if utils.Paths.data.joinpath(fname).is_file():
-        msgs.info(f"Reading in saved file {fname}...")
-        return astropy.nddata.CCDData.read(utils.Paths.data.joinpath(fname))
+        # Get the frame dictionary to be used
+        self.frame_dict = gather_frames.gather_allsky_frames(
+            thing1=self.directory, thing2=self.flags
+        )
 
-    # If nothing exists, print a warning and return None
-    msgs.warn(
-        f"Saved BIAS not found for {instrument.upper()} with "
-        f"{ccd_bin.replace(' ','x')} binning and amplifer "
-        f"{amp_id}.{msgs.newline()}Skipping bias subraction!"
-    )
-    return None
+    def process_allsky(self, ccd_bin):
+        """Process the All-Sky Camera frames
 
+        _extended_summary_
 
-def write_saved_bias(ccd, instrument, config):
-    """write_saved_bias Write a saved (canned) bias frame
-
-    Write a bias frame to disk for use with other nights' data that has
-    no bias.
-
-    Parameters
-    ----------
-    ccd : `astropy.nddata.CCDData`
-        The (canned) combined, overscan-subtracted bias frame to write
-    instrument : `str`
-        Instrument name from instrument_flags()
-    config : `tuple`
-        (Instrument binning from CCDSUM, AMPIDs)
-    """
-    # Split out the tuple
-    ccd_bin, amp_id = config
-
-    # Build bias filename
-    fname = f"bias_{instrument.lower()}_{ccd_bin.replace(' ','x')}_{amp_id}.fits"
-    ccd.write(utils.Paths.data.joinpath(fname), overwrite=True)
+        Parameters
+        ----------
+        ccd_bin : _type_
+            _description_
+        """
+        if self.debug:
+            print(ccd_bin)

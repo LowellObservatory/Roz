@@ -8,7 +8,7 @@
 #
 #  @author: tbowers
 
-"""Validate the statistics for 1 night against accumulated Historical Data
+"""Validate the statistics for one night against accumulated Historical Data
 
 This module is part of the Roz package, written at Lowell Observatory.
 
@@ -18,9 +18,12 @@ module has the dual purpose of comparing the new frames with the historical
 corpus and adding that information to both the database object and outgoing
 alerts.
 
-This module primarily trades in AstroPy Table objects (`astropy.table.Table`)
-and the internal database objects (`roz.database_manager.HistoricalData` and
-`roz.database_manager.CalibrationDatabase`).
+This module primarily trades in AstroPy Table objects (`astropy.table.Table`_)
+and the internal database objects (:class:`~roz.database_manager.HistoricalData`
+and :class:`~roz.database_manager.CalibrationDatabase`).
+
+.. include common links, assuming primary doc root is up one directory
+.. include:: ../include/links.rst
 """
 
 # Built-In Libraries
@@ -37,47 +40,47 @@ from roz import msgs
 def validate_calibration_metadata(
     table_dict, filt_list=None, sigma_thresh=3.0, scheme="simple", **kwargs
 ):
-    """validate_metadata_tables Analyze and validate calibration metadata tables
+    """Analyze and validate calibration metadata tables
 
     For all Tables that contain information, the metadata tables and report
     dictionaries are constructed the same regardless of frametype.
 
-    The validated metadata tables are constructed thuswise:
+    The validated metadata tables are constructed thuswise::
+
         [frame_type][filter][augmented_meta]
 
-    The report dictionaries are constructed thuswise:
+    The report dictionaries are constructed thuswise::
+
         [frame_type][filter][frame_collection][frame_info]
 
     This function forms the narrative structure of the validation with the
     heavy lifting reserved for a helper function
-    `perform_calibration_validation()`.
+    :func:`perform_calibration_validation`.
 
     Parameters
     ----------
-    table_dict : `dict`
+    table_dict : dict
         Dictionary containing the metadata tables, with keys being the
         different types of frames to consider (e.g., 'bias', 'flat', etc.)
-    sigma_thresh : `float`, optional
+    sigma_thresh : float, optional
         The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
-    scheme : `str`, optional
-        The validation scheme to be used  [Default: simple]
-
-    ---- Various debugging keyword arguments (to be removed later)
-    no_prob : `bool`, optional
-        Only use metrics not marked as "problem" by previous validation
-        [Default: True]
-    all_time : `bool`, optional
-        For validation of current frames, compare against all matches,
-        regardless of the timestamp [Default: False]
+        'problematic'  (Default: 3.0)
+    scheme : str, optional
+        The validation scheme to be used  (Default: "simple")
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
 
     Returns
     -------
-    validated_metadata : `dict`
+    validated_metadata : dict
         Validated metadata tables, as desciebed above
-    validation_report : `dict`
+    validation_report : dict
         Validation report dictionary, as described above
-    scheme_str : `str`
+    scheme_str : str
         The string to be printed in the Problem Report about the
         validation scheme
     """
@@ -138,48 +141,51 @@ def perform_calibration_validation(
     sigma_thresh=3.0,
     **kwargs,
 ):
-    """perform_validation Perform the validation on this frametype
+    """Perform the validation on this frametype
 
     This function is the heart of the validation scheme, doing the actual
     comparison with historical data.  This function was pulled out separate
-    to keep the calling function, validate_calibration_metadata(), cleaner
+    to keep the calling function, :func:`validate_calibration_metadata`, cleaner
     and easier to read.
 
-    Currently, the scheme='simple' validation consists of finding whether all
-    the measured statistics fall within `sigma_thresh` sigma of the population
+    Currently, the ``scheme="simple"`` validation consists of finding whether all
+    the measured statistics fall within ``sigma_thresh`` sigma of the population
     mean, as pulled from the InfluxDB database.
 
     In the future, other validation schemes could be implemented, as desired,
-    based on historical trends or multivariate relationships (e.g., the
+    based on historical trends or multivariate relationships (`e.g.`, the
     variation in bias level with mount temperature) or something else entirely.
 
     Parameters
     ----------
-    meta_table : `astropy.table.Table`
+    meta_table : `astropy.table.Table`_
         The metadata table to validate
-    frametype : `str`
+    frametype : str
         Frame type (e.g., `bias`, `dome flat`, etc.)
-    scheme : `str`
+    scheme : str
         The validation scheme to be used
-        [NOTE: only 'simple' and 'none' are supported]
-    filt : `str`, optional
-        Filter used for flats [Default: None]
-    sigma_thresh : `float`, optional
-        The sigma discrepancy threshold for flagging a frame as being
-        'problematic'  [Default: 3.0]
 
-    ---- Various debugging keyword arguments (to be removed later)
-    no_prob : `bool`, optional
-        Only use metrics not marked as "problem" by previous validation
-        [Default: True]
-    all_time : `bool`, optional
-        Get all matches, regardless of the timestamp [Default: False]
+        .. note::
+
+            Only '"simple" and "none" are supported at this time
+
+    filt : str, optional
+        Filter used for flats [Default: None]
+    sigma_thresh : float, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        "problematic"  (Default: 3.0)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  Get all matches, regardless of the timestamp
+        (Default: False)
 
     Returns
     -------
-    meta_table : `astropy.table.Table`
+    meta_table : `astropy.table.Table`_
         The validated metadata table
-    report : `dict`
+    report : dict
         Problem report dictionary
     """
     # Parse KWARGS -- Debugging options that can be removed when in production
@@ -331,49 +337,53 @@ def perform_calibration_validation(
 
 # Science Validation Functions ===============================================#
 def validate_science_metadata(table_dict):
-    """validate_science_metadata  Analyze and validate science metadata tables
+    """Analyze and validate science metadata tables
 
-    NOTE: Not yet implemented
-          Returns whatever it's passed
+    .. note::
+        Not yet implemented; Returns whatever it's passed
     """
     return perform_science_validation(table_dict)
 
 
 def perform_science_validation(meta_table):
-    """perform_validation Perform the validation on this frametype
+    """Perform the validation on this frametype
 
-    NOTE: Not yet implemented
-          Returns whatever it's passed
+    .. note::
+
+        Not yet implemented; Returns whatever it's passed
     """
     return meta_table
 
 
 # Other Functions ============================================================#
 def build_problem_report(report_dict):
-    """build_problem_report Construct the Problem Report
+    """Construct the Problem Report
 
     Parse through the report dictionary to build a string
 
-    TODO: The setup of this problem report is predicated on the SIMPLE
-          validation method.  If additional validation methods are
-          added in the future, this function may need to be modified.
+    .. TODO::
 
-    This is the format of the report dictionary, from `vs.perform_validation()`:
-        Top-level keys: [nightname, flags, binning, frame_reports]
-        Under frame_reports: [bias, flat, (etc.)]
-        Under frame_type: [filters, FILTER1, ...]
-        Under filter: [frametype, filter, status, [FRAME_NNN, ...]]
+        The setup of this problem report is predicated on the SIMPLE
+        validation method.  If additional validation methods are
+        added in the future, this function may need to be modified.
+
+    This is the format of the report dictionary, from
+    :func:`perform_calibration_validation`:
+    * Top-level keys: ``[nightname, flags, binning, frame_reports]``
+    * Under frame_reports: ``[bias, flat, (etc.)]``
+    * Under frame_type: ``[filters, FILTER1, ...]``
+    * Under filter: ``[frametype, filter, status, [FRAME_NNN, ...]]``
 
     Parameters
     ----------
-    report_dict : `dict`
-        The validation report dictionary from `vs.perform_validation()`
+    report_dict : dict
+        The validation report dictionary from :func:`perform_calibration_validation`
 
     Returns
     -------
-    `str` or `None`
+    :obj:`str` or :obj:`None`
         If problems were found in the validation, the Problem Report is returned,
-        otherwise `None`.
+        otherwise ``None``.
     """
     # First, gather info on status:
     status_list = []
