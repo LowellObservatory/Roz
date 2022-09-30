@@ -137,7 +137,7 @@ class _ContainerBase:
         for ccd_bin in self.frame_dict.get("bin_list", ["1x1"]):
             amplist = [
                 utils.parse_lois_ampids(hdr)
-                for hdr in self.frame_dict["allcal_cl"].headers(ccdsum=ccd_bin)
+                for hdr in self.frame_dict["calibration_cl"].headers(ccdsum=ccd_bin)
             ]
             # Sorted list set to keep it identical between runs
             for amp in sorted(list(set(amplist))):
@@ -307,7 +307,9 @@ class CalibContainer(_ContainerBase):
         super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
-        self.frame_dict = gather_frames.gather_cal_frames(self.directory, self.flags)
+        self.frame_dict = gather_frames.gather_calibration_frames(
+            self.directory, self.flags
+        )
 
         # Set up the various calibration output attritubes
         self.bias_meta = None
@@ -588,7 +590,7 @@ class ScienceContainer(_ContainerBase):
         super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
-        self.frame_dict = gather_frames.gather_other_frames(
+        self.frame_dict = gather_frames.gather_science_frames(
             thing1=self.directory, thing2=self.flags
         )
 

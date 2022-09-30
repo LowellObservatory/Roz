@@ -27,6 +27,7 @@ This module primarily trades in... driving?
 
 # Built-In Libraries
 import argparse
+import sys
 
 # 3rd Party Libraries
 
@@ -37,7 +38,6 @@ from roz import database_manager
 from roz import gather_frames
 from roz import msgs
 from roz import process_frames
-from roz import utils
 
 
 # The MAIN Attraction ========================================================#
@@ -60,7 +60,7 @@ def main(
 
     Parameters
     ----------
-    directory : str or :obj:`pathlib.Path` or list, optional
+    directory : :obj:`str` or :obj:`pathlib.Path` or :obj:`list`, optional
         The directory or directories upon which to operate (Default: None)
     do_science : bool, optional
         Also do QA on science frames?  (Default: False)
@@ -84,8 +84,15 @@ def main(
         DEBUG KWARG OPTION.  For validation of current frames, compare against
         all matches, regardless of the timestamp  (Default: False)
     """
+    # Parse input processing arguments into a dict for Dumbwaiter
+    proc_args = {
+        "calibration": not kwargs.get("skip_cals", False),
+        "science": do_science,
+        "allsky": True,
+    }
+
     # Check if the input `directories` is just a string; --> list
-    if isinstance(directories, str):
+    if not isinstance(directories, list):
         directories = [directories]
 
     # Loop through the directories provided
@@ -94,100 +101,42 @@ def main(
         # Give some visual space between directories being processed
         print(f"\n{'-'*30}\n")
 
-        # Call the appropriate Dumbwaiter(s) to sort files and copy them for processing
-        waiters = []
-        if not kwargs.get("skip_cals", False):
-            waiters.append(
-                gather_frames.Dumbwaiter(directory, frameclass="calibration")
-            )
-        if do_science:
-            waiters.append(gather_frames.Dumbwaiter(directory, frameclass="science"))
+        # Load this directory into the dumbwaiter
+        dumbwaiter = gather_frames.Dumbwaiter(directory, proc_args)
 
-        # Loop over appropriate Dumbwaiter(s):
-        for dumbwaiter in waiters:
+        # Loop over the valid frameclasses
+        for frameclass in gather_frames.FRAMECLASSES:
 
-            # If empty, send notification and move along
-            if dumbwaiter.empty:
-                if not kwargs.get("no_slack_empty", False):
-                    alerting.send_alert(
-                        f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
-                        f"does not contain any sequential {dumbwaiter.frameclass} "
-                        "FITS files",
-                        "main_driver.main()",
-                    )
+            # Check if this frameclass is to be processed
+            if frameclass not in dumbwaiter.process_frameclass:
                 continue
 
-            # Copy over the sorted frames to processing, and package for cold storage
-            dumbwaiter.copy_frames_to_processing()
-            dumbwaiter.cold_storage(skip_cold=kwargs.get("no_cold", False))
+            # If empty, send notification and move along
+            if dumbwaiter.empty(frameclass):
+                alerting.send_alert("empty_dir", dumbwaiter, frameclass, **kwargs)
+                continue
 
-            # Set up the Run() class, then Giddy Up!
-            run = Run(
+            # Copy over the sorted frames to processing; package for cold storage
+            dumbwaiter.serve_frames(frameclass)
+            dumbwaiter.cold_storage(frameclass, **kwargs)
+
+            # Call the appropriate `run_*` function for this frameclass
+            locals()[f"run_{frameclass}"](
                 dumbwaiter,
                 sigma_thresh=sigma_thresh,
                 validation_scheme=validation_scheme,
                 mem_limit=mem_limit,
                 **kwargs,
             )
-            run.process()
 
-
-# Run Functions ==============================================================#
-class Run:
-    """Class for Running the Processing
-
-    _extended_summary_
-
-    Parameters
-    ----------
-    waiter : :obj:`~roz.gather_frames.Dumbwaiter`
-        The dumbwaiter holding the incoming files for processing
-    sigma_thresh : float, optional
-        The sigma discrepancy threshold for flagging a frame as being
-        "problematic"  (Default: 3.0)
-    validation_scheme : str, optional
-        The frame validation scheme to use  (Default: "simple")
-    mem_limit : float, optional
-        Memory limit for the image combination routine.  (Default: None)
-    no_prob : bool, optional
-        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
-        previous validation  (Default: True)
-    all_time : bool, optional
-        DEBUG KWARG OPTION.  For validation of current frames, compare against
-        all matches, regardless of the timestamp  (Default: False)
-
-    """
-
-    def __init__(
-        self,
-        dumbwaiter,
+    # Run Functions ==========================================================#
+    def run_calibration(
+        dumbwaiter: gather_frames.Dumbwaiter,
         sigma_thresh=3.0,
         validation_scheme="simple",
         mem_limit=None,
         **kwargs,
     ):
-        # Set instance attributes
-        self.dumbwaiter = dumbwaiter
-        self.mem_limit = mem_limit
-        self.flags = self.dumbwaiter.inst_flags
-        self.sigma_thresh = sigma_thresh
-        self.scheme = validation_scheme
-
-        # Parse KWARGS -- Debugging options that can be removed when in production
-        self.kwargs = kwargs
-        self.skip_db_write = kwargs.get("skip_db_write", False)
-        self.no_confluence = kwargs.get("no_confluence", False)
-
-    def process(self):
-        """Process the files specified in the Dumbwaiter
-
-        Chooses which ``run_*`` method to call based on the ``frameclass``
-        """
-        method = f"run_{self.dumbwaiter.frameclass[:3]}"
-        if hasattr(self, method) and callable(func := getattr(self, method)):
-            func()
-
-    def run_cal(self):
         """Run Roz on the Instrument Calibration frames
 
         Collect the calibration frames for the instrument represented by this
@@ -197,12 +146,30 @@ class Run:
         for irregularities compared to historical data, and send alerts, if
         necessary.  If desired, also update the appropriate Confluence page(s)
         for user support.
+
+        Parameters
+        ----------
+        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+            The dumbwaiter holding the incoming files for processing
+        sigma_thresh : float, optional
+            The sigma discrepancy threshold for flagging a frame as being
+            "problematic"  (Default: 3.0)
+        validation_scheme : str, optional
+            The frame validation scheme to use  (Default: "simple")
+        mem_limit : float, optional
+            Memory limit for the image combination routine.  (Default: None)
+        no_prob : bool, optional
+            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+            previous validation  (Default: True)
+        all_time : bool, optional
+            DEBUG KWARG OPTION.  For validation of current frames, compare against
+            all matches, regardless of the timestamp  (Default: False)
         """
         # Collect the calibration frames within the processing directory
         calibs = process_frames.CalibContainer(
-            self.dumbwaiter.dirs["proc"],
-            self.flags,
-            mem_limit=self.mem_limit,
+            dumbwaiter.dirs["proc"],
+            dumbwaiter.flags,
+            mem_limit=mem_limit,
         )
 
         # Loop through the CCD configuration schemes used
@@ -212,7 +179,7 @@ class Run:
             # Print out a nice status message for those interested
             print("")
             msgs.info(
-                f"Processing {self.dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
+                f"Processing {dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
                 f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
             )
 
@@ -220,63 +187,108 @@ class Run:
             calibs.reset_config()
 
             # Process the BIAS frames to produce a reduced frame and statistics
-            if self.flags["get_bias"]:
+            if dumbwaiter.flags["get_bias"]:
                 calibs.process_bias(config)
 
             # Process the DARK frames to produce a reduced frame and statistics
-            if self.flags["get_dark"]:
+            if dumbwaiter.flags["get_dark"]:
                 calibs.process_dark(config)
 
             # Process the DOME (& SKY?) FLAT frames to produce statistics
-            if self.flags["get_flat"]:
+            if dumbwaiter.flags["get_flat"]:
                 calibs.process_domeflat(config)
                 calibs.process_skyflat(config)
 
             # Take the metadata from the calibration frames and produce DATABASE
             database = database_manager.CalibrationDatabase(
-                self.flags,
-                self.dumbwaiter.dirs["proc"],
-                self.dumbwaiter.nightname,
+                dumbwaiter.flags,
+                dumbwaiter.dirs["proc"],
+                dumbwaiter.nightname,
                 config,
                 calib_container=calibs,
             )
             # Validate the metadata tables
             database.validate(
-                sigma_thresh=self.sigma_thresh,
-                scheme=self.scheme,
-                **self.kwargs,
+                sigma_thresh=sigma_thresh,
+                scheme=validation_scheme,
+                **kwargs,
             )
             # Write the contents to InfluxDB
-            database.write_to_influxdb(testing=self.skip_db_write)
+            database.write_to_influxdb(testing=kwargs.get("skip_db_write", False))
 
             # Update the LMI Filter Information page on Confluence if single-amplifier
             if (
-                self.flags["instrument"].lower() == "lmi"
+                dumbwaiter.flags["instrument"].lower() == "lmi"
                 and len(amp_id) == 1
-                and not self.no_confluence
+                and not kwargs.get("no_confluence", False)
             ):
                 # Images for all binnings, values only for 2x2 binning
                 lmi_confluence_table.update_filter_characterization(
                     database, png_only=(ccd_bin != "2 2"), delete_existing=False
                 )
 
-    def run_sci(self):
+    def run_science(
+        dumbwaiter: gather_frames.Dumbwaiter,
+        sigma_thresh=3.0,
+        validation_scheme="simple",
+        mem_limit=None,
+        **kwargs,
+    ):
+
         """Run Roz on the Instrument Science frames
 
-        _extended_summary_
+        Parameters
+        ----------
+        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+            The dumbwaiter holding the incoming files for processing
+        sigma_thresh : float, optional
+            The sigma discrepancy threshold for flagging a frame as being
+            "problematic"  (Default: 3.0)
+        validation_scheme : str, optional
+            The frame validation scheme to use  (Default: "simple")
+        mem_limit : float, optional
+            Memory limit for the image combination routine.  (Default: None)
+        no_prob : bool, optional
+            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+            previous validation  (Default: True)
+        all_time : bool, optional
+            DEBUG KWARG OPTION.  For validation of current frames, compare against
+            all matches, regardless of the timestamp  (Default: False)
         """
         alerting.send_alert(
-            f"Warning: `run_sci` is not yet implemented; `{self.dumbwaiter.nightname}`",
+            f"Warning: `run_sci` is not yet implemented; `{dumbwaiter.nightname}`",
             "main_driver.Run.run_sci()",
         )
 
-    def run_asc(self):
+    def run_allsky(
+        dumbwaiter: gather_frames.Dumbwaiter,
+        sigma_thresh=3.0,
+        validation_scheme="simple",
+        mem_limit=None,
+        **kwargs,
+    ):
         """Run Roz on the All-Sky Camera frames
 
-        _extended_summary_
+        Parameters
+        ----------
+        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+            The dumbwaiter holding the incoming files for processing
+        sigma_thresh : float, optional
+            The sigma discrepancy threshold for flagging a frame as being
+            "problematic"  (Default: 3.0)
+        validation_scheme : str, optional
+            The frame validation scheme to use  (Default: "simple")
+        mem_limit : float, optional
+            Memory limit for the image combination routine.  (Default: None)
+        no_prob : bool, optional
+            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+            previous validation  (Default: True)
+        all_time : bool, optional
+            DEBUG KWARG OPTION.  For validation of current frames, compare against
+            all matches, regardless of the timestamp  (Default: False)
         """
         alerting.send_alert(
-            f"Warning: `run_asc` is not yet implemented; `{self.dumbwaiter.nightname}`",
+            f"Warning: `run_asc` is not yet implemented; `{dumbwaiter.nightname}`",
             "main_driver.Run.run_asc()",
         )
 
@@ -364,17 +376,19 @@ def entry_point():
     pargs = parser.parse_args()
 
     # Giddy Up!
-    main(
-        pargs.directory,
-        do_science=pargs.sci,
-        skip_cals=pargs.nocal,
-        validation_scheme=pargs.scheme.lower(),
-        sigma_thresh=pargs.sigma,
-        no_prob=not pargs.use_problems,
-        all_time=pargs.all_time,
-        no_cold=pargs.no_cold,
-        no_confluence=pargs.no_confluence,
-        skip_db_write=pargs.skip_db,
-        no_slack_empty=pargs.silence_empty_alerts,
-        mem_limit=1.024e9 * pargs.ram,
+    sys.exit(
+        main(
+            pargs.directory,
+            do_science=pargs.sci,
+            skip_cals=pargs.nocal,
+            validation_scheme=pargs.scheme.lower(),
+            sigma_thresh=pargs.sigma,
+            no_prob=not pargs.use_problems,
+            all_time=pargs.all_time,
+            no_cold=pargs.no_cold,
+            no_confluence=pargs.no_confluence,
+            skip_db_write=pargs.skip_db,
+            no_slack_empty=pargs.silence_empty_alerts,
+            mem_limit=1.024e9 * pargs.ram,
+        )
     )

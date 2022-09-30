@@ -22,6 +22,7 @@ This module primarily trades in... not quite sure yet.
 """
 
 # Built-In Libraries
+import inspect
 import os
 
 # 3rd Party Libraries
@@ -39,7 +40,7 @@ from roz import utils
 MACHINE = os.uname()[1].split(".")[0]
 
 
-def send_alert(alert_type, caller=None, no_slack=False):
+def send_alert(alert_type, caller=inspect.stack()[1].function, no_slack=False):
     """Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from

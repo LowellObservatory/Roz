@@ -47,92 +47,111 @@ from roz import utils
 # Set API Components
 __all__ = [
     "Dumbwaiter",
-    "gather_cal_frames",
+    "gather_calibration_frames",
+    "gather_science_frames",
     "gather_allsky_frames",
-    "gather_other_frames",
+    "FRAMECLASSES",
 ]
 
-
 # Currently Supported Frameclasses
-FRAMECLASSES = ["calibration", "science", "asc"]
+FRAMECLASSES = ["calibration", "science", "allsky"]
+
+# Silence the AstropyUserWarning from CCDPROC
+warnings.simplefilter("ignore", AstropyUserWarning)
 
 
 class Dumbwaiter:
     """Class for moving data between floors (servers)
 
-    It seemed easier to contain in one place all of the data and methods
-    related to identifying the appropriate frames, copying them to a processing
+    This class contains all of the data and methods related to identifying the
+    frames associated with a given frameclass, copying them to a processing
     location, and packaging them for cold storage.
 
-    Roz moves its own data around, without the help of other LIG workers, so
-    the concept of a dumbwaiter seemed appropriate.
+    Roz does not need LIG data butlers for data movement, as it does everything
+    itself.  Therefore, the concept of a dumbwaiter seemed appropriate.
 
     .. note::
 
-        "calibration"' is the ONLY type of frame currently supported,
-        but the ``frameclass`` keyword is included for future expansions of the
-        package.
+        The Dumbwaiter ingests all information about the specified data
+        directory, and creates internal lists of frames for each of the
+        ``FRAMECLASSES`` that Roz currently knows about.  Each list is used
+        by :func:`~roz.main_driver.main` to process the frameclass
+        appropriately.
 
     Parameters
     ----------
     data_dir : str or :obj:`pathlib.Path`:
         The directory to search for appropriate files
-    frameclass : str, optional
-        Class of frame to collect for processing.  (Default: "calibration")
+    proc_args : dict
+        Dictionary of processing arguments from :func:`~rox.main_driver.main`
+        to be cross-referenced with the instrument flags to determine the
+        processing behavior.
     """
 
-    def __init__(self, data_dir, frameclass="calibration"):
+    def __init__(self, data_dir, proc_args):
 
-        # Check that `frameclass` is the currently supported
-        if frameclass not in FRAMECLASSES:
-            alerting.send_alert(
-                "Incorrect frameclass specified", "gather_frames.Dumbwaiter.__init__()"
-            )
-            return
-
+        # Initialize locations
         locations = utils.read_ligmos_conffiles("rozSetup")
-
-        # Initialize attributes
-        self.frameclass = frameclass
         self.dirs = {
             "data": pathlib.Path(data_dir).resolve(),
             "proc": pathlib.Path(locations.processing_dir).resolve(),
             "cold": pathlib.Path(locations.coldstorage_dir).resolve(),
         }
-        # e.g., `lmi/20210107b` or `deveny/20220221a`
+
+        # Divine the instrument and set flags
+        fitsfiles = _get_sequential_fitsfiles(self.dirs["data"])
+        self.instrument = self.divine_instrument(fits_files=fitsfiles)
+        self.flags = self.set_instrument_flags(self.instrument)
+
+        # Set `process_frameclass` attribute as a list if all 3 clauses are True
+        self.process_frameclass = [
+            fclass
+            for fclass in FRAMECLASSES
+            if (
+                proc_args[fclass]
+                and self.flags[f"has_{fclass}" and self.flags[f"proc_{fclass}"]]
+            )
+        ]
+
+        # If no FITS files, no instrument, or nothing to process, set "empty"
+        if not all([fitsfiles, self.instrument, self.process_frameclass]):
+            self._empty = {fclass: True for fclass in FRAMECLASSES}
+            return
+
+        # Set nightname (e.g., `lmi/20210107b` or `deveny/20220221a`)
         self.nightname = os.sep.join(self.dirs["data"].parts[-2:])
 
-        # If no FITS files, return now
-        if not (fitsfiles := _get_sequential_fitsfiles(self.dirs["data"])):
-            self.empty = True
-            return
-
-        # If can't find the instrument: set empty and return
-        if not (instrument := self.divine_instrument(fits_files=fitsfiles)):
-            self.empty = True
-            return
-
-        self.instrument = instrument
-        self.inst_flags = self.set_instrument_flags(self.instrument)
-
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
-        if self.frameclass == "calibration":
-            self.frames = gather_cal_frames(
+        # NOTE: self.frames is a dictionary of frame lists by frame class
+        self.frames = {
+            fclass: globals()[f"gather_{fclass}_frames"](
                 self.dirs["data"],
-                self.inst_flags,
+                self.flags,
                 fitsfiles=fitsfiles,
                 fnames_only=True,
             )
-        else:
-            alerting.send_alert(
-                f"Valid but unsupported frameclass {self.frameclass}",
-                "gather_frames.Dumbwaiter.__init__()",
-            )
+            for fclass in FRAMECLASSES
+        }
 
-        # Make an attribute specifying whether the dumbwaiter is empty
-        self.empty = not self.frames
+        # Make a dictionary specifying whether the dumbwaiter is empty of fclass
+        self._empty = {fclass: not self.frames[fclass] for fclass in FRAMECLASSES}
 
-    def copy_frames_to_processing(self, keep_existing=False):
+    def empty(self, frameclass):
+        """Is the Dumbwaiter empty of this frameclass?
+
+        Parameters
+        ----------
+        frameclass : str
+            The frameclass, from ``FRAMECLASSES``
+
+        Returns
+        -------
+        bool
+            Is this frameclass empty?
+        """
+        return self._empty[frameclass]
+
+    def serve_frames(self, frameclass, keep_existing=False):
         """Copy data frames to a local processing dir
 
         This method copies the identified frames from the original data
@@ -140,16 +159,18 @@ class Dumbwaiter:
 
         First, unless ``keep_existing = True``, clear out any existing files in
         the processing directory (to keep from builing up cruft).  Then, copy
-        over all of the data files in ``self.frames``.
+        over all of the data files in ``self.frames[frameclass]``.
 
         Parameters
         ----------
+        frameclass : str
+            The frameclass, from ``FRAMECLASSES``
         keep_existing : bool, optional
             Keep the existing files in the processing directory?
             (Default: False)
         """
         # If empty, dont' do anything
-        if self.empty:
+        if self.empty(frameclass):
             return
 
         if not keep_existing:
@@ -161,11 +182,14 @@ class Dumbwaiter:
         msgs.info(
             f"Copying data from {self.dirs['data']} to {self.dirs['proc']} for processing..."
         )
-        # Show progress bar for copying files (Cherry Red)
+        # Show progress bar for copying files (COLOR = "Cherry Red")
         progress_bar = tqdm(
-            total=len(self.frames), unit="file", unit_scale=False, colour="#D2042D"
+            total=len(self.frames[frameclass]),
+            unit="file",
+            unit_scale=False,
+            colour="#D2042D",
         )
-        for frame in self.frames:
+        for frame in self.frames[frameclass]:
             try:
                 shutil.copy2(self.dirs["data"].joinpath(frame), self.dirs["proc"])
             except FileNotFoundError as err:
@@ -177,7 +201,7 @@ class Dumbwaiter:
             progress_bar.update(1)
         progress_bar.close()
 
-    def cold_storage(self, skip_cold=False):
+    def cold_storage(self, frameclass, skip_cold=False):
         """Put the dumbwaited frames into cold strage
 
         This method takes the frames contained internally and packages them up
@@ -190,11 +214,13 @@ class Dumbwaiter:
 
         Parameters
         ----------
+        frameclass : str
+            The frameclass, from ``FRAMECLASSES``
         skip_cold : bool, optional
             Don't commit to cold storage  (Default: False)
         """
         # If empty, dont' do anything
-        if self.empty:
+        if self.empty(frameclass):
             return
 
         # First, check to see if the UT Date is encoded in the source `data_dir`
@@ -203,37 +229,40 @@ class Dumbwaiter:
         if result := re.search(r"(?<!\d)\d{8}[a-z](?!\d)", str(self.dirs["data"])):
             utdate = result.group(0)
 
-        # Otherwise, grab the header of the LAST file in self.frames (as this
+        # Otherwise, grab the header of the LAST file in this self.frames (as this
         #  is most likely to be taken AFTER 00:00UT) and extract from DATE-OBS
         else:
             utdate = (
-                astropy.io.fits.getheader(self.dirs["proc"].joinpath(self.frames[-1]))[
-                    "DATE-OBS"
-                ]
+                astropy.io.fits.getheader(
+                    self.dirs["proc"].joinpath(self.frames[frameclass][-1])
+                )["DATE-OBS"]
                 .split("T")[0]
                 .replace("-", "")
             )
 
         # Build the tar filename
-        tarbase = f"{self.instrument}_{utdate}_{self.frameclass}.tar.bz2"
+        tarbase = f"{self.instrument}_{utdate}_{frameclass}.tar.bz2"
         tarname = self.dirs["proc"].joinpath(tarbase)
 
-        # Just return now
+        # Just return now, if commanded
         if skip_cold:
             return
 
         # Create a summary table (README.txt) to include in the tarball
-        self._make_summary_table()
+        self._make_summary_table(frameclass)
 
         # Tar up the files!
         msgs.info("Creating the compressed tar file for cold storage...")
         with tarfile.open(tarname, "w:bz2") as tar:
             tar.add(self.dirs["proc"].joinpath("README.txt"), arcname="README.txt")
-            # Show progress bar for processing the tarball (Forest Green)
+            # Show progress bar for processing the tarball (COLOR = "Forest Green")
             progress_bar = tqdm(
-                total=len(self.frames), unit="file", unit_scale=False, colour="#228B22"
+                total=len(self.frames[frameclass]),
+                unit="file",
+                unit_scale=False,
+                colour="#228B22",
             )
-            for name in self.frames:
+            for name in self.frames[frameclass]:
                 tar.add(self.dirs["proc"].joinpath(name), arcname=name)
                 progress_bar.update(1)
             progress_bar.close()
@@ -241,7 +270,7 @@ class Dumbwaiter:
         # Next, set up for copying the tarball over to cold storage
         # The requisite cold storage directories will be mounted locally and
         #  be of form ".../dataquality/{site}/{instrument}"
-        cold_dir = self.dirs["cold"].joinpath(self.inst_flags["site"], self.instrument)
+        cold_dir = self.dirs["cold"].joinpath(self.flags["site"], self.instrument)
         if not cold_dir.is_dir():
             alerting.send_alert(
                 f"Cold storage directory not available at `{cold_dir}`",
@@ -251,37 +280,6 @@ class Dumbwaiter:
         msgs.info(f"Copying {tarbase} to {cold_dir}...")
         # NOTE: Using this lower-level function to avoid chmod() errors
         shutil.copyfile(tarname, cold_dir.joinpath(tarbase))
-
-    def _make_summary_table(self, debug=False):
-        """Create and write to disk a summary table
-
-        Add summary table to the tarball for future reference
-        Tags: obserno, frametype, filter, binning, numamp, ampid
-        """
-        icl = ccdproc.ImageFileCollection(
-            location=self.dirs["proc"], filenames=self.frames
-        )
-
-        # Pull the README subtable based on FITS header keywords
-        readme = icl.summary["obserno", "imagetyp", "filters", "ccdsum", "numamp"]
-
-        if "ampid" in icl.summary.colnames:
-            # For single-amplifier readouts
-            readme["ampid"] = icl.summary["ampid"]
-        else:
-            # For multi-amplifier readouts
-            readme["ampid"] = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
-
-        # Convert those to the InfluxDB tags used with Roz
-        readme.rename_columns(
-            ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
-        )
-        # Write it out!
-        readme.write(
-            self.dirs["proc"].joinpath("README.txt"), format="ascii.fixed_width"
-        )
-        if debug:
-            readme.pprint()
 
     @staticmethod
     def divine_instrument(directory=None, fits_files=None):
@@ -376,16 +374,54 @@ class Dumbwaiter:
 
         msgs.error("Error: this line should never run.")
 
+    def _make_summary_table(self, frameclass, debug=False):
+        """Create and write to disk a summary table
+
+        Add summary table to the tarball for future reference
+        Tags: obserno, frametype, filter, binning, numamp, ampid
+
+        Parameters
+        ----------
+        frameclass : str
+            The frameclass, from ``FRAMECLASSES``
+        debug : bool, optional
+            ``.pprint()`` the Table for debug?  (Default: False)
+        """
+        icl = ccdproc.ImageFileCollection(
+            location=self.dirs["proc"], filenames=self.frames[frameclass]
+        )
+
+        # Pull the README subtable based on FITS header keywords
+        readme = icl.summary["obserno", "imagetyp", "filters", "ccdsum", "numamp"]
+
+        if "ampid" in icl.summary.colnames:
+            # For single-amplifier readouts
+            readme["ampid"] = icl.summary["ampid"]
+        else:
+            # For multi-amplifier readouts
+            readme["ampid"] = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
+
+        # Convert those to the InfluxDB tags used with Roz
+        readme.rename_columns(
+            ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
+        )
+        # Write it out!
+        readme.write(
+            self.dirs["proc"].joinpath("README.txt"), format="ascii.fixed_width"
+        )
+        if debug:
+            readme.pprint()
+
 
 # Non-Class Functions ========================================================#
-def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
-    """Gather calibration frames from specified directory
+def gather_calibration_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
+    """Gather calibration frames from the specified ``directory``
 
     [extended_summary]
 
     Parameters
     ----------
-    directory : str or :obj:`pathlib.Path`
+    directory : :obj:`str` or :obj:`pathlib.Path`
         Directory name to search for calibration files
     inst_flag : dict
         Dictionary of instrument flags
@@ -404,9 +440,6 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
     fnames : list
         List of calibration filenames (returned when ``fnames_only = True``)
     """
-    # Silence the AstropyUserWarning from CCDPROC
-    warnings.simplefilter("ignore", AstropyUserWarning)
-
     # Because over-the-network reads can take a while, say something!
     msgs.info(f"Reading the files in {directory}...")
 
@@ -486,26 +519,165 @@ def gather_cal_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
         return all_fns
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
-    return_object["allcal_cl"] = ccdproc.ImageFileCollection(
+    return_object["calibration_cl"] = ccdproc.ImageFileCollection(
         location=directory if all_fns else None, filenames=all_fns
     )
     return return_object
 
 
-def gather_other_frames(**kwargs):
-    """Stub for additional functionality
+def gather_science_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
+    """Gather sciencd frames from the specified ``directory``
 
     [extended_summary]
+
+    Parameters
+    ----------
+    directory : :obj:`str` or :obj:`pathlib.Path`
+        Directory name to search for calibration files
+    inst_flag : dict
+        Dictionary of instrument flags
+    fitsfiles : list, optional
+        The list of FITS files in this directory  (Default: None)
+    fnames_only : bool, optional
+        Only return a concatenated list of filenames instead of the IFCs
+        (Default: False)
+
+    Returns
+    -------
+    return_object : dict
+        Dictionary containing the various filename lists, ImageFileCollections,
+        and/or binning lists, as specified by ``inst_flag``.
+    -- OR --
+    fnames : list
+        List of calibration filenames (returned when ``fnames_only = True``)
     """
-    return kwargs
+    # Because over-the-network reads can take a while, say something!
+    msgs.info(f"Reading the files in {directory}...")
+
+    # Create an ImageFileCollection for the specified directory
+    if not fitsfiles:
+        fitsfiles = _get_sequential_fitsfiles(directory)
+    icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
+
+    if not icl.files:
+        return None
+
+    return_object = {}
+
+    # Gather OBJECT frames; FULL FRAME ONLY
+    object_cl = icl.filter(obstype="object", subarrno=0)
+    return_object["object_fn"] = object_cl.files
+    return_object["object_cl"] = object_cl
+
+    if inst_flag["check_bin"]:
+        # Get the complete list of binnings used -- but clear out `None` entries
+        bin_list = icl.values("ccdsum", unique=True)
+        bin_list = sorted(list(filter(None, bin_list)))
+        return_object["bin_list"] = bin_list
+
+    if inst_flag["check_amp"]:
+        # Get the complete list of amplifier configurations
+        amp_configs = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
+        # Return a sorted list of the unique configurations
+        return_object["amp_config"] = sorted(list(set(amp_configs)))
+
+    # ===============================================================#
+    # If we only want the filenames, print a summary and return the names
+    if fnames_only:
+        # Print out Frame Summary
+        msgs.table("*" * 19)
+        msgs.table("* -Frame Summary- *")
+        for key, val in return_object.items():
+            if "_fn" in key:
+                msgs.table(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
+        msgs.table("*" * 19)
+        # Flatten and return the BASENAME only
+        return return_object["object_fn"]
+
+    # Otherwise, create a combined IFC, and return the accumulated dictionary
+    return_object["science_cl"] = ccdproc.ImageFileCollection(
+        location=directory if return_object["object_fn"] else None, filenames=return_object["object_fn"]
+    )
+    return return_object
 
 
-def gather_allsky_frames(**kwargs):
-    """Gather All-Sky Camera frames
+def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False):
+    """Gather allsky frames from the specified ``directory``
 
-    [extended_summary]
+    .. note::
+
+        This is identical to :func:`gather_science_frames` at the moment, but
+        could potentially have different requirements as things evolve.
+
+    Parameters
+    ----------
+    directory : :obj:`str` or :obj:`pathlib.Path`
+        Directory name to search for calibration files
+    inst_flag : dict
+        Dictionary of instrument flags
+    fitsfiles : list, optional
+        The list of FITS files in this directory  (Default: None)
+    fnames_only : bool, optional
+        Only return a concatenated list of filenames instead of the IFCs
+        (Default: False)
+
+    Returns
+    -------
+    return_object : dict
+        Dictionary containing the various filename lists, ImageFileCollections,
+        and/or binning lists, as specified by ``inst_flag``.
+    -- OR --
+    fnames : list
+        List of calibration filenames (returned when ``fnames_only = True``)
     """
-    return kwargs
+    # Because over-the-network reads can take a while, say something!
+    msgs.info(f"Reading the files in {directory}...")
+
+    # Create an ImageFileCollection for the specified directory
+    if not fitsfiles:
+        fitsfiles = _get_sequential_fitsfiles(directory)
+    icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
+
+    if not icl.files:
+        return None
+
+    return_object = {}
+
+    # Gather OBJECT frames; FULL FRAME ONLY
+    object_cl = icl.filter(obstype="object", subarrno=0)
+    return_object["object_fn"] = object_cl.files
+    return_object["object_cl"] = object_cl
+
+    if inst_flag["check_bin"]:
+        # Get the complete list of binnings used -- but clear out `None` entries
+        bin_list = icl.values("ccdsum", unique=True)
+        bin_list = sorted(list(filter(None, bin_list)))
+        return_object["bin_list"] = bin_list
+
+    if inst_flag["check_amp"]:
+        # Get the complete list of amplifier configurations
+        amp_configs = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
+        # Return a sorted list of the unique configurations
+        return_object["amp_config"] = sorted(list(set(amp_configs)))
+
+    # ===============================================================#
+    # If we only want the filenames, print a summary and return the names
+    if fnames_only:
+        # Print out Frame Summary
+        msgs.table("*" * 19)
+        msgs.table("* -Frame Summary- *")
+        for key, val in return_object.items():
+            if "_fn" in key:
+                msgs.table(f"* {key.split('_')[0].upper():10s}: {len(val):3d} *")
+        msgs.table("*" * 19)
+        # Flatten and return the BASENAME only
+        return return_object["object_fn"]
+
+    # Otherwise, create a combined IFC, and return the accumulated dictionary
+    return_object["science_cl"] = ccdproc.ImageFileCollection(
+        location=directory if return_object["object_fn"] else None, filenames=return_object["object_fn"]
+    )
+    return return_object
 
 
 def _get_sequential_fitsfiles(directory):

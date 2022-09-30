@@ -37,8 +37,8 @@ import scipy
 import johnnyfive
 
 # Internal Imports
-import roz
 from roz import utils
+from roz.version import version
 
 
 class RozError(Exception):
@@ -131,9 +131,7 @@ class Messages:
         self._log = open(log, "w", encoding="utf-8")
 
         self._log.write("------------------------------------------------------\n\n")
-        self._log.write(
-            f"This log was generated with version {roz.__version__} of Roz\n\n"
-        )
+        self._log.write(f"This log was generated with version {version} of Roz\n\n")
         self._log.write(f"You are using scipy version={scipy.__version__}\n")
         self._log.write(f"You are using numpy version={numpy.__version__}\n")
         self._log.write(f"You are using astropy version={astropy.__version__}\n\n")
