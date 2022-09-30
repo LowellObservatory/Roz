@@ -7,7 +7,7 @@
 # - {name: check_bin, datatype: bool}
 # - {name: check_amp, datatype: bool}
 # - {name: has_calibration, datatype: bool}
-# - {name: proc_calibrationration, datatype: bool}
+# - {name: proc_calibration, datatype: bool}
 # - {name: get_bias, datatype: bool}
 # - {name: get_dark, datatype: bool}
 # - {name: get_flat, datatype: bool}

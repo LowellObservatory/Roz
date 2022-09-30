@@ -121,7 +121,7 @@ def main(
             dumbwaiter.cold_storage(frameclass, **kwargs)
 
             # Call the appropriate `run_*` function for this frameclass
-            locals()[f"run_{frameclass}"](
+            globals()[f"run_{frameclass}"](
                 dumbwaiter,
                 sigma_thresh=sigma_thresh,
                 validation_scheme=validation_scheme,
@@ -129,168 +129,171 @@ def main(
                 **kwargs,
             )
 
-    # Run Functions ==========================================================#
-    def run_calibration(
-        dumbwaiter: gather_frames.Dumbwaiter,
-        sigma_thresh=3.0,
-        validation_scheme="simple",
-        mem_limit=None,
-        **kwargs,
-    ):
-        """Run Roz on the Instrument Calibration frames
 
-        Collect the calibration frames for the instrument represented by this
-        :class:`~roz.gather_frames.Dumbwaiter`, process them, and collect
-        statistics into a :class:`~roz.database_manager.CalibrationDatabase`
-        object.  Upload the data to an InfluxDB database, analyze the frames
-        for irregularities compared to historical data, and send alerts, if
-        necessary.  If desired, also update the appropriate Confluence page(s)
-        for user support.
+# Run Functions ==========================================================#
+def run_calibration(
+    dumbwaiter: gather_frames.Dumbwaiter,
+    sigma_thresh=3.0,
+    validation_scheme="simple",
+    mem_limit=None,
+    **kwargs,
+):
+    """Run Roz on the Instrument Calibration frames
 
-        Parameters
-        ----------
-        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
-            The dumbwaiter holding the incoming files for processing
-        sigma_thresh : float, optional
-            The sigma discrepancy threshold for flagging a frame as being
-            "problematic"  (Default: 3.0)
-        validation_scheme : str, optional
-            The frame validation scheme to use  (Default: "simple")
-        mem_limit : float, optional
-            Memory limit for the image combination routine.  (Default: None)
-        no_prob : bool, optional
-            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
-            previous validation  (Default: True)
-        all_time : bool, optional
-            DEBUG KWARG OPTION.  For validation of current frames, compare against
-            all matches, regardless of the timestamp  (Default: False)
-        """
-        # Collect the calibration frames within the processing directory
-        calibs = process_frames.CalibContainer(
-            dumbwaiter.dirs["proc"],
+    Collect the calibration frames for the instrument represented by this
+    :class:`~roz.gather_frames.Dumbwaiter`, process them, and collect
+    statistics into a :class:`~roz.database_manager.CalibrationDatabase`
+    object.  Upload the data to an InfluxDB database, analyze the frames
+    for irregularities compared to historical data, and send alerts, if
+    necessary.  If desired, also update the appropriate Confluence page(s)
+    for user support.
+
+    Parameters
+    ----------
+    waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+        The dumbwaiter holding the incoming files for processing
+    sigma_thresh : float, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        "problematic"  (Default: 3.0)
+    validation_scheme : str, optional
+        The frame validation scheme to use  (Default: "simple")
+    mem_limit : float, optional
+        Memory limit for the image combination routine.  (Default: None)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
+    """
+    # Collect the calibration frames within the processing directory
+    calibs = process_frames.CalibContainer(
+        dumbwaiter.dirs["proc"],
+        dumbwaiter.flags,
+        mem_limit=mem_limit,
+    )
+
+    # Loop through the CCD configuration schemes used
+    for config in calibs.unique_detector_configs:
+        ccd_bin, amp_id = config
+
+        # Print out a nice status message for those interested
+        print("")
+        msgs.info(
+            f"Processing {dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
+            f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
+        )
+
+        # Reset the metadata tables and calib frames for this configuration
+        calibs.reset_config()
+
+        # Process the BIAS frames to produce a reduced frame and statistics
+        if dumbwaiter.flags["get_bias"]:
+            calibs.process_bias(config)
+
+        # Process the DARK frames to produce a reduced frame and statistics
+        if dumbwaiter.flags["get_dark"]:
+            calibs.process_dark(config)
+
+        # Process the DOME (& SKY?) FLAT frames to produce statistics
+        if dumbwaiter.flags["get_flat"]:
+            calibs.process_domeflat(config)
+            calibs.process_skyflat(config)
+
+        # Take the metadata from the calibration frames and produce DATABASE
+        database = database_manager.CalibrationDatabase(
             dumbwaiter.flags,
-            mem_limit=mem_limit,
+            dumbwaiter.dirs["proc"],
+            dumbwaiter.nightname,
+            config,
+            calib_container=calibs,
         )
+        # Validate the metadata tables
+        database.validate(
+            sigma_thresh=sigma_thresh,
+            scheme=validation_scheme,
+            **kwargs,
+        )
+        # Write the contents to InfluxDB
+        database.write_to_influxdb(testing=kwargs.get("skip_db_write", False))
 
-        # Loop through the CCD configuration schemes used
-        for config in calibs.unique_detector_configs:
-            ccd_bin, amp_id = config
-
-            # Print out a nice status message for those interested
-            print("")
-            msgs.info(
-                f"Processing {dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
-                f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
+        # Update the LMI Filter Information page on Confluence if single-amplifier
+        if (
+            dumbwaiter.flags["instrument"].lower() == "lmi"
+            and len(amp_id) == 1
+            and not kwargs.get("no_confluence", False)
+        ):
+            # Images for all binnings, values only for 2x2 binning
+            lmi_confluence_table.update_filter_characterization(
+                database, png_only=(ccd_bin != "2 2"), delete_existing=False
             )
 
-            # Reset the metadata tables and calib frames for this configuration
-            calibs.reset_config()
 
-            # Process the BIAS frames to produce a reduced frame and statistics
-            if dumbwaiter.flags["get_bias"]:
-                calibs.process_bias(config)
+def run_science(
+    dumbwaiter: gather_frames.Dumbwaiter,
+    sigma_thresh=3.0,
+    validation_scheme="simple",
+    mem_limit=None,
+    **kwargs,
+):
 
-            # Process the DARK frames to produce a reduced frame and statistics
-            if dumbwaiter.flags["get_dark"]:
-                calibs.process_dark(config)
+    """Run Roz on the Instrument Science frames
 
-            # Process the DOME (& SKY?) FLAT frames to produce statistics
-            if dumbwaiter.flags["get_flat"]:
-                calibs.process_domeflat(config)
-                calibs.process_skyflat(config)
+    Parameters
+    ----------
+    waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+        The dumbwaiter holding the incoming files for processing
+    sigma_thresh : float, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        "problematic"  (Default: 3.0)
+    validation_scheme : str, optional
+        The frame validation scheme to use  (Default: "simple")
+    mem_limit : float, optional
+        Memory limit for the image combination routine.  (Default: None)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
+    """
+    alerting.send_alert(
+        f"Warning: `run_sci` is not yet implemented; `{dumbwaiter.nightname}`",
+        "main_driver.Run.run_sci()",
+    )
 
-            # Take the metadata from the calibration frames and produce DATABASE
-            database = database_manager.CalibrationDatabase(
-                dumbwaiter.flags,
-                dumbwaiter.dirs["proc"],
-                dumbwaiter.nightname,
-                config,
-                calib_container=calibs,
-            )
-            # Validate the metadata tables
-            database.validate(
-                sigma_thresh=sigma_thresh,
-                scheme=validation_scheme,
-                **kwargs,
-            )
-            # Write the contents to InfluxDB
-            database.write_to_influxdb(testing=kwargs.get("skip_db_write", False))
 
-            # Update the LMI Filter Information page on Confluence if single-amplifier
-            if (
-                dumbwaiter.flags["instrument"].lower() == "lmi"
-                and len(amp_id) == 1
-                and not kwargs.get("no_confluence", False)
-            ):
-                # Images for all binnings, values only for 2x2 binning
-                lmi_confluence_table.update_filter_characterization(
-                    database, png_only=(ccd_bin != "2 2"), delete_existing=False
-                )
+def run_allsky(
+    dumbwaiter: gather_frames.Dumbwaiter,
+    sigma_thresh=3.0,
+    validation_scheme="simple",
+    mem_limit=None,
+    **kwargs,
+):
+    """Run Roz on the All-Sky Camera frames
 
-    def run_science(
-        dumbwaiter: gather_frames.Dumbwaiter,
-        sigma_thresh=3.0,
-        validation_scheme="simple",
-        mem_limit=None,
-        **kwargs,
-    ):
-
-        """Run Roz on the Instrument Science frames
-
-        Parameters
-        ----------
-        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
-            The dumbwaiter holding the incoming files for processing
-        sigma_thresh : float, optional
-            The sigma discrepancy threshold for flagging a frame as being
-            "problematic"  (Default: 3.0)
-        validation_scheme : str, optional
-            The frame validation scheme to use  (Default: "simple")
-        mem_limit : float, optional
-            Memory limit for the image combination routine.  (Default: None)
-        no_prob : bool, optional
-            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
-            previous validation  (Default: True)
-        all_time : bool, optional
-            DEBUG KWARG OPTION.  For validation of current frames, compare against
-            all matches, regardless of the timestamp  (Default: False)
-        """
-        alerting.send_alert(
-            f"Warning: `run_sci` is not yet implemented; `{dumbwaiter.nightname}`",
-            "main_driver.Run.run_sci()",
-        )
-
-    def run_allsky(
-        dumbwaiter: gather_frames.Dumbwaiter,
-        sigma_thresh=3.0,
-        validation_scheme="simple",
-        mem_limit=None,
-        **kwargs,
-    ):
-        """Run Roz on the All-Sky Camera frames
-
-        Parameters
-        ----------
-        waiter : :obj:`~roz.gather_frames.Dumbwaiter`
-            The dumbwaiter holding the incoming files for processing
-        sigma_thresh : float, optional
-            The sigma discrepancy threshold for flagging a frame as being
-            "problematic"  (Default: 3.0)
-        validation_scheme : str, optional
-            The frame validation scheme to use  (Default: "simple")
-        mem_limit : float, optional
-            Memory limit for the image combination routine.  (Default: None)
-        no_prob : bool, optional
-            DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
-            previous validation  (Default: True)
-        all_time : bool, optional
-            DEBUG KWARG OPTION.  For validation of current frames, compare against
-            all matches, regardless of the timestamp  (Default: False)
-        """
-        alerting.send_alert(
-            f"Warning: `run_asc` is not yet implemented; `{dumbwaiter.nightname}`",
-            "main_driver.Run.run_asc()",
-        )
+    Parameters
+    ----------
+    waiter : :obj:`~roz.gather_frames.Dumbwaiter`
+        The dumbwaiter holding the incoming files for processing
+    sigma_thresh : float, optional
+        The sigma discrepancy threshold for flagging a frame as being
+        "problematic"  (Default: 3.0)
+    validation_scheme : str, optional
+        The frame validation scheme to use  (Default: "simple")
+    mem_limit : float, optional
+        Memory limit for the image combination routine.  (Default: None)
+    no_prob : bool, optional
+        DEBUG KWARG OPTION.  Only use metrics not marked as "problem" by
+        previous validation  (Default: True)
+    all_time : bool, optional
+        DEBUG KWARG OPTION.  For validation of current frames, compare against
+        all matches, regardless of the timestamp  (Default: False)
+    """
+    alerting.send_alert(
+        f"Warning: `run_asc` is not yet implemented; `{dumbwaiter.nightname}`",
+        "main_driver.Run.run_asc()",
+    )
 
 
 # Console Script Entry Point =================================================#

@@ -109,7 +109,8 @@ class Dumbwaiter:
             for fclass in FRAMECLASSES
             if (
                 proc_args[fclass]
-                and self.flags[f"has_{fclass}" and self.flags[f"proc_{fclass}"]]
+                and self.flags[f"has_{fclass}"]
+                and self.flags[f"proc_{fclass}"]
             )
         ]
 
@@ -123,6 +124,7 @@ class Dumbwaiter:
 
         # Based on the `frameclass`, call the appropriate `gather_*_frames()`
         # NOTE: self.frames is a dictionary of frame lists by frame class
+        #       If not processing a frameclass, use an empty list
         self.frames = {
             fclass: globals()[f"gather_{fclass}_frames"](
                 self.dirs["data"],
@@ -130,6 +132,8 @@ class Dumbwaiter:
                 fitsfiles=fitsfiles,
                 fnames_only=True,
             )
+            if fclass in self.process_frameclass
+            else []
             for fclass in FRAMECLASSES
         }
 
@@ -201,7 +205,7 @@ class Dumbwaiter:
             progress_bar.update(1)
         progress_bar.close()
 
-    def cold_storage(self, frameclass, skip_cold=False):
+    def cold_storage(self, frameclass, skip_cold=False, **kwargs):
         """Put the dumbwaited frames into cold strage
 
         This method takes the frames contained internally and packages them up
@@ -596,7 +600,8 @@ def gather_science_frames(directory, inst_flag, fitsfiles=None, fnames_only=Fals
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
     return_object["science_cl"] = ccdproc.ImageFileCollection(
-        location=directory if return_object["object_fn"] else None, filenames=return_object["object_fn"]
+        location=directory if return_object["object_fn"] else None,
+        filenames=return_object["object_fn"],
     )
     return return_object
 
@@ -675,7 +680,8 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
     return_object["science_cl"] = ccdproc.ImageFileCollection(
-        location=directory if return_object["object_fn"] else None, filenames=return_object["object_fn"]
+        location=directory if return_object["object_fn"] else None,
+        filenames=return_object["object_fn"],
     )
     return return_object
 

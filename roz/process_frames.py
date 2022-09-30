@@ -156,7 +156,7 @@ class _ContainerBase:
 
     # General Helper Functions -- Static Methods =============================#
     @staticmethod
-    def base_metadata_dict(hdr, data, quadsurf, crop=100):
+    def basemeta_dict(hdr, data, quadsurf, crop=100):
         """Create the basic metadata dictionary
 
         [extended_summary]
@@ -374,7 +374,7 @@ class CalibContainer(_ContainerBase):
             quadsurf, coord_arrays = utils.fit_quadric_surface(
                 data, coord_arrays, fit_quad=True
             )
-            metadata.append(self.base_metadata_dict(hdr, data, quadsurf))
+            metadata.append(self.basemeta_dict(hdr, data, quadsurf))
 
             # Fit the overscan section, subtract it, then trim the image
             ccd = utils.wrap_trim_oscan(ccd)
@@ -528,7 +528,7 @@ class CalibContainer(_ContainerBase):
             quadsurf, coord_arrays = utils.fit_quadric_surface(
                 count_rate.data, coord_arrays, fit_quad=True
             )
-            metadict = self.base_metadata_dict(hdr, count_rate.data, quadsurf)
+            metadict = self.basemeta_dict(hdr, count_rate.data, quadsurf)
 
             # Additional fields for flats: Stuff that can block the light path
             #  Do type-forcing to make InfluxDB happy
