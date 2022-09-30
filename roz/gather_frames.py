@@ -715,8 +715,13 @@ def _get_sequential_fitsfiles(directory):
         )
         return None
 
-    # Get a sorted list of all the FITS files
-    fits_files = sorted(directory.glob("*.fits"))
+    # Get a sorted list of all the FITS files (inluding compressed formats)
+    fits_files = []
+    for file_ext in ["fits", "fit", "fits.gz", "fit.gz", "fits.bz2", "fit.bz2"]:
+        fits_files.extend(list(directory.glob(f"*.{file_ext}")))
+    fits_files = sorted(fits_files)
 
     # Remove `test.fits` because we just don't care about it.
-    return [file for file in fits_files if file.name != "test.fits"]
+    return [
+        file for file in fits_files if file.name not in ["test.fits", "final.fit.bz2"]
+    ]
