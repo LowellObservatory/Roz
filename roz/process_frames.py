@@ -665,3 +665,4 @@ class AllSkyContainer(_ContainerBase):
         """
         if self.debug:
             print(ccd_bin)
+        msgs.warn("Really, I don't know what I'm doing here...")

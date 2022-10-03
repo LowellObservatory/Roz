@@ -24,6 +24,7 @@ This module primarily trades in... not quite sure yet.
 # Built-In Libraries
 import inspect
 import os
+import pathlib
 
 # 3rd Party Libraries
 import astropy.table
@@ -40,7 +41,7 @@ from roz import utils
 MACHINE = os.uname()[1].split(".")[0]
 
 
-def send_alert(alert_type, caller=inspect.stack()[1].function, no_slack=False):
+def send_alert(alert_type, no_slack=False, **kwargs):
     """Send out an alert
 
     The medium for alerts needs to be decided -- should it be via email from
@@ -49,12 +50,60 @@ def send_alert(alert_type, caller=inspect.stack()[1].function, no_slack=False):
 
     There are various types of alerts that can be sent... maybe choose the
     medium based on the input ``alertclass``?
+
+    Parameters
+    ----------
+    alert_type : str
+        One of several recognized alert types
+    no_slack : bool, optional
+       Do not post to Slack (Default: False)
     """
 
-    msgs.warn(f"{alert_type.replace('`','')}: {caller}")
+    # Parse out kwargs
+    caller = kwargs.get("caller", construct_caller(inspect.stack()[1]))
 
+    # Case out `alert_type`
+    if alert_type == "empty_dir":
+        dumbwaiter = kwargs.get("dumbwaiter")
+        frameclass = kwargs.get("frameclass")
+        alert_msg = (
+            f"Empty Directory: `{utils.subpath(dumbwaiter.dirs['data'])}` "
+            f"does not contain any sequential {frameclass} FITS files"
+        )
+
+    elif alert_type == "not_implemented":
+        dumbwaiter = kwargs.get("dumbwaiter")
+        alert_msg = f"Function not yet implemented for data in {dumbwaiter.nightname}"
+
+    elif alert_type == "dir_not_found":
+        dirname = kwargs.get("dirname")
+        alert_msg = f"Directory not found at `{dirname}`"
+
+    elif alert_type == "no_inst_found":
+        dirname = kwargs.get("dirname")
+        alert_msg = f"No instrument found in `{dirname}`"
+
+    elif alert_type == "inst_not_support":
+        inst = kwargs.get("inst")
+        alert_msg = (
+            f"Instrument `{inst}` not yet supported; update instrument_flags.ecsv"
+        )
+
+    elif alert_type == "file_not_open":
+        filename = kwargs.get("filename")
+        exception = kwargs.get("exception")
+        alert_msg = f"Could not open {filename} because of {exception}."
+
+    elif alert_type == "text":
+        alert_msg = kwargs.get("text")
+
+    else:
+        alert_msg = ""
+
+    # Emit the alert message to screen and slack
+    msgs.warn(f"{alert_msg.replace('`','')}: {caller}")
     if not no_slack:
-        slack.send(f"Alert from Roz on `{MACHINE}`:\n{alert_type}: `{caller}`")
+        slack.send(f"Alert from Roz on `{MACHINE}`:\n{alert_msg}: `{caller}`")
 
 
 def post_report(report):
@@ -115,3 +164,22 @@ def post_pngs(metadata_tables, directory, inst_flags):
                             str(utils.Paths.thumbnail.joinpath(png_fn)),
                             title=png_fn,
                         )
+
+
+def construct_caller(stack):
+    """Construct the calling function name
+
+    Form: ``module.function():lineno``
+
+    Parameters
+    ----------
+    stack : :obj:`inspect.stack`
+        The current stack, position [1], which is the caller.
+
+    Returns
+    -------
+    str
+        The calling function in module context
+    """
+    module = pathlib.Path(stack.filename).stem
+    return f"{module}.{stack.function}():{stack.lineno}"

@@ -113,7 +113,9 @@ def main(
 
             # If empty, send notification and move along
             if dumbwaiter.empty(frameclass):
-                alerting.send_alert("empty_dir", dumbwaiter, frameclass, **kwargs)
+                alerting.send_alert(
+                    "empty_dir", dumbwaiter=dumbwaiter, frameclass=frameclass, **kwargs
+                )
                 continue
 
             # Copy over the sorted frames to processing; package for cold storage
@@ -257,10 +259,7 @@ def run_science(
         DEBUG KWARG OPTION.  For validation of current frames, compare against
         all matches, regardless of the timestamp  (Default: False)
     """
-    alerting.send_alert(
-        f"Warning: `run_sci` is not yet implemented; `{dumbwaiter.nightname}`",
-        "main_driver.Run.run_sci()",
-    )
+    alerting.send_alert("not_implemented", dumbwaiter=dumbwaiter, **kwargs)
 
 
 def run_allsky(
@@ -290,10 +289,46 @@ def run_allsky(
         DEBUG KWARG OPTION.  For validation of current frames, compare against
         all matches, regardless of the timestamp  (Default: False)
     """
-    alerting.send_alert(
-        f"Warning: `run_asc` is not yet implemented; `{dumbwaiter.nightname}`",
-        "main_driver.Run.run_asc()",
+    # Collect the calibration frames within the processing directory
+    allskies = process_frames.AllSkyContainer(
+        dumbwaiter.dirs["proc"],
+        dumbwaiter.flags,
+        mem_limit=mem_limit,
     )
+
+    # Loop through the CCD configuration schemes used
+    for config in allskies.unique_detector_configs:
+        ccd_bin, amp_id = config
+
+        # Print out a nice status message for those interested
+        print("")
+        msgs.info(
+            f"Processing {dumbwaiter.nightname} for {ccd_bin.replace(' ', 'x')} "
+            f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
+        )
+
+        # Reset the metadata tables and calib frames for this configuration
+        allskies.reset_config()
+
+        # Process the ALLSKY frames!
+        allskies.process_allsky(config)
+
+        # Take the metadata from the calibration frames and produce DATABASE
+        database = database_manager.AllSkyDatabase(
+            dumbwaiter.flags,
+            dumbwaiter.dirs["proc"],
+            dumbwaiter.nightname,
+            config,
+            allsky_container=allskies,
+        )
+        # Validate the metadata tables
+        database.validate(
+            sigma_thresh=sigma_thresh,
+            scheme=validation_scheme,
+            **kwargs,
+        )
+        # Write the contents to InfluxDB
+        database.write_to_influxdb(testing=kwargs.get("skip_db_write", False))
 
 
 # Console Script Entry Point =================================================#

@@ -81,8 +81,8 @@ def update_filter_characterization(
     #   send alert and return
     if not lmi_filter_info.exists:
         alerting.send_alert(
-            "LMI Filter Information does not exist in the expected location",
-            "confluence_updater.update_filter_characterization()",
+            "text",
+            text="LMI Filter Information does not exist in the expected location",
         )
         return
 

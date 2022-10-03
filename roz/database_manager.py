@@ -267,7 +267,7 @@ class AllSkyDatabase:
     to insert them into the InfluxDB database
     """
 
-    def __init__(self):
+    def __init__(self, inst_flags, proc_dir, nightname, config, allsky_container):
         pass
 
     def bogus_public_method(self):
@@ -287,6 +287,12 @@ class AllSkyDatabase:
         -------
         _type_
             _description_
+        """
+
+    def validate(self, **kwargs):
+        """validate _summary_
+
+        _extended_summary_
         """
 
 

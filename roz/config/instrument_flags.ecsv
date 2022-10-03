@@ -23,6 +23,7 @@ NIHTS ldt 20 False False True True True True True True False False False
 RC1 ldt xx False False False False False False False False False False False
 RC2 ldt xx False False False False False False False False False False False
 DCT_ALLSKY ldt TARGET False False False False False False False False False True True
+LDT_ALLSKY ldt TARGET False False False False False False False False False True True
 AM_ALLSKY andersonmesa xx False False False False False False False False False True True
 NASA42 andersonmesa xx False True False False False False False False False False False
 NPOIET1 andersonmesa xx False False False False False False False False False False False

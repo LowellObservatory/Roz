@@ -99,7 +99,7 @@ class Dumbwaiter:
         }
 
         # Divine the instrument and set flags
-        fitsfiles = _get_sequential_fitsfiles(self.dirs["data"])
+        fitsfiles = self.get_sequential_fitsfiles(self.dirs["data"])
         self.instrument = self.divine_instrument(fits_files=fitsfiles)
         self.flags = self.set_instrument_flags(self.instrument)
 
@@ -276,10 +276,7 @@ class Dumbwaiter:
         #  be of form ".../dataquality/{site}/{instrument}"
         cold_dir = self.dirs["cold"].joinpath(self.flags["site"], self.instrument)
         if not cold_dir.is_dir():
-            alerting.send_alert(
-                f"Cold storage directory not available at `{cold_dir}`",
-                "gather_frames.Dumbwaiter.cold_storage()",
-            )
+            alerting.send_alert("dir_not_found", dirname=cold_dir, **kwargs)
             return
         msgs.info(f"Copying {tarbase} to {cold_dir}...")
         # NOTE: Using this lower-level function to avoid chmod() errors
@@ -322,7 +319,7 @@ class Dumbwaiter:
 
         if directory and not fits_files:
             # Get the list of normal FITS files in the directory
-            fits_files = _get_sequential_fitsfiles(directory)
+            fits_files = Dumbwaiter.get_sequential_fitsfiles(directory)
 
         # Loop through the files, looking for a valid INSTRUME keyword
         for fitsfile in fits_files:
@@ -335,8 +332,8 @@ class Dumbwaiter:
 
         # Otherwise...
         alerting.send_alert(
-            f"No Instrument found in {utils.subpath(directory) if directory else 'this directory'}",
-            "gather_frames.Dumbwaiter.divine_instrument()",
+            "no_inst_found",
+            dirname=utils.subpath(directory) if directory else "this directory",
         )
         return None
 
@@ -365,10 +362,7 @@ class Dumbwaiter:
 
         # Check that the instrument is in the table
         if (inst := inst.upper()) not in instrument_table["instrument"]:
-            alerting.send_alert(
-                f"Instrument {inst} not yet supported; update instrument_flags.ecsv",
-                "gather_frames.Dumbwaiter.set_instrument_flags()",
-            )
+            alerting.send_alert("inst_not_support", inst=inst)
             return None
 
         # Extract the row, and convert it to a dictionary
@@ -391,30 +385,99 @@ class Dumbwaiter:
         debug : bool, optional
             ``.pprint()`` the Table for debug?  (Default: False)
         """
+        # List of possible keywords to include in the summary table:
+        keywords = [
+            "obserno",
+            "seqnum",
+            "imagetyp",
+            "imgtype",
+            "filters",
+            "ccdsum",
+            "numamp",
+            "creator",
+        ]
+        # Column rename dictionary:
+        renames = {
+            "imagetyp": "frametype",
+            "imgtype": "frametype",
+            "filters": "filter",
+            "ccdsum": "binning",
+            "seqnum": "obserno",
+        }
+
+        # If the FITS files are compressed, emit a warning about slowness
+        exts = sorted(list({pathlib.Path(fn).suffix for fn in self.frames[frameclass]}))
+        if ".gz" in exts or ".bz2" in exts:
+            msgs.warn("The FITS files in this directory are compressed; be patient.")
+
+        # Load in the Image File Collection
         icl = ccdproc.ImageFileCollection(
             location=self.dirs["proc"], filenames=self.frames[frameclass]
         )
 
-        # Pull the README subtable based on FITS header keywords
-        readme = icl.summary["obserno", "imagetyp", "filters", "ccdsum", "numamp"]
+        # Pull the README subtable based on FITS header keywords present
+        readme = icl.summary[list(set(icl.summary.colnames) & set(keywords))]
 
         if "ampid" in icl.summary.colnames:
             # For single-amplifier readouts
             readme["ampid"] = icl.summary["ampid"]
-        else:
-            # For multi-amplifier readouts
+        elif readme["creator"][0] == "LOIS":
+            # For LOIS multi-amplifier readouts
             readme["ampid"] = [utils.parse_lois_ampids(hdr) for hdr in icl.headers()]
 
-        # Convert those to the InfluxDB tags used with Roz
-        readme.rename_columns(
-            ["imagetyp", "filters", "ccdsum"], ["frametype", "filter", "binning"]
-        )
+        # Convert column names to the InfluxDB tags used with Roz
+        for oldname, newname in renames.items():
+            if oldname in readme.colnames:
+                readme.rename_column(oldname, newname)
+
         # Write it out!
         readme.write(
             self.dirs["proc"].joinpath("README.txt"), format="ascii.fixed_width"
         )
         if debug:
             readme.pprint()
+
+    @staticmethod
+    def get_sequential_fitsfiles(directory, prefix=""):
+        """Get the sequential FITS files in a directory
+
+        Since we do this several times, pull it out to a separate function.  This
+        function returns a list of the non-test (assumed sequential) FITS files in
+        ``directory``.
+
+        Parameters
+        ----------
+        directory : :obj:`str` or :obj:`pathlib.Path`
+            Directory name to search for FITS files
+        prefix : str, optional
+            The file prefix from ``instrument_flags.ecsv``  (Default: ``""``)
+
+        Returns
+        -------
+        list
+            List of the sequentially numbered FITS files in ``directory``
+        """
+        # Make sure directory is a pathlib.Path
+        if isinstance(directory, str):
+            directory = pathlib.Path(directory)
+
+        # Check that `directory` is, in fact, a directory
+        if not directory.is_dir():
+            alerting.send_alert("dir_not_found", dirname=utils.subpath(directory))
+            return None
+
+        # Get a sorted list of all the FITS files (inluding compressed formats)
+        fits_files = []
+        for file_ext in ["fits", "fit", "fits.gz", "fit.gz", "fits.bz2", "fit.bz2"]:
+            fits_files.extend(list(directory.glob(f"{prefix}*.{file_ext}")))
+        fits_files = sorted(fits_files)
+
+        # Remove `test.fits` because we just don't care about it.
+        return [
+            file
+            for file in fits_files
+            if file.name not in ["test.fits", "final.fit.bz2"]
+        ]
 
 
 # Non-Class Functions ========================================================#
@@ -449,7 +512,7 @@ def gather_calibration_frames(directory, inst_flag, fitsfiles=None, fnames_only=
 
     # Create an ImageFileCollection for the specified directory
     if not fitsfiles:
-        fitsfiles = _get_sequential_fitsfiles(directory)
+        fitsfiles = Dumbwaiter.get_sequential_fitsfiles(directory, inst_flag["prefix"])
     icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
 
     if not icl.files:
@@ -560,7 +623,7 @@ def gather_science_frames(directory, inst_flag, fitsfiles=None, fnames_only=Fals
 
     # Create an ImageFileCollection for the specified directory
     if not fitsfiles:
-        fitsfiles = _get_sequential_fitsfiles(directory)
+        fitsfiles = Dumbwaiter.get_sequential_fitsfiles(directory, inst_flag["prefix"])
     icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
 
     if not icl.files:
@@ -640,7 +703,13 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
 
     # Create an ImageFileCollection for the specified directory
     if not fitsfiles:
-        fitsfiles = _get_sequential_fitsfiles(directory)
+        fitsfiles = Dumbwaiter.get_sequential_fitsfiles(directory, inst_flag["prefix"])
+
+    # If the FITS files are compressed, emit a warning about slowness
+    exts = sorted(list({pathlib.Path(fn).suffix for fn in fitsfiles}))
+    if ".gz" in exts or ".bz2" in exts:
+        msgs.warn("The FITS files in this directory are compressed; be patient.")
+
     icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
 
     if not icl.files:
@@ -648,8 +717,8 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
 
     return_object = {}
 
-    # Gather OBJECT frames; FULL FRAME ONLY
-    object_cl = icl.filter(obstype="object", subarrno=0)
+    # Gather OBJECT frames
+    object_cl = icl.filter(imgtype="object")
     return_object["object_fn"] = object_cl.files
     return_object["object_cl"] = object_cl
 
@@ -684,44 +753,3 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
         filenames=return_object["object_fn"],
     )
     return return_object
-
-
-def _get_sequential_fitsfiles(directory):
-    """Get the sequential FITS files in a directory
-
-    Since we do this several times, pull it out to a separate function.  This
-    function returns a list of the non-test (assumed sequential) FITS files in
-    ``directory``.
-
-    Parameters
-    ----------
-    directory : str or :obj:`pathlib.Path`
-        Directory name to search for FITS files
-
-    Returns
-    -------
-    list
-        List of the sequentially numbered FITS files in ``directory``
-    """
-    # Make sure directory is a pathlib.Path
-    if isinstance(directory, str):
-        directory = pathlib.Path(directory)
-
-    # Check that `directory` is, in fact, a directory
-    if not directory.is_dir():
-        alerting.send_alert(
-            f"Directory Issue: {utils.subpath(directory)} is not a valid directory",
-            "gather_frames.get_sequential_fitsfiles()",
-        )
-        return None
-
-    # Get a sorted list of all the FITS files (inluding compressed formats)
-    fits_files = []
-    for file_ext in ["fits", "fit", "fits.gz", "fit.gz", "fits.bz2", "fit.bz2"]:
-        fits_files.extend(list(directory.glob(f"*.{file_ext}")))
-    fits_files = sorted(fits_files)
-
-    # Remove `test.fits` because we just don't care about it.
-    return [
-        file for file in fits_files if file.name not in ["test.fits", "final.fit.bz2"]
-    ]

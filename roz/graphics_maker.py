@@ -93,10 +93,7 @@ def make_png_thumbnail(img_fn, inst_flags, latest=True, problem=False, debug=Fal
     try:
         ccd = astropy.nddata.CCDData.read(img_fn)
     except OSError as exception:
-        alerting.send_alert(
-            f"Could not open {img_fn} because of {exception}.",
-            "graphics_maker.make_png_thumbnail()",
-        )
+        alerting.send_alert("file_not_open", filename=img_fn, exception=exception)
         return None
 
     # Since we use the filename (sans path) in the graphic title...
