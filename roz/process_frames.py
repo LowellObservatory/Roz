@@ -594,31 +594,31 @@ class ScienceContainer(_ContainerBase):
             self.directory, self.flags
         )
 
-    def process_science(self, ccd_bin):
+    def process_science(self, config):
         """Process the science frames
 
         _extended_summary_
 
         Parameters
         ----------
-        ccd_bin : _type_
+        config : tuple
             _description_
         """
         if self.debug:
-            print(ccd_bin)
+            print(f"{config}")
 
-    def process_standard(self, ccd_bin):
+    def process_standard(self, config):
         """Process the photometric standard frames
 
         _extended_summary_
 
         Parameters
         ----------
-        ccd_bin : _type_
+        config : tuple
             _description_
         """
         if self.debug:
-            print(ccd_bin)
+            msgs.bug(f"{config}")
 
 
 class AllSkyContainer(_ContainerBase):
@@ -654,18 +654,34 @@ class AllSkyContainer(_ContainerBase):
         # Set up the various allsky output attritubes
         self.allsky_meta = None
 
-    def process_allsky(self, ccd_bin):
+    def process_allsky(self, config):
         """Process the All-Sky Camera frames
 
-        _extended_summary_
+        The All-Sky Cameras at both LDT and AM are OCULUS ALL-SKY
+        CAMERA 180º by Starlight Xpress.
+
+        The camera is built around a ICX267AL Sony SuperHAD interline CCD with
+        low dark current and vertical anti-blooming.
+        Pixel size: 4.65uM x 4.65uM, Image format: 1392 x 1040 pixels 
+        CCD Image area: 6.4mm (Horizontal) x 4.75mm (Vertical). 
+
+        The processing of these frames will include:
+        1. Construction of an ALT/AZ coordinate system centered on the
+        illuminated region of the CCD for masking.
+        2. Identify the "Region of Interest" (e.g., EL >= ??) and compute
+        statistics of the pixel values within the RoI (mean, median, stdev)
+        3. Construct difference images between adjacent frames for the
+        identification of clouds and other "bad" things in the sky.
+        4. Compute statistics on the difference images.
+        5. Place the relevant data into a ``meta_table`` for database storage.
 
         Parameters
         ----------
-        ccd_bin : _type_
+        config : tuple
             _description_
         """
         if self.debug:
-            print(ccd_bin)
+            msgs.bug(f"{config}")
         msgs.warn("Really, I don't know what I'm doing here...")
 
         msgs.table("Step 1: Mask Stuff; mask will depend on LDT vs AM ASC")

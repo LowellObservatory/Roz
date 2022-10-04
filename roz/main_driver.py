@@ -296,17 +296,9 @@ def run_allsky(
         mem_limit=mem_limit,
     )
 
-    msgs.bug("Acquired AllSkyContainer!")
-
-    msgs.bug(
-        f"These are the unique_detector_configs: {allskies.unique_detector_configs}"
-    )
-
     # Loop through the CCD configuration schemes used
     for config in allskies.unique_detector_configs:
         ccd_bin, amp_id = config
-
-        msgs.bug("This should print.  Yes?  Yes?")
 
         # Print out a nice status message for those interested
         print("")

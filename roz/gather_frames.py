@@ -25,6 +25,8 @@ This module primarily trades in CCDPROC Image File Collections
 """
 
 # Built-In Libraries
+import bz2
+import gzip
 import os
 import pathlib
 import re
@@ -155,7 +157,7 @@ class Dumbwaiter:
         """
         return self._empty[frameclass]
 
-    def serve_frames(self, frameclass, keep_existing=False):
+    def serve_frames(self, frameclass, keep_existing=False, uncompress=True):
         """Copy data frames to a local processing dir
 
         This method copies the identified frames from the original data
@@ -172,6 +174,8 @@ class Dumbwaiter:
         keep_existing : bool, optional
             Keep the existing files in the processing directory?
             (Default: False)
+        uncompress : bool, optional
+            Uncompress compressed files during the transfer?  (Default: True)
         """
         # If empty, dont' do anything
         if self.empty(frameclass):
@@ -193,9 +197,28 @@ class Dumbwaiter:
             unit_scale=False,
             colour="#D2042D",
         )
-        for frame in self.frames[frameclass]:
+        for i, frame in enumerate(self.frames[frameclass]):
             try:
-                shutil.copy2(self.dirs["data"].joinpath(frame), self.dirs["proc"])
+                data_file = self.dirs["data"].joinpath(frame)
+
+                # Uncompress file into PROC
+                if data_file.suffix in [".bz2", ".gz"] and uncompress:
+                    compressed_data = (
+                        bz2.BZ2File(data_file)
+                        if data_file.suffix == ".bz2"
+                        else gzip.GzipFile(data_file)
+                    ).read()
+
+                    # Write the uncompressed data to PROC w/o compression extension
+                    self.frames[frameclass][i] = (new_fn := data_file.stem)
+                    with open(self.dirs["proc"].joinpath(new_fn), "wb") as f_obj:
+                        f_obj.write(compressed_data)
+
+                # Otherwise, just copy the file directly
+                else:
+                    shutil.copy2(data_file, self.dirs["proc"])
+
+            # If any problems...
             except FileNotFoundError as err:
                 msgs.error(
                     f"Expected file was not found in the data directory:"
@@ -408,7 +431,7 @@ class Dumbwaiter:
 
         # If the FITS files are compressed, emit a warning about slowness
         exts = sorted(list({pathlib.Path(fn).suffix for fn in self.frames[frameclass]}))
-        if ".gz" in exts or ".bz2" in exts:
+        if any(ext in [".gz", ".bz2"] for ext in exts):
             msgs.warn("The FITS files in this directory are compressed; be patient.")
 
         # Load in the Image File Collection
@@ -708,7 +731,7 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
 
     # If the FITS files are compressed, emit a warning about slowness
     exts = sorted(list({pathlib.Path(fn).suffix for fn in fitsfiles}))
-    if ".gz" in exts or ".bz2" in exts:
+    if any(ext in [".gz", ".bz2"] for ext in exts):
         msgs.warn("The FITS files in this directory are compressed; be patient.")
 
     icl = ccdproc.ImageFileCollection(location=directory, filenames=fitsfiles)
@@ -719,9 +742,9 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
     return_object = {}
 
     # Gather OBJECT frames -- Only keep basename for filename list
-    object_cl = icl.filter(imgtype="object")
-    return_object["object_fn"] = [os.path.basename(fn) for fn in object_cl.files]
-    return_object["object_cl"] = object_cl
+    return_object["object_fn"] = [
+        os.path.basename(fn) for fn in icl.files_filtered(imgtype="object")
+    ]
 
     if inst_flag["check_bin"]:
         # Get the complete list of binnings used -- but clear out `None` entries
