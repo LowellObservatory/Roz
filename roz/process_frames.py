@@ -44,6 +44,9 @@ from roz import gather_frames
 from roz import msgs
 from roz import utils
 
+import kpno_allsky.coordinates
+import kpno_allsky.mask
+
 # Set API Components
 __all__ = ["CalibContainer", "ScienceContainer", "AllSkyContainer"]
 
@@ -662,16 +665,17 @@ class AllSkyContainer(_ContainerBase):
 
         The camera is built around a ICX267AL Sony SuperHAD interline CCD with
         low dark current and vertical anti-blooming.
-        Pixel size: 4.65uM x 4.65uM, Image format: 1392 x 1040 pixels 
-        CCD Image area: 6.4mm (Horizontal) x 4.75mm (Vertical). 
+        Pixel size: 4.65uM x 4.65uM, Image format: 1392 x 1040 pixels
+        CCD Image area: 6.4mm (Horizontal) x 4.75mm (Vertical).
 
         The processing of these frames will include:
+
         1. Construction of an ALT/AZ coordinate system centered on the
-        illuminated region of the CCD for masking.
+           illuminated region of the CCD for masking.
         2. Identify the "Region of Interest" (e.g., EL >= ??) and compute
-        statistics of the pixel values within the RoI (mean, median, stdev)
+           statistics of the pixel values within the RoI (mean, median, stdev)
         3. Construct difference images between adjacent frames for the
-        identification of clouds and other "bad" things in the sky.
+           identification of clouds and other "bad" things in the sky.
         4. Compute statistics on the difference images.
         5. Place the relevant data into a ``meta_table`` for database storage.
 
@@ -689,3 +693,8 @@ class AllSkyContainer(_ContainerBase):
         msgs.table("Step 3: Make a difference frame with the adjacent exposure")
         msgs.table("Step 4: Take stats of 'good' area of difference frame")
         msgs.table("Step 5: Place the relevant data into a meta_table")
+
+        # kpno_allsky.coordinates.xy_to_altaz()
+        mask = kpno_allsky.mask.generate_full_mask()
+
+        print(mask.shape, type(mask))
