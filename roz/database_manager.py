@@ -45,7 +45,7 @@ from roz import utils
 from roz import validate_statistics
 
 # Set API Components
-__all__ = ["CalibrationDatabase", "ScienceDatabase", "HistoricalData"]
+__all__ = ["CalibrationDatabase", "ScienceDatabase", "AllSkyDatabase", "HistoricalData"]
 
 
 class CalibrationDatabase:

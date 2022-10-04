@@ -134,10 +134,10 @@ class _ContainerBase:
             ``(ccd_bin, amp_id)``
         """
         configs = []
-        for ccd_bin in self.frame_dict.get("bin_list", ["1x1"]):
+        for ccd_bin in self.frame_dict.get("bin_list", ["1 1"]):
             amplist = [
                 utils.parse_lois_ampids(hdr)
-                for hdr in self.frame_dict["calibration_cl"].headers(ccdsum=ccd_bin)
+                for hdr in self.frame_dict["icl"].headers(ccdsum=ccd_bin)
             ]
             # Sorted list set to keep it identical between runs
             for amp in sorted(list(set(amplist))):
@@ -591,7 +591,7 @@ class ScienceContainer(_ContainerBase):
 
         # Get the frame dictionary to be used
         self.frame_dict = gather_frames.gather_science_frames(
-            thing1=self.directory, thing2=self.flags
+            self.directory, self.flags
         )
 
     def process_science(self, ccd_bin):
@@ -649,9 +649,10 @@ class AllSkyContainer(_ContainerBase):
         super().__init__(*args, **kwargs)
 
         # Get the frame dictionary to be used
-        self.frame_dict = gather_frames.gather_allsky_frames(
-            thing1=self.directory, thing2=self.flags
-        )
+        self.frame_dict = gather_frames.gather_allsky_frames(self.directory, self.flags)
+
+        # Set up the various allsky output attritubes
+        self.allsky_meta = None
 
     def process_allsky(self, ccd_bin):
         """Process the All-Sky Camera frames
@@ -666,3 +667,9 @@ class AllSkyContainer(_ContainerBase):
         if self.debug:
             print(ccd_bin)
         msgs.warn("Really, I don't know what I'm doing here...")
+
+        msgs.table("Step 1: Mask Stuff; mask will depend on LDT vs AM ASC")
+        msgs.table("Step 2: Take stats of 'good' area of the image")
+        msgs.table("Step 3: Make a difference frame with the adjacent exposure")
+        msgs.table("Step 4: Take stats of 'good' area of difference frame")
+        msgs.table("Step 5: Place the relevant data into a meta_table")

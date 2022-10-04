@@ -296,9 +296,17 @@ def run_allsky(
         mem_limit=mem_limit,
     )
 
+    msgs.bug("Acquired AllSkyContainer!")
+
+    msgs.bug(
+        f"These are the unique_detector_configs: {allskies.unique_detector_configs}"
+    )
+
     # Loop through the CCD configuration schemes used
     for config in allskies.unique_detector_configs:
         ccd_bin, amp_id = config
+
+        msgs.bug("This should print.  Yes?  Yes?")
 
         # Print out a nice status message for those interested
         print("")
@@ -307,7 +315,7 @@ def run_allsky(
             f"binning, amplifier{'s' if len(amp_id)>1 else ''} {amp_id}..."
         )
 
-        # Reset the metadata tables and calib frames for this configuration
+        # Reset the metadata tables for this config
         allskies.reset_config()
 
         # Process the ALLSKY frames!

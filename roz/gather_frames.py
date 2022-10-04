@@ -286,24 +286,25 @@ class Dumbwaiter:
     def divine_instrument(directory=None, fits_files=None):
         """Divine the instrument whose data is in this directory
 
-        This function emulates Carnac the Magnificent, where it holds a sealed
-        envelope (FITS header) to its forehead and divines the answer to the
-        question contained inside (what is the instrument?).  Finally, it rips
-        open the envelope, and reads the index card (INSTRUME keyword) inside.
+        This function emulates Carnac the Magnificent, whereby it holds a
+        sealed envelope (FITS header) to its forehead and divines the answer
+        to the question contained inside (what is the instrument?).  Finally,
+        it rips open the envelope, and reads the index card (INSTRUME keyword)
+        inside.
 
         .. note::
 
             For proper functioning, the FITS headers must be kept in a
             mayonnaise jar on Funk and Wagnalls' porch since noon UT.
 
-        .. note::
+        .. TODO::
 
             As we bring the Anderson Mesa instruments into Roz, this function
             may need significant overhaul.
 
         Parameters
         ----------
-        directory : str or :obj:`pathlib.Path`, optional
+        directory : :obj:`str` or :obj:`pathlib.Path`, optional
             The directory for which to divine the instrument
         fits_files : list, optional
             The list of FITS files from which to divine the instrument
@@ -586,7 +587,7 @@ def gather_calibration_frames(directory, inst_flag, fitsfiles=None, fnames_only=
         return all_fns
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
-    return_object["calibration_cl"] = ccdproc.ImageFileCollection(
+    return_object["icl"] = ccdproc.ImageFileCollection(
         location=directory if all_fns else None, filenames=all_fns
     )
     return return_object
@@ -631,9 +632,9 @@ def gather_science_frames(directory, inst_flag, fitsfiles=None, fnames_only=Fals
 
     return_object = {}
 
-    # Gather OBJECT frames; FULL FRAME ONLY
+    # Gather OBJECT frames; FULL FRAME ONLY -- Only keep basename for filename list
     object_cl = icl.filter(obstype="object", subarrno=0)
-    return_object["object_fn"] = object_cl.files
+    return_object["object_fn"] = [os.path.basename(fn) for fn in object_cl.files]
     return_object["object_cl"] = object_cl
 
     if inst_flag["check_bin"]:
@@ -662,7 +663,7 @@ def gather_science_frames(directory, inst_flag, fitsfiles=None, fnames_only=Fals
         return return_object["object_fn"]
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
-    return_object["science_cl"] = ccdproc.ImageFileCollection(
+    return_object["icl"] = ccdproc.ImageFileCollection(
         location=directory if return_object["object_fn"] else None,
         filenames=return_object["object_fn"],
     )
@@ -717,9 +718,9 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
 
     return_object = {}
 
-    # Gather OBJECT frames
+    # Gather OBJECT frames -- Only keep basename for filename list
     object_cl = icl.filter(imgtype="object")
-    return_object["object_fn"] = object_cl.files
+    return_object["object_fn"] = [os.path.basename(fn) for fn in object_cl.files]
     return_object["object_cl"] = object_cl
 
     if inst_flag["check_bin"]:
@@ -748,7 +749,7 @@ def gather_allsky_frames(directory, inst_flag, fitsfiles=None, fnames_only=False
         return return_object["object_fn"]
 
     # Otherwise, create a combined IFC, and return the accumulated dictionary
-    return_object["science_cl"] = ccdproc.ImageFileCollection(
+    return_object["icl"] = ccdproc.ImageFileCollection(
         location=directory if return_object["object_fn"] else None,
         filenames=return_object["object_fn"],
     )

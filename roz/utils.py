@@ -113,6 +113,12 @@ def parse_lois_ampids(hdr):
     amplifier is used, 'AMPID' is not present, and the amplifier combination
     must be reconstructed from the present 'AMPIDnn' keywords.
 
+    .. note::
+        This routine was written for LOIS headers.  Data recorded with a
+        different system may not have NUMAMP and AMPID keywords.  In this
+        event, ``NUMAMP = 1`` and ``AMPID = "A"`` will be returned for
+        compatibility with the remainder of the package.
+
     Parameters
     ----------
     hdr : `astropy.io.fits.Header`_
@@ -124,8 +130,8 @@ def parse_lois_ampids(hdr):
         The amplifier designation(s) used
     """
     # Basic 1-amplifier case:
-    if int(hdr["NUMAMP"]) == 1:
-        return f"{hdr['AMPID'].strip()}"
+    if int(hdr.get("NUMAMP", 1)) == 1:
+        return f"{hdr.get('AMPID', 'A').strip()}"
 
     # Else, parse out all of the "AMPIDnn" keywords, join and return
     return "".join([val.strip() for kwd, val in hdr.items() if "AMPID" in kwd])
