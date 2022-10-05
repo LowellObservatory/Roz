@@ -9,16 +9,15 @@ draw analysis objects on top of the images.
 """
 
 import os
-import math
 
-from PIL import Image as pil_image
-from astropy.time import Time
+import astropy.time
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Rectangle
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import matplotlib.patches
+import matplotlib.backends.backend_agg
+import PIL.Image
 
-import coordinates
+from kpno_allsky import coordinates
 
 
 class AllSkyImage():
@@ -51,7 +50,7 @@ class AllSkyImage():
             format1 = date[:4] + "-" + date[4:6] + "-" + date[6:8]
             format2 = name[4:6] + ":" + name[6:8] + ":" + name[8:10]
             self.formatdate = format1 + " " + format2
-            self.time = Time(self.formatdate)
+            self.time = astropy.time.Time(self.formatdate)
         else:
             self.formatdate = None
             self.time = None
@@ -89,7 +88,7 @@ def load_image(name, date, camera, mode="L"):
 
     # Loads the image using Pillow and converts it to given mode.
     loc = os.path.join("Images", *["Original", camera, date, name])
-    img = np.asarray(pil_image.open(loc).convert(mode))
+    img = np.asarray(PIL.Image.open(loc).convert(mode))
     return AllSkyImage(name, date, camera, img)
 
 
@@ -205,7 +204,7 @@ def draw_patch(img, patch):
     height = width
 
     # Extracts the figure into a numpy array and then converts it to greyscale.
-    canvas = FigureCanvas(fig)
+    canvas = matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
     canvas.draw()
     data = np.fromstring(canvas.tostring_rgb(), dtype="uint8").reshape((height, width, 3))
 
@@ -289,7 +288,7 @@ def draw_contours(img):
         if img.camera.lower() == "kpno":
             r = r * 240 / 11.6  # mm to pixel rate
 
-        circ = Circle(center, radius=r, fill=False, edgecolor="green")
+        circ = matplotlib.patches.Circle(center, radius=r, fill=False, edgecolor="green")
         img = draw_patch(img, circ)
 
     return img
@@ -349,14 +348,14 @@ def draw_square(x, y, img):
 
     ax.set_aspect("equal")
     for i, val in enumerate(x):
-        rect = Rectangle((x[i]-5, y[i]-5), 11, 11, fill=False, ec="c")
+        rect = matplotlib.patches.Rectangle((x[i]-5, y[i]-5), 11, 11, fill=False, ec="c")
         ax.add_patch(rect)
 
     width = int(scale * dpi)
     height = width
 
     # Extracts the figure into a numpy array and then converts it to greyscale.
-    canvas = FigureCanvas(fig)
+    canvas = matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
     canvas.draw()
     data = np.fromstring(canvas.tostring_rgb(), dtype="uint8").reshape((height, width, 3))
 
@@ -403,10 +402,10 @@ def get_exposure(img):
     # Greyscale conversion below is the same one used by imread.
     if len(img.data.shape) == 3:
         pix1 = pix1[0] * 299/1000 + pix1[1] * 587/1000 + pix1[2] * 114/1000
-        pix1 = math.floor(pix1)
+        pix1 = np.floor(pix1)
 
         pix2 = pix2[0] * 299/1000 + pix2[1] * 587/1000 + pix2[2] * 114/1000
-        pix2 = math.floor(pix2)
+        pix2 = np.floor(pix2)
 
     if pix1 == 225:
         return 0.3
