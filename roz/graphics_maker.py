@@ -176,11 +176,11 @@ def get_image_intensity_limits(ccd):
         the percentiles assigned by ``OBSTYPE``.
     """
     # Get the image type from the FITS header, and select the percentile range
-    if ccd.header["OBSTYPE"] == "OBJECT":
+    if (obstype := ccd.header.get("OBSTYPE")) == "OBJECT":
         pmin, pmax = 25, 99.75
-    elif ccd.header["OBSTYPE"] in ["DOME FLAT", "SKY FLAT"]:
+    elif obstype in ["DOME FLAT", "SKY FLAT"]:
         pmin, pmax = 3, 99
-    elif ccd.header["OBSTYPE"] == "BIAS":
+    elif obstype == "BIAS":
         pmin, pmax = 5, 95
     else:
         pmin, pmax = 0, 100

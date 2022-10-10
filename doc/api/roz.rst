@@ -8,6 +8,7 @@ Submodules
    :maxdepth: 4
 
    roz.alerting
+   roz.allsky_toolbox
    roz.database_manager
    roz.gather_frames
    roz.graphics_maker
