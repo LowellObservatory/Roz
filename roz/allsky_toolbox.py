@@ -624,11 +624,63 @@ def make_clean_sobel_map():
     plt.close()
 
 
+def make_hpm_fits():
+    """Create a Hot Pixel Mask for this data set
+
+    _extended_summary_
+    """
+    msgs.info("Reading in the ImageFileCollection...")
+    icl = ccdproc.ImageFileCollection(
+        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
+    )
+
+    hotpix = generate_hotpixel_mask(icl)
+
+    # Set up the plotting environment for the final SOBEL mask
+    sccd = astropy.nddata.CCDData(hotpix, unit=u.adu)
+    sccd.write("/Users/tbowers/sandbox/hotpix_sum.fits", overwrite=True)
+
+
 def find_stars_asc():
+    """Find stars in the ALL-SKY IMAGE
 
-    ccd = astropy.nddata.CCDData.read("Users/tbowers/sandbox/TARGET__00323.fit")
+    _extended_summary_
+    """
+    hpm = astropy.nddata.CCDData.read(
+        "/Users/tbowers/sandbox/hotpix_sum.fits", unit=u.adu
+    )
 
-    _, axis = plt.subplots()
+    ccd = astropy.nddata.CCDData.read(
+        "/Users/tbowers/sandbox/TARGET__00323.fit", unit=u.adu
+    )
+    # LR flip the image and convert to float
+    ccd.data = np.fliplr(ccd.data.astype(float))
+
+    ccd.data[hpm.data.astype(bool)] = np.nan
+    msgs.bug(f"Number of NaN pixels in masked image: {np.sum(np.isnan(ccd.data))}")
+
+    ccd.data = astropy.convolution.interpolate_replace_nans(
+        ccd.data, astropy.convolution.Gaussian2DKernel(x_stddev=1)
+    )
+    msgs.bug(
+        f"Number of NaN pixels in interpolated image: {np.sum(np.isnan(ccd.data))}"
+    )
+    radius = generate_radius_mask(ccd.data)
+    # Mask by radius
+    ccd.data[radius.astype(bool)] = np.nan
+
+    _, axis = plt.subplots(figsize=(16, 12))
+
+    interval = astropy.visualization.ZScaleInterval(nsamples=10000)
+    vmin, vmax = interval.get_limits(ccd.data)
+    # Show the data on the plot, using the limits computed above
+    axis.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower")
+    axis.axis("off")
+    # Finish up
+    plt.tight_layout()
+    plt.savefig("/Users/tbowers/sandbox/finding_stars.png")
+    plt.savefig("/Users/tbowers/sandbox/finding_stars.pdf")
+    plt.close()
 
 
 # Testing CLI
@@ -636,6 +688,7 @@ if __name__ == "__main__":
 
     # test_animations()
     # run_test_hotpix()
-    test_masking()
+    # test_masking()
     # make_clean_sobel_map()
-    # find_stars_asc()
+    find_stars_asc()
+    # make_hpm_fits()
