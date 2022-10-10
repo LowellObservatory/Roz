@@ -57,8 +57,9 @@ from roz import utils
 # Set API Components
 # __all__ = ['generate_mask','gener']
 
-LDT_ASC = {"xcen": (683), "ycen": 489, "mrad": 518}
+LDT_ASC = {"xcen": 683, "ycen": 489, "mrad": 518}
 SIXTEEN_BIT = 2**16 - 1
+DDIR = pathlib.Path("/Users/tbowers/sandbox/")
 
 # Silence Superflous AstroPy FITS Header Warnings
 warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
@@ -284,9 +285,7 @@ def test_animations():
     _extended_summary_
     """
     msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(
-        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
-    )
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
 
     # Show progress bar for processing ASC frames
     msgs.info("Processing frames...")
@@ -332,7 +331,7 @@ def test_animations():
 
         # Finish up
         plt.tight_layout()
-        plt.savefig(f"/Users/tbowers/sandbox/asc_{ccd.header['seqnum']:05d}.png")
+        plt.savefig(DDIR.joinpath(f"asc_{ccd.header['seqnum']:05d}.png"))
         plt.close()
         progress_bar.update(1)
 
@@ -345,11 +344,11 @@ def test_animations():
     # ffmpeg -framerate 30 -pattern_type glob -i '*.png' \
     #   -c:v libx264 -pix_fmt yuv420p out.mp4
     stream = ffmpeg.input(
-        "/Users/tbowers/sandbox/asc_*.png", framerate=30, pattern_type="glob"
+        str(DDIR.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
     )
     stream = ffmpeg.output(
         stream,
-        "/Users/tbowers/sandbox/asc_night.mp4",
+        DDIR.joinpath("asc_night.mp4"),
         pix_fmt="yuv420p",
         vcodec="libx264",
     )
@@ -357,11 +356,11 @@ def test_animations():
     ffmpeg.run(stream, overwrite_output=True)
 
     # Open the animation
-    os.system(f"/usr/bin/open /Users/tbowers/sandbox/asc_night.mp4")
+    os.system(f"/usr/bin/open {DDIR}/asc_night.mp4")
 
     # Set up the plotting environment for the final SOBEL mask
     sccd = astropy.nddata.CCDData(sobel_mask, unit=u.adu)
-    sccd.write("/Users/tbowers/sandbox/sobel_sum.fits", overwrite=True)
+    sccd.write(DDIR.joinpath("sobel_sum.fits"), overwrite=True)
 
     _, axis = plt.subplots()
 
@@ -386,9 +385,7 @@ def test_hotpix(hot_lim):
     _extended_summary_
     """
     msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(
-        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
-    )
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
 
     # Show progress bar for processing ASC frames
     msgs.info("Processing frames...")
@@ -430,7 +427,7 @@ def test_hotpix(hot_lim):
 
     # Set up the plotting environment for the final SOBEL mask
     sccd = astropy.nddata.CCDData(hotpix, unit=u.adu)
-    sccd.write("/Users/tbowers/sandbox/hotpix_sum.fits", overwrite=True)
+    sccd.write(DDIR.joinpath("hotpix_sum.fits"), overwrite=True)
 
     # _, axis = plt.subplots()
     # # axis.hist(hotpix.flatten(), bins=np.arange(len(icl.files)) + 1, histtype="step")
@@ -464,8 +461,8 @@ def run_test_hotpix():
     axis.set_ylabel("N pixles identified")
     axis.set_title("Hot Pixel Identification Criteria")
     plt.tight_layout()
-    plt.savefig("/Users/tbowers/sandbox/hotpix_identification_criteria.png")
-    plt.savefig("/Users/tbowers/sandbox/hotpix_identification_criteria.pdf")
+    plt.savefig(DDIR.joinpath("hotpix_identification_criteria.png"))
+    plt.savefig(DDIR.joinpath("hotpix_identification_criteria.pdf"))
     plt.close()
 
 
@@ -475,9 +472,7 @@ def test_masking():
     _extended_summary_
     """
     msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(
-        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
-    )
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
 
     hotpix = generate_hotpixel_mask(icl)
     radius = generate_radius_mask(next(icl.ccds(ccd_kwargs={"unit": u.adu})).data)
@@ -524,7 +519,7 @@ def test_masking():
 
         # Finish up
         plt.tight_layout()
-        plt.savefig(f"/Users/tbowers/sandbox/asc_{ccd.header['seqnum']:05d}.png")
+        plt.savefig(DDIR.joinpath(f"asc_{ccd.header['seqnum']:05d}.png"))
         plt.close()
         progress_bar.update(1)
 
@@ -537,11 +532,11 @@ def test_masking():
     # ffmpeg -framerate 30 -pattern_type glob -i '*.png' \
     #   -c:v libx264 -pix_fmt yuv420p out.mp4
     stream = ffmpeg.input(
-        "/Users/tbowers/sandbox/asc_*.png", framerate=30, pattern_type="glob"
+        str(DDIR.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
     )
     stream = ffmpeg.output(
         stream,
-        "/Users/tbowers/sandbox/asc_night.mp4",
+        DDIR.joinpath("asc_night.mp4"),
         pix_fmt="yuv420p",
         vcodec="libx264",
     )
@@ -549,7 +544,7 @@ def test_masking():
     ffmpeg.run(stream, overwrite_output=True)
 
     # Open the animation
-    os.system(f"/usr/bin/open /Users/tbowers/sandbox/asc_night.mp4")
+    os.system(f"/usr/bin/open {DDIR}/asc_night.mp4")
 
 
 def make_clean_sobel_map():
@@ -559,9 +554,7 @@ def make_clean_sobel_map():
     a sum sobel map.
     """
     msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(
-        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
-    )
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
 
     hp_mask = generate_hotpixel_mask(icl)
     msgs.bug(f"Number of marked HOT PIXELS: {np.sum(hp_mask)}")
@@ -607,7 +600,7 @@ def make_clean_sobel_map():
 
     # Set up the plotting environment for the final SOBEL mask
     sccd = astropy.nddata.CCDData(sobel_mask, unit=u.adu)
-    sccd.write("/Users/tbowers/sandbox/sobel_sum.fits", overwrite=True)
+    sccd.write(DDIR.joinpath("sobel_sum.fits"), overwrite=True)
 
     _, axis = plt.subplots()
 
@@ -630,15 +623,88 @@ def make_hpm_fits():
     _extended_summary_
     """
     msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(
-        "/Users/tbowers/sandbox/", glob_include="TARGET*.fit"
-    )
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
 
     hotpix = generate_hotpixel_mask(icl)
 
     # Set up the plotting environment for the final SOBEL mask
     sccd = astropy.nddata.CCDData(hotpix, unit=u.adu)
-    sccd.write("/Users/tbowers/sandbox/hotpix_sum.fits", overwrite=True)
+    sccd.write(DDIR.joinpath("hotpix_sum.fits"), overwrite=True)
+
+
+def make_nightly_median_flat():
+    """Build a nightly median flat
+
+    _extended_summary_
+    """
+    msgs.info("Reading in the ImageFileCollection...")
+    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
+    hotpix = generate_hotpixel_mask(icl)
+
+    # Show progress bar for processing ASC frames
+    msgs.info("Processing frames...")
+    progress_bar = tqdm(
+        total=len(icl.files), unit="frame", unit_scale=False, colour="#eab676"
+    )
+
+    img_list = []
+
+    for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
+
+        # Skip images with exptime less than a minute
+        if ccd.header["EXPTIME"] < 60:
+            progress_bar.update(1)
+            continue
+
+        # LR flip the image and convert to float
+        ccd.data = np.fliplr(ccd.data.astype(float))
+
+        # Mask hot pixels, then interpolate
+        ccd.data[hotpix.astype(bool)] = np.nan
+        ccd.data = astropy.convolution.interpolate_replace_nans(
+            ccd.data, astropy.convolution.Gaussian2DKernel(x_stddev=1)
+        )
+
+        img_list.append(ccd)
+
+        progress_bar.update(1)
+    progress_bar.close()
+
+    return ccdproc.combine(
+        img_list,
+        output_file=DDIR.joinpath("median_flat.fits"),
+        method="median",
+        mem_limit=8.192e9,
+        ccd_kwargs={"unit": u.adu},
+    )
+
+
+def plot_medflat():
+
+    med_flat = astropy.nddata.CCDData.read(DDIR.joinpath("median_flat.fits"))
+
+    _, axis = plt.subplots()
+    axis.hist(med_flat.data.flatten(), histtype="step", bins=100)
+
+    axis.set_yscale("log")
+
+    plt.tight_layout()
+    plt.savefig(DDIR.joinpath("medflat_hist.pdf"))
+    plt.savefig(DDIR.joinpath("medflat_hist.png"))
+    plt.close()
+
+    radius = generate_radius_mask(med_flat.data)
+
+    comppix = med_flat.data.copy()
+    comppix[radius.astype(bool)] = np.nan
+    mean_value = np.nanmean(comppix)
+    median_value = np.nanmedian(comppix)
+    msgs.info(f"Mean value is: {mean_value}")
+    msgs.info(f"Median value is: {median_value}")
+
+    med_flat.data = med_flat.divide(mean_value)
+
+    med_flat.write(DDIR.joinpath("median_flat.fits"), overwrite=True)
 
 
 def find_stars_asc():
@@ -646,29 +712,36 @@ def find_stars_asc():
 
     _extended_summary_
     """
-    hpm = astropy.nddata.CCDData.read(
-        "/Users/tbowers/sandbox/hotpix_sum.fits", unit=u.adu
+    # Load in the requisite files
+    hpm = astropy.nddata.CCDData.read(DDIR.joinpath("hotpix_sum.fits"), unit=u.adu)
+    ccd = astropy.nddata.CCDData.read(DDIR.joinpath("TARGET__00323.fit"), unit=u.adu)
+    med_flat = astropy.nddata.CCDData.read(
+        DDIR.joinpath("median_flat.fits"), unit=u.adu
     )
 
-    ccd = astropy.nddata.CCDData.read(
-        "/Users/tbowers/sandbox/TARGET__00323.fit", unit=u.adu
-    )
     # LR flip the image and convert to float
     ccd.data = np.fliplr(ccd.data.astype(float))
 
+    # Mask Hot pixels
     ccd.data[hpm.data.astype(bool)] = np.nan
     msgs.bug(f"Number of NaN pixels in masked image: {np.sum(np.isnan(ccd.data))}")
-
     ccd.data = astropy.convolution.interpolate_replace_nans(
         ccd.data, astropy.convolution.Gaussian2DKernel(x_stddev=1)
     )
     msgs.bug(
         f"Number of NaN pixels in interpolated image: {np.sum(np.isnan(ccd.data))}"
     )
-    radius = generate_radius_mask(ccd.data)
+
+    msgs.bug(f"CCD.DATA type / shape: {type(ccd.data)} {ccd.data.shape}")
+    # Divide by the normalized median flat:
+    ccd = ccd.divide(med_flat.data)
+    msgs.bug(f"CCD.DATA type / shape: {type(ccd.data)} {ccd.data.shape}")
+
     # Mask by radius
+    radius = generate_radius_mask(ccd.data)
     ccd.data[radius.astype(bool)] = np.nan
 
+    # Plot for fun!
     _, axis = plt.subplots(figsize=(16, 12))
 
     interval = astropy.visualization.ZScaleInterval(nsamples=10000)
@@ -678,8 +751,8 @@ def find_stars_asc():
     axis.axis("off")
     # Finish up
     plt.tight_layout()
-    plt.savefig("/Users/tbowers/sandbox/finding_stars.png")
-    plt.savefig("/Users/tbowers/sandbox/finding_stars.pdf")
+    plt.savefig(DDIR.joinpath("finding_stars.png"))
+    plt.savefig(DDIR.joinpath("finding_stars.pdf"))
     plt.close()
 
 
@@ -692,3 +765,5 @@ if __name__ == "__main__":
     # make_clean_sobel_map()
     find_stars_asc()
     # make_hpm_fits()
+    # make_nightly_median_flat()
+    # plot_medflat()
