@@ -34,9 +34,12 @@ import tarfile
 import warnings
 
 # 3rd Party Libraries
+import astropy.coordinates
 import astropy.convolution
 import astropy.io.fits
 import astropy.nddata
+import astropy.stats
+import astropy.time
 import astropy.units as u
 from astropy.utils.exceptions import AstropyUserWarning
 import astropy.visualization
@@ -44,6 +47,8 @@ import astropy.wcs
 import ccdproc
 import matplotlib.pyplot as plt
 import numpy as np
+import photutils.aperture
+import photutils.detection
 import PIL.Image
 import scipy.ndimage
 from tqdm import tqdm
@@ -57,7 +62,12 @@ from roz import utils
 # Set API Components
 # __all__ = ['generate_mask','gener']
 
-LDT_ASC = {"xcen": 683, "ycen": 489, "mrad": 518}
+LDT_ASC = {
+    "xcen": 683,
+    "ycen": 489,
+    "mrad": 518,
+    "earthloc": astropy.coordinates.EarthLocation.of_site("DCT"),
+}
 SIXTEEN_BIT = 2**16 - 1
 DDIR = pathlib.Path("/Users/tbowers/sandbox/")
 
@@ -421,7 +431,8 @@ def test_hotpix(hot_lim):
     n_hot = []
     for maxval in (maxvals := np.arange(200, len(icl.files), 10)):
         msgs.info(
-            f"Number of pixels exceeding {maxval} frames: {np.count_nonzero(hotpix[hotpix > maxval])}"
+            f"Number of pixels exceeding {maxval} frames: "
+            f"{np.count_nonzero(hotpix[hotpix > maxval])}"
         )
         n_hot.append(np.count_nonzero(hotpix[hotpix > maxval]))
 
@@ -715,14 +726,14 @@ def find_stars_asc():
     # Load in the requisite files
     hpm = astropy.nddata.CCDData.read(DDIR.joinpath("hotpix_sum.fits"), unit=u.adu)
     ccd = astropy.nddata.CCDData.read(DDIR.joinpath("TARGET__00323.fit"), unit=u.adu)
-    med_flat = astropy.nddata.CCDData.read(
-        DDIR.joinpath("median_flat.fits"), unit=u.adu
-    )
+    mfl = astropy.nddata.CCDData.read(DDIR.joinpath("median_flat.fits"), unit=u.adu)
+
+    obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
 
     # LR flip the image and convert to float
     ccd.data = np.fliplr(ccd.data.astype(float))
 
-    # Mask Hot pixels
+    # Mask Hot pixels by NaN -> interpolate over NaN
     ccd.data[hpm.data.astype(bool)] = np.nan
     msgs.bug(f"Number of NaN pixels in masked image: {np.sum(np.isnan(ccd.data))}")
     ccd.data = astropy.convolution.interpolate_replace_nans(
@@ -734,12 +745,62 @@ def find_stars_asc():
 
     msgs.bug(f"CCD.DATA type / shape: {type(ccd.data)} {ccd.data.shape}")
     # Divide by the normalized median flat:
-    ccd = ccd.divide(med_flat.data)
+    ccd = ccd.divide(mfl.data)
     msgs.bug(f"CCD.DATA type / shape: {type(ccd.data)} {ccd.data.shape}")
 
     # Mask by radius
     radius = generate_radius_mask(ccd.data)
     ccd.data[radius.astype(bool)] = np.nan
+
+    # =======================#
+    # At this point, we have the flattened, cleaned circular image.
+    # It is ready for star finding, then matching to the Tyco2 Catalog
+    mean, median, std = astropy.stats.sigma_clipped_stats(ccd.data, sigma=3.0)
+    starfind = photutils.detection.IRAFStarFinder(
+        fwhm=1.5, threshold=5.0 * std, brightest=100
+    )
+    sources = starfind(ccd.data - median)
+    for col in sources.colnames:
+        sources[col].info.format = "%.8g"
+    print(sources)
+
+    positions = np.transpose((sources["xcentroid"], sources["ycentroid"]))
+    apertures = photutils.aperture.CircularAperture(positions, r=4.0)
+
+    # Model Parameters
+    a0, xc, yc, F, R = 90.0, 683.0, 489.0, 2.0, 667.0
+
+    # Compute azimuth from 0 to 360
+    a = a0 + np.degrees(
+        np.arctan2(sources["ycentroid"] - yc, sources["xcentroid"] - xc)
+    )
+    a[a < 0] += 360.0
+    # Compute zenith distance
+    r = np.hypot(sources["xcentroid"] - xc, sources["ycentroid"] - yc)
+    z = np.degrees(F * np.arcsin(r / R))
+
+    # Place in the table
+    sources["azimuth"] = a * u.deg
+    sources["elevation"] = (90.0 - z) * u.deg
+    for col in sources.colnames:
+        sources[col].info.format = "%.8g"
+
+    star_coords = astropy.coordinates.SkyCoord(
+        az=sources["azimuth"],
+        alt=sources["elevation"],
+        obstime=obstime,
+        location=LDT_ASC["earthloc"],
+        frame="altaz",
+    ).fk5
+
+    sources["ra"] = star_coords.ra
+    sources["dec"] = star_coords.dec
+    print(sources)
+
+    # Next, construct a vectoriozed query to Simbad - Tycho2
+    tycho2 = astropy.table.Table.read(utils.Paths.data.joinpath("tycho2_vmag6.fits"))
+
+    tycho2.pprint()
 
     # Plot for fun!
     _, axis = plt.subplots(figsize=(16, 12))
@@ -749,11 +810,55 @@ def find_stars_asc():
     # Show the data on the plot, using the limits computed above
     axis.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower")
     axis.axis("off")
+
+    apertures.plot(color="red", lw=1.5, alpha=0.5)
+
     # Finish up
     plt.tight_layout()
     plt.savefig(DDIR.joinpath("finding_stars.png"))
     plt.savefig(DDIR.joinpath("finding_stars.pdf"))
     plt.close()
+
+    ccd.write(DDIR.joinpath("flattened_image.fits"), overwrite=True)
+
+
+def rejigger_tycho2():
+    """Rebuild and limit the Tycho-2 Catalog in magnitude and columns
+
+    _extended_summary_
+    """
+    msgs.info("Playing with Tycho-2 now!")
+    t = astropy.table.Table.read(utils.Paths.data.joinpath("tycho2.fits"))
+    print(t.colnames)
+
+    # Pull only the desired columns, and rename some of them
+    t = t[
+        "RA_ICRS_",
+        "DE_ICRS_",
+        "RAmdeg",
+        "DEmdeg",
+        "pmRA",
+        "pmDE",
+        "e_RAmdeg",
+        "e_DEmdeg",
+        "e_pmRA",
+        "e_pmDE",
+        "BTmag",
+        "e_BTmag",
+        "VTmag",
+        "e_VTmag",
+    ]
+    t.rename_columns(
+        ["RA_ICRS_", "DE_ICRS_", "BTmag", "VTmag", "e_BTmag", "e_VTmag"],
+        ["ra", "dec", "Bmag", "Vmag", "e_Bmag", "e_Vmag"],
+    )
+
+    # Limit the catalog to Vmag <= 6
+    t = t[t["Vmag"] <= 6.0]
+
+    # Write it out to disk
+    t.pprint()
+    t.write(utils.Paths.data.joinpath("tycho2.fits"), overwrite=True)
 
 
 # Testing CLI
@@ -767,3 +872,4 @@ if __name__ == "__main__":
     # make_hpm_fits()
     # make_nightly_median_flat()
     # plot_medflat()
+    # rejigger_tycho2()

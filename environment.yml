@@ -8,11 +8,14 @@ dependencies:
   - pytest>=6.2
   - tqdm
   - beautifulsoup4
+  - scipy
   # Astropy Channel
-  - astropy::astropy>=4.3
+  - astropy::astropy
   - astropy::ccdproc
+  - astropy::photutils
   # Conda-Forge Channel
   - conda-forge::atlassian-python-api
+  - conda-forge::ffmpeg-python
   - conda-forge::setuptools>=59.7
   - conda-forge::setuptools_scm
   - conda-forge::black
