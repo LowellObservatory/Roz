@@ -34,6 +34,7 @@ import astropy.convolution
 import astropy.io.fits
 import astropy.nddata
 import astropy.stats
+import astropy.table
 import astropy.time
 import astropy.units as u
 import astropy.visualization
@@ -58,11 +59,15 @@ from roz import utils
 # Set API Components
 # __all__ = ['generate_mask','gener']
 
+# Module Constants
 LDT_ASC = {
-    "xcen": 683,
-    "ycen": 489,
+    "xcen": 684,
+    "ycen": 484.5,
     "mrad": 518,
     "earthloc": astropy.coordinates.EarthLocation.of_site("DCT"),
+    "a0": -86.2,
+    "F": 2.33,
+    "R": 800,
 }
 SIXTEEN_BIT = 2**16 - 1
 DDIR = pathlib.Path("/Users/tbowers/sandbox/")
@@ -717,7 +722,7 @@ def plot_medflat():
     med_flat.write(DDIR.joinpath("median_flat.fits"), overwrite=True)
 
 
-def find_stars_asc():
+def find_stars_asc(find_algorithm=photutils.detection.DAOStarFinder):
     """Find stars in the ALL-SKY IMAGE
 
     _extended_summary_
@@ -739,14 +744,12 @@ def find_stars_asc():
         tuple
             (xcat, ycat) positions for the objects provided in the catalog
         """
-        tyc2_coords = tyc2_coords if cat_coords is None else cat_coords
-
         # Unpack the parameters
         a0, xc, yc, F, R = params
 
-        # The `tyc2_coord` are AltAz coordinates already
-        zcat = 90.0 * u.deg - tyc2_coords.alt
-        acat = tyc2_coords.az
+        # The `cat_coords` are AltAz coordinates already
+        zcat = 90.0 * u.deg - cat_coords.alt
+        acat = cat_coords.az
 
         # Set anything below the horizon to NaN; will propagate
         zcat[zcat > 90 * u.deg] = np.nan
@@ -774,10 +777,10 @@ def find_stars_asc():
         _type_
             _description_
         """
-        xcat, ycat = get_xcat_ycat(params)
+        xcat, ycat = get_xcat_ycat(params, cat_coords=sc_cat)
 
-        return np.sqrt(
-            (xcat - sources["xcentroid"]) ** 2 + (ycat - sources["ycentroid"]) ** 2
+        return np.hypot(
+            xcat - lim_sources["xcentroid"], ycat - lim_sources["ycentroid"]
         )
 
     msgs.info("Reading in the ImageFileCollection...")
@@ -788,16 +791,16 @@ def find_stars_asc():
     mfl = astropy.nddata.CCDData.read(DDIR.joinpath("median_flat.fits"), unit=u.adu)
 
     msgs.info("Reading in the Tycho-2 Catalog to match stars")
-    tycho2 = astropy.table.Table.read(utils.Paths.data.joinpath("tycho2_vmag6.fits"))
+    tycho2 = astropy.table.Table.read(utils.Paths.data.joinpath("hipparcos_vmag6.fits"))
 
     # The array to place fit parameters into
     par_array = []
 
-    # Simple Optics Model Parameters
-    a0, xc, yc, F, R = -90.0, LDT_ASC['xcen'], LDT_ASC['ycen'], 2.0, 667.0
+    # Simple Optics Model Parameters -- Starting Point
+    a0, xc, yc, F, R = -90.0 + 4, LDT_ASC["xcen"], LDT_ASC["ycen"], 1.9, 667.0
 
     # LOOP!!!!!!!
-    for ccd in icl.ccds(exptime=60, seqnum=150, ccd_kwargs={"unit": u.adu}):
+    for ccd in icl.ccds(exptime=60, ccd_kwargs={"unit": u.adu}):
 
         msgs.info("")
         msgs.info(f"Processing sequence number: {ccd.header['seqnum']}")
@@ -823,7 +826,7 @@ def find_stars_asc():
 
         # =======================#
         # At this point, we have the flattened, cleaned circular image.
-        # It is ready for star finding, then matching to the Tyco2 Catalog
+        # It is ready for star finding, then matching to the Hipparcos Catalog
         # Make some background estimates, do some subtraction, and find stars
         _, _, std = astropy.stats.sigma_clipped_stats(ccd.data, sigma=3.0)
         bkg = photutils.background.Background2D(
@@ -833,134 +836,136 @@ def find_stars_asc():
             sigma_clip=astropy.stats.SigmaClip(sigma=3.0),
             bkg_estimator=photutils.background.MedianBackground(),
         )
-        starfind = photutils.detection.IRAFStarFinder(
-            fwhm=1.5, threshold=5.0 * std, brightest=300
-        )
+        starfind = find_algorithm(fwhm=1.5, threshold=5.0 * std, brightest=200)
         sources = starfind(ccd.data - bkg.background)
 
         # Turn these into plotable positions for the individual frames
         positions = np.transpose((sources["xcentroid"], sources["ycentroid"]))
         apertures = photutils.aperture.CircularAperture(positions, r=4.0)
 
-        # Now, set up to convert Tycho-2 over to CCD coordinates for matching
-
-        # Add the planets to Tycho-2 table -- use generic built-in ephemerides
+        # Add the planets to Hipparcos-2 table -- use generic built-in ephemerides
         with astropy.coordinates.solar_system_ephemeris.set("builtin"):
             mer = astropy.coordinates.get_body("mercury", obstime, LDT_ASC["earthloc"])
             ven = astropy.coordinates.get_body("venus", obstime, LDT_ASC["earthloc"])
             mar = astropy.coordinates.get_body("mars", obstime, LDT_ASC["earthloc"])
             jup = astropy.coordinates.get_body("jupiter", obstime, LDT_ASC["earthloc"])
             sat = astropy.coordinates.get_body("saturn", obstime, LDT_ASC["earthloc"])
-        print(tycho2.colnames)
         planet_table = astropy.table.Table(
             [
                 [mer.ra, ven.ra, mar.ra, jup.ra, sat.ra],
                 [mer.dec, ven.dec, mar.dec, jup.dec, sat.dec],
                 [0] * 5,
                 [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
-                [0] * 5,
                 [-1, -4, -1, -3, 1],
+                [0] * 5,
+                [0] * 5,
+                [0] * 5,
+                [""] * 5,
+                ["Mercury", "Venus", "Mars", "Jupiter", "Saturn"],
             ],
             names=tycho2.colnames,
         )
         cat_table = astropy.table.vstack([tycho2, planet_table])
-
+        # Sort on visual magnitude
+        cat_table.sort("Vmag")
         cat_table.pprint()
 
-        # Convert Tycho-2 table columns into SkyCoord --> AltAz
+        # Convert Hipparcos table columns into SkyCoord --> AltAz
         tyc2_coords = astropy.coordinates.SkyCoord(
             ra=cat_table["ra"], dec=cat_table["dec"], frame="icrs"
         ).transform_to(
             astropy.coordinates.AltAz(obstime=obstime, location=LDT_ASC["earthloc"])
         )
-        print(f"Obstime: {obstime}")
-        print(f"Location: {LDT_ASC['earthloc'].geodetic}")
+        msgs.info(f"Obstime: {obstime}")
+        msgs.info(f"Location: {LDT_ASC['earthloc'].geodetic}")
+
+        # ===================#
+        # Define the overlap set between the found objects and the Hipparcos
+        #  catalog.  This may include non-unique matches, but those should be
+        #  minimal (I hope).
 
         # Get nominal catalog positions with the initial parameter guesses
-        xcat, ycat = get_xcat_ycat(
-            [a0, xc, yc, F, R], cat_coords=tyc2_coords[cat_table["Vmag"] < 3]
+        xycatalog = cat_table.copy()
+        xycatalog["xcat"], xycatalog["ycat"] = get_xcat_ycat(
+            [a0, xc, yc, F, R], cat_coords=tyc2_coords
         )
 
-        # print(xcat, ycat)
+        # Make an initial cut on the catalog magnitude
+        initial_mag_limit = 3
+        xcat = xycatalog["xcat"][xycatalog["Vmag"] < initial_mag_limit]
+        ycat = xycatalog["ycat"][xycatalog["Vmag"] < initial_mag_limit]
+        sc_cat = tyc2_coords[xycatalog["Vmag"] < initial_mag_limit]
 
-        # # Compute azimuth from 0 to 360
-        # a = a0 + np.degrees(
-        #     np.arctan2(sources["ycentroid"] - yc, sources["xcentroid"] - xc)
-        # )
-        # a[a < 0] += 360.0
-        # # Compute zenith distance
-        # r = np.hypot(sources["xcentroid"] - xc, sources["ycentroid"] - yc)
-        # z = np.degrees(F * np.arcsin(r / R))
-
-        # # Place in the table
-        # sources["azimuth"] = a * u.deg
-        # sources["elevation"] = (90.0 - z) * u.deg
-
-        # star_coords = astropy.coordinates.SkyCoord(
-        #     az=sources["azimuth"],
-        #     alt=sources["elevation"],
-        #     obstime=obstime,
-        #     location=LDT_ASC["earthloc"],
-        #     frame="altaz",
-        # ).fk5
-
-        # sources["ra"] = star_coords.ra
-        # sources["dec"] = star_coords.dec
-        # # for col in sources.colnames:
-        # #     sources[col].info.format = "%.8g"
-        # # print(sources)
-
-        # # Compute distances
-        # idx, d2d, _ = star_coords.match_to_catalog_sky(tyc2_coords)
-
-        # # Place this information into the `sources` table
-        # sources["tyc2_ra"] = tyc2_coords[idx].ra
-        # sources["tyc2_dec"] = tyc2_coords[idx].dec
-        # sources["tyc2_dist"] = d2d
-
+        # Print out the photometry table for inspection
+        msgs.info("Photometry Table:")
+        sources.sort("mag")
+        sources["mag"] += 4
         for col in sources.colnames:
             sources[col].info.format = "%.8g"
-        # print(sources)
+
+        # Perform the actual matching between the sky and catalog
+        all_distances = np.hypot(
+            sources["xcentroid"] - np.transpose(np.atleast_2d(xcat)),
+            sources["ycentroid"] - np.transpose(np.atleast_2d(ycat)),
+        )
+        sources["r_to_cat"] = np.nanmin(all_distances, axis=0)
+        sources["idx_in_cat"] = np.nanargmin(all_distances, axis=0)
+
+        # Figure out which `sources` are within the matching radius
+        initial_matching_radius = 15
+        sources_idx = sources["r_to_cat"] < initial_matching_radius
+
+        # Figure out which Hipparcos catalog objects are matched
+        close_idx = sources["idx_in_cat"][sources_idx]
+        xcat = xcat[close_idx]
+        ycat = ycat[close_idx]
+        sc_cat = sc_cat[close_idx]
+
+        # For plotting purposes only
+        apertures = apertures[sources_idx]
+
+        # Print to screen for sanity
+        for col in sources.colnames:
+            sources[col].info.format = "%.8g"
+        lim_sources = sources[sources_idx].copy()
+        lim_sources.pprint()
 
         # =======================#
         # Now, for the fun part: doing the parameter optimization!
         msgs.info("Least Squares Time!")
 
+        msgs.bug(f"{type(sc_cat)}")
         x0 = np.array([a0, xc, yc, F, R])
-        # res = scipy.optimize.least_squares(
-        #     lsq_minfunc,
-        #     x0,
-        #     # bounds=([0, 600, 400, 1, 100], [360, 800, 600, 3, 500]),
-        #     # args=sources,
-        #     verbose=1,
-        #     method="lm",
-        # )
-        # if res.success:
-        #     par_array.append(res.x)
+        res = scipy.optimize.least_squares(
+            lsq_minfunc,
+            x0,
+            # bounds=([0, 600, 400, 1, 100], [360, 800, 600, 3, 500]),
+            # args=sources,
+            verbose=1,
+            method="lm",
+        )
+        if res.success:
+            par_array.append(res.x)
 
-        # msgs.info(f"These were the starting parameters: {pprint_params(x0)}")
-        # msgs.info(f"These are the resulting parameters: {pprint_params(res.x)}")
-        # msgs.info(
-        #     f"Final residuals: min = {np.min(res.fun):.1f} pix, "
-        #     f"max = {np.max(res.fun):.1f} pix, "
-        #     f"mean = {np.mean(res.fun):.1f} pix, "
-        #     f"median = {np.median(res.fun):.1f} pix"
-        # )
+        msgs.info(f"These were the starting parameters: {pprint_params(x0)}")
+        msgs.info(f"These are the resulting parameters: {pprint_params(res.x)}")
+        msgs.info(
+            f"Final residuals: min = {np.min(res.fun):.1f} pix, "
+            f"max = {np.max(res.fun):.1f} pix, "
+            f"mean = {np.mean(res.fun):.1f} pix, "
+            f"median = {np.median(res.fun):.1f} pix"
+        )
+
+        # Final stuff for plotting
+        xcat, ycat = get_xcat_ycat(res.x, cat_coords=sc_cat)
 
         # Plot for fun!
         _, axis = plt.subplots(figsize=(16, 12))
 
         interval = astropy.visualization.ZScaleInterval(nsamples=10000)
-        vmin, vmax = interval.get_limits(ccd.data)
+        vmin, vmax = interval.get_limits(ccd.data - bkg.background)
         # Show the data on the plot, using the limits computed above
-        axis.imshow(ccd.data, vmin=vmin, vmax=vmax, origin="lower")
+        axis.imshow(ccd.data - bkg.background, vmin=vmin, vmax=vmax, origin="lower")
         axis.axis("off")
 
         apertures.plot(color="red", lw=1.5, alpha=0.5)
@@ -998,40 +1003,48 @@ def analyze_asc_optics():
 
 def rejigger_tycho2():
     """Rebuild and limit the Tycho-2 Catalog in magnitude and columns
+    Or, rather, the Hipparcos catalog
 
     _extended_summary_
     """
-    msgs.info("Playing with Tycho-2 now!")
-    t = astropy.table.Table.read(utils.Paths.data.joinpath("tycho2.fits"))
+    msgs.info("Playing with Hipparcos now!")
+    t = astropy.table.Table.read(utils.Paths.data.joinpath("hipparcos.fits"))
     print(t.colnames)
 
     # Pull only the desired columns, and rename some of them
     t = t[
-        "RA_ICRS_",
-        "DE_ICRS_",
-        "RAmdeg",
-        "DEmdeg",
+        "RAICRS",
+        "DEICRS",
         "pmRA",
         "pmDE",
-        "e_RAmdeg",
-        "e_DEmdeg",
-        "e_pmRA",
-        "e_pmDE",
+        "Vmag",
         "BTmag",
         "VTmag",
+        "HD",
+        "BD",
+        "SpType",
     ]
     t.rename_columns(
-        ["RA_ICRS_", "DE_ICRS_"],
+        ["RAICRS", "DEICRS"],
         ["ra", "dec"],
     )
-    t["Vmag"] = t["VTmag"] - 0.090 * (t["BTmag"] - t["VTmag"])
+    print(t.colnames)
 
     # Limit the catalog to Vmag <= 6
     t = t[t["Vmag"] <= 6.0]
 
+    _, axis = plt.subplots()
+    axis.hist(t["Vmag"], bins=np.arange(8), histtype="step")
+    axis.set_xlabel("Magnitude")
+    axis.set_ylabel("N per bin")
+    axis.set_yscale("log")
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
     # Write it out to disk
     t.pprint()
-    t.write(utils.Paths.data.joinpath("tycho2_vmag6.fits"), overwrite=True)
+    t.write(utils.Paths.data.joinpath("hipparcos_vmag6.fits"), overwrite=True)
 
 
 def pprint_params(pars):
@@ -1064,5 +1077,5 @@ if __name__ == "__main__":
     # make_nightly_median_flat()
     # plot_medflat()
     # rejigger_tycho2()
-    find_stars_asc()
+    # find_stars_asc()
     analyze_asc_optics()
