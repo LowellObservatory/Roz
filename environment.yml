@@ -10,7 +10,7 @@ dependencies:
   - beautifulsoup4
   - scipy
   # Astropy Channel
-  - astropy::astropy
+  - astropy::astropy>=4.3
   - astropy::ccdproc
   - astropy::photutils
   # Conda-Forge Channel
