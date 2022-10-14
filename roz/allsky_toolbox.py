@@ -63,7 +63,7 @@ from roz import utils
 LDT_ASC = {
     "xcen": 684,
     "ycen": 484.5,
-    "mrad": 518,
+    "mrad": 505,
     "earthloc": astropy.coordinates.EarthLocation.of_site("DCT"),
     "a0": -86.2,
     "F": 2.33,
@@ -211,28 +211,65 @@ def make_animation(icl: ccdproc.ImageFileCollection):
         axis.axis("off")
 
         # Add interesting things to the plot!
-        # Start with RA lines:
+        n_points = 500
+        # Start with Alt/Az lines
+        for alt_line in np.arange(0, 90, 20):
+            altaz = astropy.coordinates.AltAz(
+                alt=np.full(n_points, alt_line) * u.deg,
+                az=np.linspace(0, 360, n_points) * u.deg,
+            )
+            xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
+            axis.plot(xpl, ypl, "-", color="black", alpha=0.25)
+        for az_line in np.arange(0, 360, 30):
+            altaz = astropy.coordinates.AltAz(
+                alt=np.linspace(0, 90, n_points) * u.deg,
+                az=np.full(n_points, az_line) * u.deg,
+            )
+            xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
+            axis.plot(xpl, ypl, "-", color="black", alpha=0.25)
+
+        # Add RA lines:
         for ra_line in np.arange(0, 360, 30):
             sc = astropy.coordinates.SkyCoord(
-                ra=np.full(100, ra_line) * u.deg,
-                dec=np.linspace(-90, 90, 100) * u.deg,
+                ra=np.full(n_points, ra_line) * u.deg,
+                dec=np.linspace(-90, 90, n_points) * u.deg,
                 frame="icrs",
             )
             xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="white")
+            axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
+
         # Add DEC lines:
         for dec_line in np.arange(-80, 81, 20):
             sc = astropy.coordinates.SkyCoord(
-                ra=np.linspace(0, 360, 100) * u.deg,
-                dec=np.full(100, dec_line) * u.deg,
+                ra=np.linspace(0, 360, n_points) * u.deg,
+                dec=np.full(n_points, dec_line) * u.deg,
                 frame="icrs",
             )
             xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="white")
+            axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
+
+        # Add Ecliptic:
+        sc = astropy.coordinates.SkyCoord(
+            lon=np.linspace(0, 360, n_points) * u.deg,
+            lat=np.full(n_points, 0) * u.deg,
+            frame="geocentricmeanecliptic",
+        )
+        xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="orange", alpha=0.5)
+
+        # Add Galactic Plane:
+        sc = astropy.coordinates.SkyCoord(
+            l=np.linspace(0, 360, n_points) * u.deg,
+            b=np.full(n_points, 0) * u.deg,
+            frame="galactic",
+        )
+        xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="pink", alpha=0.5)
 
         # Finish up
+        axis.set_ylim(bottom=0)
         plt.tight_layout()
-        plt.savefig(DDIR.joinpath(f"asc_{ccd.header['seqnum']:05d}.png"))
+        plt.savefig(ddir.joinpath(f"asc_{ccd.header['seqnum']:05d}.png"))
         plt.close()
         progress_bar.update(1)
 
@@ -243,11 +280,11 @@ def make_animation(icl: ccdproc.ImageFileCollection):
     #   -c:v libx264 -pix_fmt yuv420p out.mp4
     msgs.info("Creating the MP4 animation for this night...")
     stream = ffmpeg.input(
-        str(DDIR.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
+        str(ddir.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
     )
     stream = ffmpeg.output(
         stream,
-        str(DDIR.joinpath("asc_night.mp4")),
+        str(ddir.joinpath("asc_night.mp4")),
         pix_fmt="yuv420p",
         vcodec="libx264",
     )
@@ -255,11 +292,11 @@ def make_animation(icl: ccdproc.ImageFileCollection):
     ffmpeg.run(stream, overwrite_output=True)
 
     # Open the animation
-    os.system(f"/usr/bin/open {DDIR}/asc_night.mp4")
+    os.system(f"/usr/bin/open {ddir}/asc_night.mp4")
 
 
 def skycoord2xy(
-    coords: astropy.coordinates.SkyCoord,
+    coords,
     obstime: astropy.time.Time,
     location: astropy.coordinates.EarthLocation,
 ):
@@ -270,8 +307,12 @@ def skycoord2xy(
 
     Parameters
     ----------
-    coords : `astropy.coordinates.SkyCoord`_
-        Input SkyCoord object
+    coords : `astropy.coordinates.SkyCoord`_ or `astropy.coordinates.AltAz`_
+        Input SkyCoord or AltAz object
+    obstime : `astropy.time.Time`_
+        The time of the observation, for conversion from ``SkyCoord`` -> ``AltAz``
+    location : `astropy.coordinates.EarthLocation`_
+        The location of the observation, for conversion from ``SkyCoord`` -> ``AltAz``
 
     Returns
     -------
@@ -279,14 +320,16 @@ def skycoord2xy(
         (xcat, ycat) positions for the objects provided in the catalog
     """
     # Check the input type
-    if not isinstance(coords, astropy.coordinates.SkyCoord):
-        msgs.error("Must pass in a SkyCoord object")
+    if isinstance(coords, astropy.coordinates.SkyCoord):
+        altaz = coords.transform_to(
+            astropy.coordinates.AltAz(obstime=obstime, location=location)
+        )
+    elif isinstance(coords, astropy.coordinates.AltAz):
+        altaz = coords
+    else:
+        msgs.error(f"coords type {type(coords)} not recognized.")
 
-    altaz = coords.transform_to(
-        astropy.coordinates.AltAz(obstime=obstime, location=location)
-    )
-
-    # The `cat_coords` are AltAz coordinates already
+    # Pull the zenith distance and azimuth variables separately
     zcat = 90.0 * u.deg - altaz.alt
     acat = altaz.az
 
@@ -307,6 +350,24 @@ def main():
 
     _extended_summary_
     """
+    # # First, compute radius of horizon:
+    # n_points = 100
+    # altaz = astropy.coordinates.AltAz(
+    #     alt=np.full(n_points, 0) * u.deg,
+    #     az=np.linspace(0, 360, n_points) * u.deg,
+    # )
+    # # Pull the zenith distance and azimuth variables separately
+    # zcat = 90.0 * u.deg - altaz.alt
+    # acat = altaz.az
+
+    # # Set anything below the horizon to NaN; will propagate
+    # zcat[zcat > 90 * u.deg] = np.nan
+
+    # # Compute the CCD catalog positions
+    # rcat = LDT_ASC["R"] * np.sin(np.radians(zcat) / LDT_ASC["F"])
+
+    # print(rcat)
+
     msgs.info("Reading in the ImageFileCollection...")
     icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
     make_animation(icl)
