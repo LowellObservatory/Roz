@@ -76,15 +76,30 @@ DDIR = pathlib.Path("/Users/tbowers/sandbox/")
 warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
 
 
-def generate_radius_mask(input_image: np.ndarray):
-    """generate_radius_mask _summary_
+def generate_radius_mask(input_image: np.ndarray, el_limit=None):
+    """Generate a mask in radius from the center of the CCD
 
-    _extended_summary_
+    This function returns a BAD PIXEL MASK for pixels outside a given radius
+    from the center of the image.  This mask is used for two purposes:
+
+    1. Masking out the regions of the ASC CCD outside the optical limits of
+       the fisheye lens
+    2. Masking out regions below a certain elevation for the purposes of sky
+       statistics
+
+    For the latter purpose, the ``el_limit`` parameter is used to specify the
+    elevation limit to be returned.  The former relies entirely upon the
+    module constant LDT_ASC dictionary, which includes the center of the image
+    and the masking radius.
 
     Parameters
     ----------
     input_image : `numpy.ndarray`_
         The input image for which the mask will be generated.
+    el_limit : float, optional
+        Elevation limit in degreed for radius mask, used for generating
+        statisics related to photometric stability rather than an ASC
+        Animation (Deafult: None)
 
     Returns
     -------
@@ -98,8 +113,17 @@ def generate_radius_mask(input_image: np.ndarray):
     x_arr = np.tile(np.arange(n_x), (n_y, 1)) - LDT_ASC["xcen"]
     y_arr = np.transpose(np.tile(np.arange(n_y), (n_x, 1))) - LDT_ASC["ycen"]
 
+    r_limit = (
+        LDT_ASC["mrad"]
+        if el_limit is None
+        else skycoord2xy(
+            astropy.coordinates.AltAz(alt=el_limit * u.deg, az=0 * u.deg),
+            return_radius=True,
+        )
+    )
+
     # Return the mask identifying pixels outside the specified radius
-    return (np.hypot(x_arr, y_arr) > LDT_ASC["mrad"]).astype(int)
+    return (np.hypot(x_arr, y_arr) > r_limit).astype(int)
 
 
 def generate_hotpixel_mask(icl: ccdproc.ImageFileCollection, hot_lim=0.25, f_dark=0.75):
@@ -230,40 +254,40 @@ def make_animation(icl: ccdproc.ImageFileCollection):
 
         # Add RA lines:
         for ra_line in np.arange(0, 360, 30):
-            sc = astropy.coordinates.SkyCoord(
+            sky_coord = astropy.coordinates.SkyCoord(
                 ra=np.full(n_points, ra_line) * u.deg,
                 dec=np.linspace(-90, 90, n_points) * u.deg,
                 frame="icrs",
             )
-            xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+            xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
             axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
 
         # Add DEC lines:
         for dec_line in np.arange(-80, 81, 20):
-            sc = astropy.coordinates.SkyCoord(
+            sky_coord = astropy.coordinates.SkyCoord(
                 ra=np.linspace(0, 360, n_points) * u.deg,
                 dec=np.full(n_points, dec_line) * u.deg,
                 frame="icrs",
             )
-            xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+            xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
             axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
 
         # Add Ecliptic:
-        sc = astropy.coordinates.SkyCoord(
+        sky_coord = astropy.coordinates.SkyCoord(
             lon=np.linspace(0, 360, n_points) * u.deg,
             lat=np.full(n_points, 0) * u.deg,
             frame="geocentricmeanecliptic",
         )
-        xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
         axis.plot(xpl, ypl, "-", color="orange", alpha=0.5)
 
         # Add Galactic Plane:
-        sc = astropy.coordinates.SkyCoord(
+        sky_coord = astropy.coordinates.SkyCoord(
             l=np.linspace(0, 360, n_points) * u.deg,
             b=np.full(n_points, 0) * u.deg,
             frame="galactic",
         )
-        xpl, ypl = skycoord2xy(sc, obstime, LDT_ASC["earthloc"])
+        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
         axis.plot(xpl, ypl, "-", color="pink", alpha=0.5)
 
         # Finish up
@@ -295,11 +319,7 @@ def make_animation(icl: ccdproc.ImageFileCollection):
     os.system(f"/usr/bin/open {ddir}/asc_night.mp4")
 
 
-def skycoord2xy(
-    coords,
-    obstime: astropy.time.Time,
-    location: astropy.coordinates.EarthLocation,
-):
+def skycoord2xy(coords, obstime=None, location=None, return_radius=False):
     """Convert SkyCoord coordinates into CCD positions
 
     Use the simplified 5-parameter model (plus location & obstime) to
@@ -309,15 +329,24 @@ def skycoord2xy(
     ----------
     coords : `astropy.coordinates.SkyCoord`_ or `astropy.coordinates.AltAz`_
         Input SkyCoord or AltAz object
-    obstime : `astropy.time.Time`_
+    obstime : `astropy.time.Time`_, optional
         The time of the observation, for conversion from ``SkyCoord`` -> ``AltAz``
+        (Not needed if ``coords`` is `astropy.coordinates.AltAz`_)
     location : `astropy.coordinates.EarthLocation`_
         The location of the observation, for conversion from ``SkyCoord`` -> ``AltAz``
+        (Not needed if ``coords`` is `astropy.coordinates.AltAz`_)
+    return_radius : bool, optional
+        Return the radius from image center rather than (``xcat``, ``ycat``)
+        (Default: False)
 
     Returns
     -------
     tuple
-        (xcat, ycat) positions for the objects provided in the catalog
+        (xcat, ycat) positions for the objects provided in the catalog (default)
+    array-like
+        If ``return_radius``, return the ``rcat`` values rather than
+        (``xcat``, ``ycat``)
+
     """
     # Check the input type
     if isinstance(coords, astropy.coordinates.SkyCoord):
@@ -341,8 +370,23 @@ def skycoord2xy(
     xcat = LDT_ASC["xcen"] + rcat * np.cos(np.radians(acat - LDT_ASC["a0"] * u.deg))
     ycat = LDT_ASC["ycen"] + rcat * np.sin(np.radians(acat - LDT_ASC["a0"] * u.deg))
 
-    # Return the CCD positions of the catalog objects
-    return xcat, ycat
+    # Return the CCD positions of the catalog objects or radius of catalog objects
+    return rcat if return_radius else xcat, ycat
+
+
+def compute_sky_statistics():
+    """Compute the sky statistics for an image
+
+    Use the updated generate_radius_mask() to limit the region by elevation
+    in which to take the statistics.  Return the mean, meadian, and stddev
+    of that region for a given imahe.  A driving function will send the
+    images one-by-one and gather them into arrays for plotting.  THis could
+    even be combined with the ASC animation to make a subplot in the corner
+    showing the progression of the statistics over the course of the night
+    as a growing graph.  This could be interesting for training up whether
+    a night is photometric by comparing stats with by-eye viewing of the ASC
+    animation together.
+    """
 
 
 def main():
@@ -350,24 +394,6 @@ def main():
 
     _extended_summary_
     """
-    # # First, compute radius of horizon:
-    # n_points = 100
-    # altaz = astropy.coordinates.AltAz(
-    #     alt=np.full(n_points, 0) * u.deg,
-    #     az=np.linspace(0, 360, n_points) * u.deg,
-    # )
-    # # Pull the zenith distance and azimuth variables separately
-    # zcat = 90.0 * u.deg - altaz.alt
-    # acat = altaz.az
-
-    # # Set anything below the horizon to NaN; will propagate
-    # zcat[zcat > 90 * u.deg] = np.nan
-
-    # # Compute the CCD catalog positions
-    # rcat = LDT_ASC["R"] * np.sin(np.radians(zcat) / LDT_ASC["F"])
-
-    # print(rcat)
-
     msgs.info("Reading in the ImageFileCollection...")
     icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
     make_animation(icl)
@@ -375,7 +401,7 @@ def main():
 
 # =============================================================================#
 # Cruft... just, cruft
-def generate_mask(icl: ccdproc.ImageFileCollection, forcenew=False):
+def generate_mask(icl: ccdproc.ImageFileCollection):
     """Generate a complete mask for Lowell All-Sky Images
 
     The mask generated by this function is a BAD PIXEL MASK, in that a value
@@ -390,9 +416,6 @@ def generate_mask(icl: ccdproc.ImageFileCollection, forcenew=False):
     ----------
     icl : `ccdproc.ImageFileCollection`_
         The Image File Collection for this night, used to generate masks
-    forcenew : bool, optional
-        Force the generation of a mask completely from scratch rather than use
-        a saved mask?  (Default: False)
 
     Returns
     -------
@@ -423,7 +446,7 @@ def generate_mask(icl: ccdproc.ImageFileCollection, forcenew=False):
     return mask1 | mask3
 
 
-def generate_object_mask(forcenew=False):
+def generate_object_mask():
     """Generate a mask for KPNO images.
 
     Generates a masking array for KPNO images that masks out not only hot
@@ -431,9 +454,6 @@ def generate_object_mask(forcenew=False):
 
     Parameters
     ----------
-    forcenew : bool, optional
-        Whether or not this method should load a previously saved mask or if it
-        should generate it completely from scratch.
 
     Returns
     -------
@@ -500,21 +520,6 @@ def generate_object_mask(forcenew=False):
     # return mask
 
 
-def save_mask(mask):
-    """Save a masking image.
-
-    Parameters
-    ----------
-    mask : `numpy.ndarray`_
-        The mask to save.
-
-    See Also
-    --------
-    image.save_image : Save an image.
-
-    """
-
-
 def test_animations():
     """Test creating animations
 
@@ -541,9 +546,6 @@ def test_animations():
 
         # Generate the mask(s)
 
-        # Convert the image into a masked array
-        m_idx = generate_radius_mask(ccd.data) != 0
-        # ccd.data = np.ma.array(ccd.data, mask=m_idx)
         ccd.data = scipy.ndimage.sobel(ccd.data)
 
         # Add to the Sobel Mask
@@ -687,8 +689,8 @@ def run_test_hotpix():
 
     _, axis = plt.subplots()
 
-    for k, v in res.items():
-        axis.plot(v[0], v[1], "o-", label=k)
+    for key, val in res.items():
+        axis.plot(val[0], val[1], "o-", label=key)
 
     axis.legend(loc="upper right")
     axis.set_xlabel("N (60s) Frames this pixel identified in")
@@ -1229,11 +1231,11 @@ def rejigger_tycho2():
     _extended_summary_
     """
     msgs.info("Playing with Hipparcos now!")
-    t = astropy.table.Table.read(utils.Paths.data.joinpath("hipparcos.fits"))
-    print(t.colnames)
+    table = astropy.table.Table.read(utils.Paths.data.joinpath("hipparcos.fits"))
+    print(table.colnames)
 
     # Pull only the desired columns, and rename some of them
-    t = t[
+    table = table[
         "RAICRS",
         "DEICRS",
         "pmRA",
@@ -1245,17 +1247,17 @@ def rejigger_tycho2():
         "BD",
         "SpType",
     ]
-    t.rename_columns(
+    table.rename_columns(
         ["RAICRS", "DEICRS"],
         ["ra", "dec"],
     )
-    print(t.colnames)
+    print(table.colnames)
 
     # Limit the catalog to Vmag <= 6
-    t = t[t["Vmag"] <= 6.0]
+    table = table[table["Vmag"] <= 6.0]
 
     _, axis = plt.subplots()
-    axis.hist(t["Vmag"], bins=np.arange(8), histtype="step")
+    axis.hist(table["Vmag"], bins=np.arange(8), histtype="step")
     axis.set_xlabel("Magnitude")
     axis.set_ylabel("N per bin")
     axis.set_yscale("log")
@@ -1264,8 +1266,8 @@ def rejigger_tycho2():
     plt.close()
 
     # Write it out to disk
-    t.pprint()
-    t.write(utils.Paths.data.joinpath("hipparcos_vmag6.fits"), overwrite=True)
+    table.pprint()
+    table.write(utils.Paths.data.joinpath("hipparcos_vmag6.fits"), overwrite=True)
 
 
 def pprint_params(pars):
