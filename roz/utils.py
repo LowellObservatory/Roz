@@ -308,6 +308,28 @@ def scrub_isot_dateobs(dt_str, add_hours=0):
         )
 
 
+def set_std_tickparams(axis, tsz):
+    """Set standard tick parameters for a plot
+
+    These are my own "standards", based on plots I used to make in IDL.
+
+    Parameters
+    ----------
+    axis : `matplotlib.pyplot.axis`_
+        PyPlot axis for whom the tick parameters must be set
+    tsz : :obj:`int` or :obj:`float`
+        TypeSiZe
+    """
+    axis.tick_params(
+        axis="both",
+        which="both",
+        direction="in",
+        top=True,
+        right=True,
+        labelsize=tsz,
+    )
+
+
 def subpath(path_to_dir):
     """Simple function to return the instrument/date part of the path
 

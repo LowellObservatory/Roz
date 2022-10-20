@@ -4,7 +4,7 @@ channels:
 dependencies:
   - python>=3.8,<3.10
   - numpy>=1.21
-  - matplotlib>=3.4
+  - matplotlib>=3.5
   - pytest>=6.2
   - tqdm
   - beautifulsoup4
@@ -13,6 +13,7 @@ dependencies:
   - astropy::astropy>=4.3
   - astropy::ccdproc
   - astropy::photutils
+  - astropy::astroplan
   # Conda-Forge Channel
   - conda-forge::atlassian-python-api
   - conda-forge::ffmpeg-python

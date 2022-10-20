@@ -24,11 +24,13 @@ This module primarily trades in, um, stuff?
 """
 
 # Built-In Libraries
+import datetime
 import os
 import pathlib
 import warnings
 
 # 3rd Party Libraries
+import astroplan
 import astropy.coordinates
 import astropy.convolution
 import astropy.io.fits
@@ -41,7 +43,11 @@ import astropy.visualization
 import astropy.wcs
 import ccdproc
 import ffmpeg
+import matplotlib
+import matplotlib.animation
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import matplotlib.units as munits
 import numpy as np
 import photutils.aperture
 import photutils.background
@@ -57,7 +63,6 @@ from roz import msgs
 from roz import utils
 
 # Set API Components
-# __all__ = ['generate_mask','gener']
 
 # Module Constants
 LDT_ASC = {
@@ -70,10 +75,19 @@ LDT_ASC = {
     "R": 800,
 }
 SIXTEEN_BIT = 2**16 - 1
-DDIR = pathlib.Path("/Users/tbowers/sandbox/")
+DDIR = pathlib.Path("/Users/tbowers/sandbox3/")
 
 # Silence Superflous AstroPy FITS Header Warnings
 warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
+# Allow for Astropy Quantity support in matplotlib
+astropy.visualization.quantity_support()
+# Apply matplotlib's "Concise Date Converter" for dates with these formats:
+converter = mdates.ConciseDateConverter()
+munits.registry[np.datetime64] = converter
+munits.registry[datetime.date] = converter
+munits.registry[datetime.datetime] = converter
+# This is for the direct-to-ffmpeg writer
+matplotlib.use("Agg")
 
 
 def generate_radius_mask(input_image: np.ndarray, el_limit=None):
@@ -235,60 +249,7 @@ def make_animation(icl: ccdproc.ImageFileCollection):
         axis.axis("off")
 
         # Add interesting things to the plot!
-        n_points = 500
-        # Start with Alt/Az lines
-        for alt_line in np.arange(0, 90, 20):
-            altaz = astropy.coordinates.AltAz(
-                alt=np.full(n_points, alt_line) * u.deg,
-                az=np.linspace(0, 360, n_points) * u.deg,
-            )
-            xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="black", alpha=0.25)
-        for az_line in np.arange(0, 360, 30):
-            altaz = astropy.coordinates.AltAz(
-                alt=np.linspace(0, 90, n_points) * u.deg,
-                az=np.full(n_points, az_line) * u.deg,
-            )
-            xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="black", alpha=0.25)
-
-        # Add RA lines:
-        for ra_line in np.arange(0, 360, 30):
-            sky_coord = astropy.coordinates.SkyCoord(
-                ra=np.full(n_points, ra_line) * u.deg,
-                dec=np.linspace(-90, 90, n_points) * u.deg,
-                frame="icrs",
-            )
-            xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
-
-        # Add DEC lines:
-        for dec_line in np.arange(-80, 81, 20):
-            sky_coord = astropy.coordinates.SkyCoord(
-                ra=np.linspace(0, 360, n_points) * u.deg,
-                dec=np.full(n_points, dec_line) * u.deg,
-                frame="icrs",
-            )
-            xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
-            axis.plot(xpl, ypl, "-", color="white", alpha=0.5)
-
-        # Add Ecliptic:
-        sky_coord = astropy.coordinates.SkyCoord(
-            lon=np.linspace(0, 360, n_points) * u.deg,
-            lat=np.full(n_points, 0) * u.deg,
-            frame="geocentricmeanecliptic",
-        )
-        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
-        axis.plot(xpl, ypl, "-", color="orange", alpha=0.5)
-
-        # Add Galactic Plane:
-        sky_coord = astropy.coordinates.SkyCoord(
-            l=np.linspace(0, 360, n_points) * u.deg,
-            b=np.full(n_points, 0) * u.deg,
-            frame="galactic",
-        )
-        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
-        axis.plot(xpl, ypl, "-", color="pink", alpha=0.5)
+        draw_sky_lines(axis, obstime, n_points=500)
 
         # Finish up
         axis.set_ylim(bottom=0)
@@ -370,11 +331,14 @@ def skycoord2xy(coords, obstime=None, location=None, return_radius=False):
     xcat = LDT_ASC["xcen"] + rcat * np.cos(np.radians(acat - LDT_ASC["a0"] * u.deg))
     ycat = LDT_ASC["ycen"] + rcat * np.sin(np.radians(acat - LDT_ASC["a0"] * u.deg))
 
+    # Set negative ycat positions to nan
+    ycat[ycat < 0] = np.nan
+
     # Return the CCD positions of the catalog objects or radius of catalog objects
-    return rcat if return_radius else xcat, ycat
+    return rcat if return_radius else (xcat, ycat)
 
 
-def compute_sky_statistics():
+def compute_sky_statistics(icl: ccdproc.ImageFileCollection, el_limit=30.0, datestr=""):
     """Compute the sky statistics for an image
 
     Use the updated generate_radius_mask() to limit the region by elevation
@@ -386,7 +350,538 @@ def compute_sky_statistics():
     as a growing graph.  This could be interesting for training up whether
     a night is photometric by comparing stats with by-eye viewing of the ASC
     animation together.
+
+    Parameters
+    ----------
+    icl : `ccdproc.ImageFileCollection`_
+        The Image File Collection for the night in question
+    el_limit : float, optional
+        Minimum sky elevation for computation of statistics (Default: 30.0)
+    datestr : str, optional
+        The YYYYMMDD string associated with this table, for file saving
+        purposes (Default: "")
     """
+
+    hotpix_mask = generate_hotpixel_mask(icl)
+    radius_mask = generate_radius_mask(
+        next(icl.ccds(ccd_kwargs={"unit": u.adu})).data, el_limit=el_limit
+    )
+
+    # Show progress bar for processing ASC frames
+    msgs.info("Processing frames...")
+    progress_bar = tqdm(
+        total=len(icl.files), unit="frame", unit_scale=False, colour="#eab676"
+    )
+
+    dtable = []
+
+    for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
+
+        # Turn the observation time into an object
+        obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
+
+        # LR flip the image and convert to float
+        ccd.data = np.fliplr(ccd.data.astype(float))
+
+        # Mask Hot pixels by NaN -> interpolate over NaN
+        ccd.data[hotpix_mask.astype(bool)] = np.nan
+        ccd.data = astropy.convolution.interpolate_replace_nans(
+            ccd.data, astropy.convolution.Gaussian2DKernel(x_stddev=1)
+        )
+
+        # Mask by radius
+        ccd.data[radius_mask.astype(bool)] = np.nan
+
+        # Compute the statistics on the COUNTRATE images
+        med = np.nanmedian(ccd.data / ccd.header["exptime"]) * u.adu / u.s
+        avg = np.nanmean(ccd.data / ccd.header["exptime"]) * u.adu / u.s
+        std = np.nanstd(ccd.data / ccd.header["exptime"]) * u.adu / u.s
+
+        # Append the dictionary for this row of the table
+        dtable.append(
+            {
+                "time": obstime.fits,
+                "median": med,
+                "mean": avg,
+                "stddev": std,
+                "el_lim": el_limit * u.deg,
+            }
+        )
+
+        progress_bar.update(1)
+    progress_bar.close()
+    dtable = astropy.table.QTable(dtable)
+
+    dtable.pprint()
+    dtable.write(DDIR.joinpath(f"nightly_stats{datestr}.fits"), overwrite=True)
+
+
+def plot_sky_stats(dtable, datestr=""):
+    """Plot the sky statistics for a given night
+
+    Take the saved data table (FITS bintable) and produce a usable plot
+
+    Parameters
+    ----------
+    dtable : `astropy.table.Table`_
+        Data table from :func:`compute_sky_statistics`
+    datestr : str, optional
+        The YYYYMMDD string associated with this table, for file saving
+        purposes (Default: "")
+    """
+    dtable.pprint()
+    abscissa = astropy.time.Time(dtable["time"], format="fits").datetime
+
+    _, axis = plt.subplots()
+    tsz = 8
+
+    axis.plot(abscissa, dtable["median"], label="Median Countrate (adu/s)")
+    axis.plot(abscissa, dtable["mean"], label="Mean Countrate (adu/s)")
+    axis.plot(
+        abscissa, dtable["stddev"], label="Standard Deviation of Countrate (adu/s)"
+    )
+    # axis.plot(abscissa, dtable["mean"] / dtable["stddev"])
+
+    axis.set_title(
+        rf"All-Sky Camera Stats for EL $\geq$ {dtable['el_lim'][0]:.0f}",
+        fontsize=tsz + 2,
+    )
+    axis.set_yscale("log")
+    axis.set_xlabel("Time (UT)", fontsize=tsz)
+    axis.legend(loc="upper center", fontsize=tsz)
+    utils.set_std_tickparams(axis, tsz)
+    plt.tight_layout()
+    plt.savefig(DDIR.joinpath(f"nightly_stats{datestr}.pdf"))
+    plt.savefig(DDIR.joinpath(f"nightly_stats{datestr}.png"))
+    plt.close()
+
+
+def asc_onenight_plotlimits(icl: ccdproc.ImageFileCollection):
+    """Compute the TIME plot limits for a night's ASC data
+
+    Parameters
+    ----------
+    icl : `ccdproc.ImageFileCollection`_
+        The Image File Collection for the night in question
+
+    Returns
+    -------
+    tuple
+        The x-axis plot limits in terms of :obj:`datetime.datetime` objects
+        that matpltolib understands.
+    """
+    # Get the headers from the first and last images in the ImageFileCollection
+    first, *_, last = icl.headers(ccd_kwargs={"unit": u.adu})
+    start_time = first["date-obs"]
+    end_time = last["date-obs"]
+    # Do a dummy plot and get the limits
+    _, axis = plt.subplots()
+    axis.plot(astropy.time.Time([start_time, end_time], format="fits").datetime, [1, 1])
+    xlim = axis.get_xlim()
+    plt.close()
+    return xlim
+
+
+def draw_sky_lines(axis, obstime, n_points=500, linewidth=1.5):
+    """Draw lines in the sky!
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    axis : `matplotlib.axes.Axes`_
+        The plotting axis on which to draw the lines
+    obstime : `astropy.time.Time`_
+        AstroPy Time object of the observation time of the frame
+    n_points : int, optional
+        Number of points for each arc (Default: 500)
+    linewidth : float, optional
+        The linewidth to draw.  Default is the `matplotlib.pyplot`_ default 1.5
+    """
+    # Start with Alt/Az lines
+    for alt_line in np.arange(0, 90, 20):
+        altaz = astropy.coordinates.AltAz(
+            alt=np.full(n_points, alt_line) * u.deg,
+            az=np.linspace(0, 360, n_points) * u.deg,
+        )
+        xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="black", alpha=0.1, linewidth=linewidth)
+    for az_line in np.arange(0, 360, 30):
+        altaz = astropy.coordinates.AltAz(
+            alt=np.linspace(0, 85, n_points) * u.deg,
+            az=np.full(n_points, az_line) * u.deg,
+        )
+        xpl, ypl = skycoord2xy(altaz, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="black", alpha=0.1, linewidth=linewidth)
+
+    # Add RA lines:
+    for ra_line in np.arange(0, 360, 30):
+        sky_coord = astropy.coordinates.SkyCoord(
+            ra=np.full(n_points, ra_line) * u.deg,
+            dec=np.linspace(-85, 85, n_points) * u.deg,
+            frame="icrs",
+        )
+        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="white", alpha=0.1, linewidth=linewidth)
+
+    # Add DEC lines:
+    for dec_line in np.arange(-80, 81, 20):
+        sky_coord = astropy.coordinates.SkyCoord(
+            ra=np.linspace(0, 360, n_points) * u.deg,
+            dec=np.full(n_points, dec_line) * u.deg,
+            frame="icrs",
+        )
+        xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
+        axis.plot(xpl, ypl, "-", color="white", alpha=0.1, linewidth=linewidth)
+
+    # Add Ecliptic:
+    sky_coord = astropy.coordinates.SkyCoord(
+        lon=np.linspace(0, 360, n_points) * u.deg,
+        lat=np.full(n_points, 0) * u.deg,
+        frame="geocentricmeanecliptic",
+    )
+    xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
+    axis.plot(xpl, ypl, "-", color="orange", alpha=0.5, linewidth=linewidth)
+
+    # Add Galactic Plane:
+    sky_coord = astropy.coordinates.SkyCoord(
+        l=np.linspace(0, 360, n_points) * u.deg,
+        b=np.full(n_points, 0) * u.deg,
+        frame="galactic",
+    )
+    xpl, ypl = skycoord2xy(sky_coord, obstime, LDT_ASC["earthloc"])
+    axis.plot(xpl, ypl, "-", color="pink", alpha=0.5, linewidth=linewidth)
+
+
+def compute_sun_events(midtime: astropy.time.Time) -> dict:
+    """compute_sun_events _summary_
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    midtime : `astropy.time.Time`_
+        The middle time for the night's set of ASC data
+
+    Returns
+    -------
+    dict
+        Dictionary containing the times for relevant sun events
+    """
+    location = astroplan.Observer.at_site("DCT")
+
+    return {
+        "sun_set": location.sun_set_time(midtime),
+        "eve_civil": location.twilight_evening_civil(midtime),
+        "eve_nauti": location.twilight_evening_nautical(midtime),
+        "eve_astro": location.twilight_evening_astronomical(midtime),
+        "mor_astro": location.twilight_morning_astronomical(midtime),
+        "mor_nauti": location.twilight_morning_nautical(midtime),
+        "mor_civil": location.twilight_morning_civil(midtime),
+        "sun_rise": location.sun_rise_time(midtime),
+    }
+
+
+def draw_sun_events(axis, sun_events):
+    """Draw the sun event lines on the plot
+
+    _extended_summary_
+
+    Parameters
+    ----------
+    axis : _type_
+        _description_
+    sun_events : dict
+        Dictionary of sun events produced by :func:`compute_sun_events`
+    """
+    # Start with sunrise/sunset (cue music from Fiddler on the Roof...)
+    for event, time in sun_events.items():
+        # Define the color
+        color = (
+            "yellow"
+            if "sun" in event
+            else "#d8c3e1"
+            if "civil" in event
+            else "navy"
+            if "nauti" in event
+            else "black"
+        )
+        # Plot the line
+        axis.vlines(
+            time.datetime,
+            0,
+            1,
+            transform=axis.get_xaxis_transform(),
+            color=color,
+            linestyle="dashdot",
+            zorder=0,
+            linewidth=1.0,
+            alpha=0.5,
+        )
+
+
+def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datestr=""):
+    """Make the multiplot analysis video
+
+    This is the Big Kahuna routine to produce 3 versions of the ASC frames plus
+    a running plot of the nightly statistics.  The idea is that these videos
+    can provide insight into how well the statistics measure the photmetric
+    stability of a night.
+
+    Parameters
+    ----------
+    icl : `ccdproc.ImageFileCollection`_
+        The Image File Collection for the night in question
+    el_limit : float, optional
+        Minimum sky elevation for computation of statistics (Default: 20.0)
+    datestr : str, optional
+        The YYYYMMDD string associated with this table, for file saving
+        purposes (Default: "")
+    """
+
+    # Get data directory, for later use
+    ddir = pathlib.Path(icl.location)
+
+    # Get masks and median flat
+    hotpix_mask = generate_hotpixel_mask(icl)
+    horiz_mask = generate_radius_mask(next(icl.ccds(ccd_kwargs={"unit": u.adu})).data)
+    elev_masks = {
+        "el20_mask": generate_radius_mask(
+            next(icl.ccds(ccd_kwargs={"unit": u.adu})).data, el_limit=20
+        ),
+        "el30_mask": generate_radius_mask(
+            next(icl.ccds(ccd_kwargs={"unit": u.adu})).data, el_limit=30
+        ),
+    }
+    median_flat = astropy.nddata.CCDData.read(
+        utils.Paths.data.joinpath("ldt_asc_median_flat.fits"), unit=u.adu
+    )
+
+    # Get the time limits for the data in this night for plotting purposes
+    xlim = asc_onenight_plotlimits(icl)
+    interval = astropy.visualization.ZScaleInterval(nsamples=10000)
+    sun_events = compute_sun_events(
+        astropy.time.Time(np.mean(xlim), format="plot_date")
+    )
+
+    # Empty QTable into which to pour the statistics
+    dtable = astropy.table.QTable(
+        names=tuple(
+            ["time", "el_lim"]
+            + [
+                f"{stat}_{imgver}_{ellim}"
+                for imgver in ["org", "flt"]
+                for ellim in [20, 30]
+                for stat in ["med", "avg", "std"]
+            ]
+        ),
+        dtype=tuple([str, float] + [float] * 12),
+        units=tuple([None, u.deg] + [u.adu / u.s] * 12),
+    )
+
+    # Show progress bar for processing ASC frames
+    msgs.info("Processing frames...")
+    progress_bar = tqdm(
+        total=len(icl.files), unit="frame", unit_scale=False, colour="#eab676"
+    )
+
+    # Loop over the frames in the collection
+    for i, ccd in enumerate(icl.ccds(ccd_kwargs={"unit": u.adu})):
+        # Turn the observation time into an object
+        obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
+
+        # LR flip the image and convert to float
+        ccd.data = np.fliplr(ccd.data.astype(float))
+
+        # Mask Hot pixels by NaN -> interpolate over NaN
+        ccd.data[hotpix_mask.astype(bool)] = np.nan
+        ccd.data = astropy.convolution.interpolate_replace_nans(
+            ccd.data, astropy.convolution.Gaussian2DKernel(x_stddev=1)
+        )
+
+        # Need 3 different versions of the ASC image for plotting
+        original = ccd.data.copy()
+        sobel = scipy.ndimage.sobel(ccd.data)
+        flatted = ccd.data / median_flat.data
+
+        # Mask each by radius for display
+        for image in [original, sobel, flatted]:
+            image[horiz_mask.astype(bool)] = np.nan
+
+        # Create the MASKED COUNTRATE images
+        mskimg = {
+            "org_20": original.copy() / ccd.header["exptime"],
+            "org_30": original.copy() / ccd.header["exptime"],
+            "flt_20": flatted.copy() / ccd.header["exptime"],
+            "flt_30": flatted.copy() / ccd.header["exptime"],
+        }
+        for imgver in ["org", "flt"]:
+            for elmask in [20, 30]:
+                mskimg[f"{imgver}_{elmask}"][
+                    elev_masks[f"el{elmask}_mask"].astype(bool)
+                ] = np.nan
+
+        # Compute all the statistics in a giant dictionary comprehension
+        stat_dict = dict(time=obstime.fits, el_lim=el_limit * u.deg)
+        stat_dict.update(
+            {
+                f"{stat}_{imgver}_{elmask}": statfunc(mskimg[f"{imgver}_{elmask}"])
+                * u.adu
+                / u.s
+                for stat, statfunc in zip(
+                    ["med", "avg", "std"], [np.nanmedian, np.nanmean, np.nanstd]
+                )
+                for elmask in [20, 30]
+                for imgver in ["org", "flt"]
+            }
+        )
+
+        # Append the dictionary for this row of the table
+        dtable.add_row(stat_dict)
+
+        # ===================#
+        # Create the multipanel figure for this ASC frame
+        _, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
+        tsz = 12
+
+        # Display the three images
+        for img, axis in zip(
+            [original, flatted, sobel],
+            [axes[0][0], axes[0][1], axes[1][0]],
+        ):
+            txt = (
+                "Original ASC Image"
+                if np.array_equal(img, original, equal_nan=True)
+                else "Flat-Fielded ASC Image"
+                if np.array_equal(img, flatted, equal_nan=True)
+                else "Sobel-Filtered ASC Image"
+            )
+
+            vmin, vmax = interval.get_limits(img)
+            axis.imshow(img, vmin=vmin, vmax=vmax, origin="lower")
+            axis.axis("off")
+            axis.text(
+                0.8,
+                0.95,
+                txt,
+                va="center",
+                ha="center",
+                transform=axis.transAxes,
+                fontsize=tsz + 2,
+            )
+            # Add interesting things to the plot!
+            draw_sky_lines(axis, obstime, n_points=500)
+
+        # Statistics Plot
+        abscissa = astropy.time.Time(dtable["time"], format="fits").datetime
+        axis = axes[1][1]
+
+        # Median Values
+        axis.plot(
+            abscissa,
+            dtable["med_org_20"],
+            label="Median (ORG_20)",
+            color="C0",
+            linestyle="solid",
+        )
+        axis.plot(
+            abscissa,
+            dtable["med_org_30"],
+            label="Median (ORG_30)",
+            color="C0",
+            linestyle="dashed",
+        )
+        axis.plot(
+            abscissa,
+            dtable["med_flt_20"],
+            label="Median (FLT_20)",
+            color="C1",
+            linestyle="solid",
+        )
+        axis.plot(
+            abscissa,
+            dtable["med_flt_30"],
+            label="Median (FLT_30)",
+            color="C1",
+            linestyle="dashed",
+        )
+
+        # Standard Deviations
+        axis.plot(
+            abscissa,
+            dtable["std_org_20"],
+            label="StdDev (ORG_20)",
+            color="C2",
+            linestyle="solid",
+        )
+        axis.plot(
+            abscissa,
+            dtable["std_org_30"],
+            label="StdDev (ORG_30)",
+            color="C2",
+            linestyle="dashed",
+        )
+        axis.plot(
+            abscissa,
+            dtable["std_flt_20"],
+            label="StdDev (FLT_20)",
+            color="C3",
+            linestyle="solid",
+        )
+        axis.plot(
+            abscissa,
+            dtable["std_flt_30"],
+            label="StdDev (FLT_30)",
+            color="C3",
+            linestyle="dashed",
+        )
+
+        axis.set_title(
+            "All-Sky Camera Stats",
+            fontsize=tsz + 2,
+        )
+        axis.set_yscale("log")
+        axis.set_xlim(xlim)
+        axis.set_xlabel("Time (UT)", fontsize=tsz)
+        axis.legend(loc="upper center", fontsize=tsz)
+
+        # Add Sun Event lines
+        draw_sun_events(axis, sun_events)
+
+        utils.set_std_tickparams(axis, tsz)
+
+        # Close out and save this frame
+        plt.tight_layout()
+        plt.savefig(ddir.joinpath(f"asc_{ccd.header['seqnum']:05d}.png"))
+        plt.savefig(ddir.joinpath(f"asc_{ccd.header['seqnum']:05d}.pdf"))
+        plt.close()
+
+        progress_bar.update(1)
+        # if i == 2:
+        #     sys.exit()
+
+    progress_bar.close()
+
+    dtable.pprint()
+
+    # Create the MP4 animation; the operable command should be like:
+    # ffmpeg -framerate 30 -pattern_type glob -i '*.png' \
+    #   -c:v libx264 -pix_fmt yuv420p out.mp4
+    msgs.info("Creating the MP4 animation for this night...")
+    stream = ffmpeg.input(
+        str(ddir.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
+    )
+    stream = ffmpeg.output(
+        stream,
+        str(ddir.joinpath(f"asc_night{datestr}.mp4")),
+        pix_fmt="yuv420p",
+        vcodec="libx264",
+    )
+    msgs.info(f"{ffmpeg.compile(stream)}")
+    ffmpeg.run(stream, overwrite_output=True)
+
+    # Open the animation
+    os.system(f"/usr/bin/open {ddir}/asc_night{datestr}.mp4")
 
 
 def main():
@@ -396,7 +891,17 @@ def main():
     """
     msgs.info("Reading in the ImageFileCollection...")
     icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
-    make_animation(icl)
+    datestr = "_" + next(icl.ccds(ccd_kwargs={"unit": u.adu})).header["date-obs"].split(
+        "T"
+    )[0].replace("-", "")
+
+    # make_animation(icl)
+    # if not DDIR.joinpath(f"nightly_stats{datestr}.fits").is_file():
+    #     compute_sky_statistics(icl, datestr=datestr)
+
+    # dtable = astropy.table.QTable.read(DDIR.joinpath("nightly_stats.fits"))
+    # plot_sky_stats(dtable, datestr=datestr)
+    make_multiplot_video(icl, datestr=datestr)
 
 
 # =============================================================================#
