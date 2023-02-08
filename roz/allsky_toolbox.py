@@ -43,8 +43,6 @@ import astropy.visualization
 import astropy.wcs
 import ccdproc
 import ffmpeg
-import matplotlib
-import matplotlib.animation
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.units as munits
@@ -75,7 +73,7 @@ LDT_ASC = {
     "R": 800,
 }
 SIXTEEN_BIT = 2**16 - 1
-DDIR = pathlib.Path("/Users/tbowers/sandbox3/")
+DDIR = pathlib.Path("/Users/tbowers/sandbox5/")
 
 # Silence Superflous AstroPy FITS Header Warnings
 warnings.simplefilter("ignore", astropy.wcs.FITSFixedWarning)
@@ -86,8 +84,6 @@ converter = mdates.ConciseDateConverter()
 munits.registry[np.datetime64] = converter
 munits.registry[datetime.date] = converter
 munits.registry[datetime.datetime] = converter
-# This is for the direct-to-ffmpeg writer
-matplotlib.use("Agg")
 
 
 def generate_radius_mask(input_image: np.ndarray, el_limit=None):
@@ -169,11 +165,11 @@ def generate_hotpixel_mask(icl: ccdproc.ImageFileCollection, hot_lim=0.25, f_dar
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
 
-        if float(ccd.header["exptime"]) < 60:
-            continue
-
         # LR flip the image and convert to float
         ccd.data = np.fliplr(ccd.data.astype(float))
+
+        if float(ccd.header["exptime"]) < 60:
+            continue
 
         # Find the "HOT PIXELS" in this image, and add them to the mask
         hpm = (ccd.data > hot_lim * SIXTEEN_BIT).astype(int)
@@ -185,7 +181,11 @@ def generate_hotpixel_mask(icl: ccdproc.ImageFileCollection, hot_lim=0.25, f_dar
     progress_bar.close()
 
     # Identify pixels marked as HOT in `f_dark` of the DARK frames
-    return (hotpix >= f_dark * n_dark).astype(int)
+    return (
+        (ccd.data * 0).astype(int)
+        if hotpix is None
+        else (hotpix >= f_dark * n_dark).astype(int)
+    )
 
 
 def make_animation(icl: ccdproc.ImageFileCollection):
@@ -281,7 +281,7 @@ def make_animation(icl: ccdproc.ImageFileCollection):
 
 
 def skycoord2xy(coords, obstime=None, location=None, return_radius=False):
-    """Convert SkyCoord coordinates into CCD positions
+    """Convert SkyCoord coordinates into CCD positions for fisheye ASC images
 
     Use the simplified 5-parameter model (plus location & obstime) to
     convert SkyCoord coordinates into location on the CCD.
@@ -554,7 +554,7 @@ def draw_sky_lines(axis, obstime, n_points=500, linewidth=1.5):
 
 
 def compute_sun_events(midtime: astropy.time.Time) -> dict:
-    """compute_sun_events _summary_
+    """Compute the sun events for this night
 
     _extended_summary_
 
@@ -620,7 +620,9 @@ def draw_sun_events(axis, sun_events):
         )
 
 
-def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datestr=""):
+def make_multiplot_video(
+    icl: ccdproc.ImageFileCollection, el_limit=20.0, datestr="", nohotpix=False
+):
     """Make the multiplot analysis video
 
     This is the Big Kahuna routine to produce 3 versions of the ASC frames plus
@@ -643,7 +645,16 @@ def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datest
     ddir = pathlib.Path(icl.location)
 
     # Get masks and median flat
-    hotpix_mask = generate_hotpixel_mask(icl)
+    if nohotpix:
+        hotpix_mask = (next(icl.ccds(ccd_kwargs={"unit": u.adu})).data * 0).astype(int)
+    else:
+        hotpix_mask = generate_hotpixel_mask(icl)
+
+    # _,axis=plt.subplots()
+    # axis.imshow(hotpix_mask, origin="lower")
+    # plt.show()
+    # plt.close()
+
     horiz_mask = generate_radius_mask(next(icl.ccds(ccd_kwargs={"unit": u.adu})).data)
     elev_masks = {
         "el20_mask": generate_radius_mask(
@@ -664,20 +675,24 @@ def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datest
         astropy.time.Time(np.mean(xlim), format="plot_date")
     )
 
-    # Empty QTable into which to pour the statistics
-    dtable = astropy.table.QTable(
-        names=tuple(
-            ["time", "el_lim"]
-            + [
-                f"{stat}_{imgver}_{ellim}"
-                for imgver in ["org", "flt"]
-                for ellim in [20, 30]
-                for stat in ["med", "avg", "std"]
-            ]
-        ),
-        dtype=tuple([str, float] + [float] * 12),
-        units=tuple([None, u.deg] + [u.adu / u.s] * 12),
-    )
+    # If the data table already exists on disk, read it in
+    if ddir.joinpath(f"asc_stats_{datestr}.fits").is_file():
+        dtable = astropy.table.QTable.read(ddir.joinpath(f"asc_stats_{datestr}.fits"))
+    else:
+        # Empty QTable into which to pour the statistics
+        dtable = astropy.table.QTable(
+            names=tuple(
+                ["time", "el_lim"]
+                + [
+                    f"{stat}_{imgver}_{ellim}"
+                    for imgver in ["org", "flt"]
+                    for ellim in [20, 30]
+                    for stat in ["med", "avg", "std"]
+                ]
+            ),
+            dtype=tuple([str, float] + [float] * 12),
+            units=tuple([None, u.deg] + [u.adu / u.s] * 12),
+        )
 
     # Show progress bar for processing ASC frames
     msgs.info("Processing frames...")
@@ -686,7 +701,17 @@ def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datest
     )
 
     # Loop over the frames in the collection
-    for i, ccd in enumerate(icl.ccds(ccd_kwargs={"unit": u.adu})):
+    for ccd, fname in icl.ccds(ccd_kwargs={"unit": u.adu}, return_fname=True):
+
+        # Sometimes a header is messed up... skip and move along
+        # Also skip if we've already made this frame
+        if (
+            "seqnum" not in ccd.header
+            or ddir.joinpath(f"asc_{ccd.header['seqnum']:05d}.png").is_file()
+        ):
+            progress_bar.update(1)
+            continue
+
         # Turn the observation time into an object
         obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
 
@@ -863,13 +888,14 @@ def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datest
     progress_bar.close()
 
     dtable.pprint()
+    dtable.write(ddir.joinpath(f"asc_stats_{datestr}.fits"), overwrite=True)
 
     # Create the MP4 animation; the operable command should be like:
     # ffmpeg -framerate 30 -pattern_type glob -i '*.png' \
     #   -c:v libx264 -pix_fmt yuv420p out.mp4
     msgs.info("Creating the MP4 animation for this night...")
     stream = ffmpeg.input(
-        str(ddir.joinpath("asc_*.png")), framerate=30, pattern_type="glob"
+        str(ddir.joinpath("asc_*.png")), framerate=12, pattern_type="glob"
     )
     stream = ffmpeg.output(
         stream,
@@ -884,7 +910,7 @@ def make_multiplot_video(icl: ccdproc.ImageFileCollection, el_limit=20.0, datest
     os.system(f"/usr/bin/open {ddir}/asc_night{datestr}.mp4")
 
 
-def main():
+def main(nohotpix=False):
     """Typical Driver Function
 
     _extended_summary_
@@ -901,7 +927,9 @@ def main():
 
     # dtable = astropy.table.QTable.read(DDIR.joinpath("nightly_stats.fits"))
     # plot_sky_stats(dtable, datestr=datestr)
-    make_multiplot_video(icl, datestr=datestr)
+    make_multiplot_video(icl, datestr=datestr, nohotpix=nohotpix)
+
+    # make_nightly_median_flat(icl)
 
 
 # =============================================================================#
@@ -1372,13 +1400,12 @@ def make_hpm_fits():
     sccd.write(DDIR.joinpath("hotpix_sum.fits"), overwrite=True)
 
 
-def make_nightly_median_flat():
+def make_nightly_median_flat(icl):
     """Build a nightly median flat
 
     _extended_summary_
     """
-    msgs.info("Reading in the ImageFileCollection...")
-    icl = ccdproc.ImageFileCollection(DDIR, glob_include="TARGET*.fit")
+
     hotpix = generate_hotpixel_mask(icl)
 
     # Show progress bar for processing ASC frames
@@ -1391,8 +1418,16 @@ def make_nightly_median_flat():
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
 
-        # Skip images with exptime less than a minute
-        if ccd.header["EXPTIME"] < 60:
+        # Skip images when sun is > -18º elevation
+        obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
+        sun_alt = (
+            astropy.coordinates.get_sun(obstime)
+            .transform_to(
+                astropy.coordinates.AltAz(obstime=obstime, location=LDT_ASC["earthloc"])
+            )
+            .alt
+        )
+        if sun_alt > -18.0 * u.deg:
             progress_bar.update(1)
             continue
 
@@ -1410,13 +1445,18 @@ def make_nightly_median_flat():
         progress_bar.update(1)
     progress_bar.close()
 
-    return ccdproc.combine(
+    # This line is only needed until CCDPROC updates with my PR#797 allowing
+    #   ccdproc.combine() to accept `overwrite_output` as a keyword, to be
+    #   passed to ccd.write().
+    os.remove(DDIR.joinpath("median_flat.fits"))
+    ccdproc.combine(
         img_list,
         output_file=DDIR.joinpath("median_flat.fits"),
         method="median",
         mem_limit=8.192e9,
         ccd_kwargs={"unit": u.adu},
     )
+    plot_medflat()
 
 
 def plot_medflat():
@@ -1807,5 +1847,10 @@ if __name__ == "__main__":
     # rejigger_tycho2()
     # find_stars_asc()
     # analyze_asc_optics()
+    import sys
 
-    main()
+    msgs.bug(f"{sys.argv}")
+    if len(sys.argv) > 1 and sys.argv[1] == "nohotpix":
+        main(nohotpix=True)
+    else:
+        main()

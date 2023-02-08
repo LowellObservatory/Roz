@@ -44,8 +44,6 @@ from roz import gather_frames
 from roz import msgs
 from roz import utils
 
-import kpno_allsky.coordinates
-import kpno_allsky.mask
 
 # Set API Components
 __all__ = ["CalibContainer", "ScienceContainer", "AllSkyContainer"]
@@ -684,6 +682,14 @@ class AllSkyContainer(_ContainerBase):
         config : tuple
             _description_
         """
+        # Parse instance attributes into expected variables
+        icl = self._check_ifc("icl", config)
+
+        if not icl.files:
+            return
+        if self.debug:
+            msgs.info("Processing All-Sky Camera frames...")
+
         if self.debug:
             msgs.bug(f"{config}")
         msgs.warn("Really, I don't know what I'm doing here...")
@@ -693,8 +699,3 @@ class AllSkyContainer(_ContainerBase):
         msgs.table("Step 3: Make a difference frame with the adjacent exposure")
         msgs.table("Step 4: Take stats of 'good' area of difference frame")
         msgs.table("Step 5: Place the relevant data into a meta_table")
-
-        # kpno_allsky.coordinates.xy_to_altaz()
-        mask = kpno_allsky.mask.generate_full_mask()
-
-        print(mask.shape, type(mask))
