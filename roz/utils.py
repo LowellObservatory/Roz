@@ -23,16 +23,18 @@ This module primarily trades in... utility?
 
 # Built-In Libraries
 import datetime
+from importlib import resources
 import os
 import pathlib
 
 # 3rd Party Libraries
+import astropy.io.fits
 import astropy.modeling.models
 import astropy.nddata
 import astropy.table
 import ccdproc
+import matplotlib.pyplot as plt
 import numpy as np
-from pkg_resources import resource_filename
 
 # Lowell Libraries
 import ligmos
@@ -45,21 +47,21 @@ class Paths:
     """Class that holds the various paths needed"""
 
     # Main data & config directories
-    config = pathlib.Path(resource_filename("roz", "config"))
-    data = pathlib.Path(resource_filename("roz", "data"))
-    thumbnail = pathlib.Path(resource_filename("roz", "thumbnails"))
+    config = resources.files("roz") / "config"
+    data = resources.files("roz") / "data"
+    thumbnail = resources.files("roz") / "thumbnails"
 
     # Particular filenames needed by various routines
-    xml_table = data.joinpath("lmi_filter_table.xml")
-    ecsv_filters = data.joinpath("lmi_filter_table.ecsv")
-    ecsv_sechead = data.joinpath("lmi_table_sechead.ecsv")
+    xml_table = data / "lmi_filter_table.xml"
+    ecsv_filters = data / "lmi_filter_table.ecsv"
+    ecsv_sechead = data / "lmi_table_sechead.ecsv"
     html_table_fn = "lmi_filter_table.html"
-    lmi_dyntable = data.joinpath("lmi_dynamic_filter.ecsv")
-    local_html_table_fn = data.joinpath("lmi_filter_table.html")
-    css_table = data.joinpath("lmi_filter_table.css")
+    lmi_dyntable = data / "lmi_dynamic_filter.ecsv"
+    local_html_table_fn = data / "lmi_filter_table.html"
+    css_table = data / "lmi_filter_table.css"
 
     # DB Query Filename
-    dbqueries = config.joinpath("dbqueries.conf")
+    dbqueries = config / "dbqueries.conf"
 
     def __init__(self):
         pass
@@ -80,18 +82,18 @@ FILTER_LIST = {
 LDT_FMS = ["A", "B", "C", "D"]
 
 
-def parse_ampconfig(amp_config):
+def parse_ampconfig(amp_config: str) -> dict:
     """Parse the amplifier configuration for LMI
 
     Parameters
     ----------
-    amp_config : str
+    amp_config : :obj:`str`
         The amplifier configuration used for a frame
 
     Returns
     -------
-    dict
-        The keyword dictionary that can be parsed by `ccdproc.ImageFileCollection`_
+    :obj:`dict`
+        The keyword dictionary that can be parsed by :obj:`~ccdproc.ImageFileCollection`
     """
     # Parse the `amp_config` into something the ImageFileCollection can filter
     if len(amp_config) == 1:
@@ -104,7 +106,7 @@ def parse_ampconfig(amp_config):
     return kwargs
 
 
-def parse_lois_ampids(hdr):
+def parse_lois_ampids(hdr: astropy.io.fits.Header) -> str:
     """Parse the LOIS amplifier IDs
 
     LOIS is particular about how it records which amplifiers are used to read
@@ -121,12 +123,12 @@ def parse_lois_ampids(hdr):
 
     Parameters
     ----------
-    hdr : `astropy.io.fits.Header`_
+    hdr : :obj:`~astropy.io.fits.Header`
         The FITS header for which the amplifier IDs are to be parsed
 
     Returns
     -------
-    str
+    :obj:`str`
         The amplifier designation(s) used
     """
     # Basic 1-amplifier case:
@@ -137,18 +139,20 @@ def parse_lois_ampids(hdr):
     return "".join([val.strip() for kwd, val in hdr.items() if "AMPID" in kwd])
 
 
-def read_instrument_table():
+def read_instrument_table() -> astropy.table.Table:
     """Read in the instrument table
 
     Returns
     -------
-    `astropy.table.Table`_
+    :obj:`~astropy.table.Table`
         The instrument flags table
     """
     return astropy.table.Table.read(Paths.config.joinpath("instrument_flags.ecsv"))
 
 
-def read_ligmos_conffiles(confname, conffile="roz.conf"):
+def read_ligmos_conffiles(
+    confname: str, conffile: str = "roz.conf"
+) -> ligmos.utils.classes.baseTarget:
     """Read a configuration file using LIGMOS
 
     Having this as a separate function may be a bit of an overkill, but it
@@ -157,14 +161,14 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
 
     Parameters
     ----------
-    confname : str
+    confname : :obj:`str`
         Name of the table within the configuration file to parse
-    conffile : str, optional
+    conffile : :obj:`str`, optional
         Name of the configuration file to parse  (Default: "roz.conf")
 
     Returns
     -------
-    :class:`ligmos.utils.classes.baseTarget`
+    :class:`~ligmos.utils.classes.baseTarget`
         An object with arrtibutes matching the keys in the associated
         configuration file.
     """
@@ -238,7 +242,7 @@ def read_ligmos_conffiles(confname, conffile="roz.conf"):
     return ligconf
 
 
-def scrub_isot_dateobs(dt_str, add_hours=0):
+def scrub_isot_dateobs(dt_str: str, add_hours: int = 0) -> datetime.datetime:
     """Scrub the input DATE-OBS for ingestion by datetime
 
     First of all, strict ISO 8601 format requires a 6-digit "microsecond" field
@@ -263,14 +267,14 @@ def scrub_isot_dateobs(dt_str, add_hours=0):
 
     Parameters
     ----------
-    dt_str : str
+    dt_str : :obj:`str`
         Input datetime string from the DATE-OBS header keyword
-    add_hours : int
+    add_hours : :obj:`int`
         Number of hours to add to the datetime  (Default: 0)
 
     Returns
     -------
-    :obj:`datetime.datetime`
+    :obj:`~datetime.datetime`
         The datetime object corresponding to the DATE-OBS input string
     """
     # Clean all leading / trailing whitespace
@@ -308,14 +312,14 @@ def scrub_isot_dateobs(dt_str, add_hours=0):
         )
 
 
-def set_std_tickparams(axis, tsz):
+def set_std_tickparams(axis: plt.axis, tsz: int | float):
     """Set standard tick parameters for a plot
 
     These are my own "standards", based on plots I used to make in IDL.
 
     Parameters
     ----------
-    axis : `matplotlib.pyplot.axis`_
+    axis : :obj:`~matplotlib.pyplot.axis`
         PyPlot axis for whom the tick parameters must be set
     tsz : :obj:`int` or :obj:`float`
         TypeSiZe
@@ -330,7 +334,7 @@ def set_std_tickparams(axis, tsz):
     )
 
 
-def subpath(path_to_dir):
+def subpath(path_to_dir: str | pathlib.Path) -> str:
     """Simple function to return the instrument/date part of the path
 
     The instrument/date part of the path should be independent of machine
@@ -339,12 +343,12 @@ def subpath(path_to_dir):
 
     Parameters
     ----------
-    path_to_dir : str, :obj:`pathlib.Path`
+    path_to_dir : :obj:`str` or :obj:`~pathlib.Path`
         The full path to the directory of interest
 
     Returns
     -------
-    str
+    :obj:`str`
         The ``instrument/date`` portion of the full path
     """
     if isinstance(path_to_dir, str):
@@ -352,7 +356,9 @@ def subpath(path_to_dir):
     return os.sep.join(path_to_dir.parts[-2:])
 
 
-def table_sort_on_list(table, colname, sort_list):
+def table_sort_on_list(
+    table: astropy.table.Table, colname: str, sort_list: list
+) -> astropy.table.Table:
     """Sort an AstroPy Table according to a list
 
     The actual sorting of the table is code taken directly from `Astropy v5.0
@@ -361,16 +367,16 @@ def table_sort_on_list(table, colname, sort_list):
 
     Parameters
     ----------
-    table : `astropy.table.Table`_
+    table : :obj:`~astropy.table.Table`
         The table to sort
-    colname : str
+    colname : :obj:`str`
         The column name to sort on
-    sort_list : list
+    sort_list : :obj:`list`
         The list of values to sort with such that ``table[colname] == sort_list``
 
     Returns
     -------
-    `astropy.table.Table`_
+    :obj:`~astropy.table.Table`
         The sorted table
 
     Raises
@@ -413,7 +419,9 @@ def table_sort_on_list(table, colname, sort_list):
     return table
 
 
-def trim_oscan(ccd, biassec, trimsec):
+def trim_oscan(
+    ccd: astropy.nddata.CCDData, biassec: str, trimsec: str
+) -> astropy.nddata.CCDData:
     """Subtract the overscan region and trim image to desired size
 
     The function `ccdproc.subtract_overscan`_ expects the TRIMSEC of the image
@@ -442,16 +450,16 @@ def trim_oscan(ccd, biassec, trimsec):
 
     Parameters
     ----------
-    ccd : `astropy.nddata.CCDData`_
+    ccd : :obj:`~astropy.nddata.CCDData`
         The CCDData object upon which to operate
-    biassec : str
+    biassec : :obj:`str`
         String containing the FITS-convention overscan section coordinates
-    trimsec : str
+    trimsec : :obj:`str`
         String containing the FITS-convention data section coordinates
 
     Returns
     -------
-    `astropy.nddata.CCDData`_
+    :obj:`~astropy.nddata.CCDData`
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Convert the FITS bias & trim sections into slice classes for use
@@ -473,7 +481,7 @@ def trim_oscan(ccd, biassec, trimsec):
     return ccdproc.trim_image(ccd[:, x_t.start : x_t.stop])
 
 
-def two_sigfig(value):
+def two_sigfig(value: float) -> str:
     """String representation of a float at 2 significant figures
 
     Simple utility function to return a 2-sigfig representation of a float.
@@ -491,12 +499,12 @@ def two_sigfig(value):
 
     Parameters
     ----------
-    value : float
+    value : :obj:`float`
         Input value to be stringified
 
     Returns
     -------
-    str
+    :obj:`str`
         String representation of ``value`` at two significant figures
     """
     # If zero, return a 'N/A' type string
@@ -518,7 +526,7 @@ def two_sigfig(value):
     return f"{np.around(value, decimals=decimal):.2f}"
 
 
-def wrap_trim_oscan(ccd):
+def wrap_trim_oscan(ccd: astropy.nddata.CCDData) -> astropy.nddata.CCDData:
     """Wrap the :func:`roz.utils.trim_oscan()` function to handle multiple amps
 
     This function will perform the magic of stitching together multi-amplifier
@@ -533,12 +541,12 @@ def wrap_trim_oscan(ccd):
 
     Parameters
     ----------
-    ccd : `astropy.nddata.CCDData`_
+    ccd : :obj:`~astropy.nddata.CCDData`
         The CCDData object upon which to operate
 
     Returns
     -------
-    `astropy.nddata.CCDData`_
+    :obj:`~astropy.nddata.CCDData`
         The properly trimmed and overscan-subtracted CCDData object
     """
     # Shorthand
@@ -843,7 +851,6 @@ def compute_human_readable_surface(coefficients):
     # Use a WHILE loop to check for orientation issues
     good_orient = False
     while not good_orient:
-
         # Always use a theta between 0º and 180º:
         theta = theta + np.pi if theta < 0 else theta
         theta = theta - np.pi if theta > np.pi else theta

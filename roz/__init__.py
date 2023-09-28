@@ -41,6 +41,7 @@ __version__ = version
 msgs = messaging.Messages()
 slack = messaging.RozSlack()
 
+
 # Send all signals to messages to be dealt with (i.e. someone hits ctrl+c)
 def signal_handler(signalnum, handler):
     """

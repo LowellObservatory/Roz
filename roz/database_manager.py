@@ -201,7 +201,6 @@ class CalibrationDatabase:
         """
         # Loop through the frame types, pulling the dictionary of tables
         for frametype, frametype_ftables in self.v_tables.items():
-
             # Check that the table dictionary is extant
             if not frametype_ftables:
                 continue

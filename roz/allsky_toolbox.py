@@ -164,7 +164,6 @@ def generate_hotpixel_mask(icl: ccdproc.ImageFileCollection, hot_lim=0.25, f_dar
     hotpix, n_dark = None, 0
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # LR flip the image and convert to float
         ccd.data = np.fliplr(ccd.data.astype(float))
 
@@ -216,7 +215,6 @@ def make_animation(icl: ccdproc.ImageFileCollection):
 
     # Loop over the frames in the collection
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Turn the observation time into an object for ALT-AZ conversion
         obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
 
@@ -376,7 +374,6 @@ def compute_sky_statistics(icl: ccdproc.ImageFileCollection, el_limit=30.0, date
     dtable = []
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Turn the observation time into an object
         obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
 
@@ -702,7 +699,6 @@ def make_multiplot_video(
 
     # Loop over the frames in the collection
     for ccd, fname in icl.ccds(ccd_kwargs={"unit": u.adu}, return_fname=True):
-
         # Sometimes a header is messed up... skip and move along
         # Also skip if we've already made this frame
         if (
@@ -1070,7 +1066,6 @@ def test_animations():
     sobel_mask = None
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Set FITS keyword for image scaling
         ccd.header["OBSTYPE"] = "DOME FLAT"  # "OBJECT"
 
@@ -1164,7 +1159,6 @@ def test_hotpix(hot_lim):
     hotpix = None
     i = 0
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Set FITS keyword for image scaling
         ccd.header["OBSTYPE"] = "DOME FLAT"  # "OBJECT"
 
@@ -1253,7 +1247,6 @@ def test_masking():
     )
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Set FITS keyword for image scaling
         ccd.header["OBSTYPE"] = "DOME FLAT"  # "OBJECT"
 
@@ -1337,7 +1330,6 @@ def make_clean_sobel_map():
     sobel_mask = None
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Set FITS keyword for image scaling
         ccd.header["OBSTYPE"] = "DOME FLAT"  # "OBJECT"
 
@@ -1417,7 +1409,6 @@ def make_nightly_median_flat(icl):
     img_list = []
 
     for ccd in icl.ccds(ccd_kwargs={"unit": u.adu}):
-
         # Skip images when sun is > -18º elevation
         obstime = astropy.time.Time(utils.scrub_isot_dateobs(ccd.header["DATE-OBS"]))
         sun_alt = (
@@ -1569,7 +1560,6 @@ def find_stars_asc(find_algorithm=photutils.detection.DAOStarFinder):
 
     # LOOP!!!!!!!
     for ccd in icl.ccds(exptime=60, ccd_kwargs={"unit": u.adu}):
-
         msgs.info("")
         msgs.info(f"Processing sequence number: {ccd.header['seqnum']}")
 
@@ -1836,7 +1826,6 @@ def pprint_params(pars):
 
 # Testing CLI
 if __name__ == "__main__":
-
     # test_animations()
     # run_test_hotpix()
     # test_masking()

@@ -141,11 +141,9 @@ def post_pngs(metadata_tables, directory, inst_flags):
     # Loop through Frame Types
     for ftype in metadata_tables:
         if metadata_tables[ftype]:
-
             # Loop through Filters
             for filt in metadata_tables[ftype]:
                 if isinstance(metadata_tables[ftype][filt], astropy.table.Table):
-
                     # Grab frames marked as "PROBLEM"
                     mask = metadata_tables[ftype][filt]["problem"] == 1
                     pngs = list(metadata_tables[ftype][filt]["filename"][mask])

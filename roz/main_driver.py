@@ -97,7 +97,6 @@ def main(
 
     # Loop through the directories provided
     for directory in directories:
-
         # Give some visual space between directories being processed
         print(f"\n{'-'*30}\n")
 
@@ -106,7 +105,6 @@ def main(
 
         # Loop over the valid frameclasses
         for frameclass in gather_frames.FRAMECLASSES:
-
             # Check if this frameclass is to be processed
             if frameclass not in dumbwaiter.process_frameclass:
                 continue
@@ -238,7 +236,6 @@ def run_science(
     mem_limit=None,
     **kwargs,
 ):
-
     """Run Roz on the Instrument Science frames
 
     Parameters

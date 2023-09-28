@@ -221,7 +221,6 @@ def perform_calibration_validation(
     ###################
 
     if scheme == "none":
-
         # Check that values for mechanical positions are sensical, if not -> NaN
         for col in [colname for colname in meta_table.colnames if "pos" in colname]:
             meta_table[col][np.where(np.abs(meta_table[col]) > 500.0)] = np.nan
@@ -297,7 +296,6 @@ def perform_calibration_validation(
 
         # Then, loop over the list of validatable metrics in the metadata table
         for check in metrics:
-
             # If fewer than 30 comparison frames in the DB, skip
             if n_vals[check] < 30:
                 continue

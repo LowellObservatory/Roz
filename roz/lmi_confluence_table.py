@@ -281,7 +281,6 @@ def modify_lmi_dynamic_table(
     # Loop through the filters, updating the relevant columns of the table
     png_fn = []
     for i, filt in enumerate(utils.FILTER_LIST["LMI"]):
-
         # Skip filters not used in this data set (also check for `database.flat`)
         if not database.v_tables["flat"] or not database.v_tables["flat"][filt]:
             continue

@@ -91,7 +91,6 @@ class Dumbwaiter:
     """
 
     def __init__(self, data_dir, proc_args):
-
         # Initialize locations
         locations = utils.read_ligmos_conffiles("rozSetup")
         self.dirs = {

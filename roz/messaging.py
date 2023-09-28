@@ -67,7 +67,6 @@ class Messages:
     """
 
     def __init__(self, log=None, verbosity=None, colors=True):
-
         self._defverb = 1
         self._verbosity = self._defverb if verbosity is None else verbosity
 

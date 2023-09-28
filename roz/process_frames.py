@@ -357,7 +357,6 @@ class CalibContainer(_ContainerBase):
         # Loop through files
         bias_fns, metadata, coord_arrays = [], [], None
         for ccd, fname in bias_cl.ccds(bitpix=16, return_fname=True):
-
             # Convert the filename into the full path
             fname = self.directory.joinpath(fname)
 
@@ -506,7 +505,6 @@ class CalibContainer(_ContainerBase):
         # Loop through flat frames, subtracting bias and gathering statistics
         metadata, coord_arrays = [], None
         for ccd, fname in domeflat_cl.ccds(bitpix=16, return_fname=True):
-
             hdr = ccd.header
             # Add a "short filename" to the header for use further along
             hdr["SHORT_FN"] = fname
